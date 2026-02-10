@@ -10,7 +10,7 @@ export default defineConfig({
     // Proxy para evitar CORS en desarrollo
     proxy: {
       '/wp-json': {
-        target: 'http://localhost/PetsGo/WordPress',
+        target: 'http://localhost/PetsGoDev',
         changeOrigin: true,
       },
     },

@@ -8,6 +8,24 @@
 
 if (!defined('ABSPATH')) exit; // Seguridad Hard Constraint
 
+// CORS para frontend React (Vite dev server)
+add_action('rest_api_init', function() {
+    remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
+    add_filter('rest_pre_serve_request', function($value) {
+        $origin = get_http_origin();
+        $allowed = ['http://localhost:5177', 'http://localhost:5176', 'http://localhost:3000'];
+        if (in_array($origin, $allowed)) {
+            header('Access-Control-Allow-Origin: ' . esc_url_raw($origin));
+        } else {
+            header('Access-Control-Allow-Origin: http://localhost:5177');
+        }
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Headers: Authorization, X-WP-Nonce, Content-Type');
+        return $value;
+    });
+}, 15);
+
 class PetsGo_Core {
 
     private $db_version = '1.0';

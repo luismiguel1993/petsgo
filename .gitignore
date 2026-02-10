@@ -18,10 +18,34 @@ frontend/dist/
 Thumbs.db
 .DS_Store
 
-# WordPress
+# WordPress Core (no trackear, se instala con install-wp.ps1)
+wp-admin/
+wp-includes/
+wp-load.php
+wp-login.php
+wp-mail.php
+wp-cron.php
+wp-settings.php
+wp-signup.php
+wp-activate.php
+wp-trackback.php
+wp-links-opml.php
+wp-blog-header.php
+wp-comments-post.php
+wp-config.php
+wp-config-sample.php
+xmlrpc.php
+index.php
+license.txt
+readme.html
+.htaccess
+
+# WordPress uploads/cache
 wp-content/uploads/
 wp-content/upgrade/
 wp-content/cache/
+wp-content/themes/
+wp-content/plugins/
 
 # Logs
 *.log
