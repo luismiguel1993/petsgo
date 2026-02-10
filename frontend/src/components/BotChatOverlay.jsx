@@ -196,9 +196,9 @@ const chatCSS = `
     font-weight: 700 !important;
     font-size: 16px !important;
     line-height: 1.3 !important;
-    color: #fff !important;
+    color: #FFC400 !important;
     letter-spacing: 0.2px !important;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
   }
   .pgchat-header-status {
     font-size: 11px !important;
@@ -216,19 +216,22 @@ const chatCSS = `
     display: inline-block !important;
   }
   .pgchat-close-btn {
-    background: none !important;
+    background: rgba(255,255,255,0.2) !important;
     border: none !important;
     color: #ffffff !important;
     cursor: pointer !important;
-    padding: 4px !important;
+    padding: 6px !important;
     line-height: 1 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 4px !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    flex-shrink: 0 !important;
   }
   .pgchat-close-btn:hover {
-    background-color: rgba(255,255,255,0.2) !important;
+    background-color: rgba(255,255,255,0.35) !important;
   }
 
   .pgchat-messages {
