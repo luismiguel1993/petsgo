@@ -35,6 +35,10 @@ class PetsGo_Core {
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
         add_action('admin_menu', [$this, 'register_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'admin_styles']);
+        add_action('wp_ajax_petsgo_search_products', [$this, 'ajax_search_products']);
+        add_action('wp_ajax_petsgo_get_product', [$this, 'ajax_get_product']);
+        add_action('wp_ajax_petsgo_save_product', [$this, 'ajax_save_product']);
+        add_action('wp_ajax_petsgo_delete_product', [$this, 'ajax_delete_product']);
     }
 
     /* ===================================================
@@ -54,6 +58,7 @@ class PetsGo_Core {
 
         add_submenu_page('petsgo-dashboard', 'Dashboard', 'Dashboard', 'manage_options', 'petsgo-dashboard', [$this, 'admin_page_dashboard']);
         add_submenu_page('petsgo-dashboard', 'Productos', 'Productos', 'manage_options', 'petsgo-products', [$this, 'admin_page_products']);
+        add_submenu_page(null, 'Agregar/Editar Producto', 'Agregar Producto', 'manage_options', 'petsgo-product-form', [$this, 'admin_page_product_form']);
         add_submenu_page('petsgo-dashboard', 'Tiendas / Vendors', 'Tiendas', 'manage_options', 'petsgo-vendors', [$this, 'admin_page_vendors']);
         add_submenu_page('petsgo-dashboard', 'Pedidos', 'Pedidos', 'manage_options', 'petsgo-orders', [$this, 'admin_page_orders']);
         add_submenu_page('petsgo-dashboard', 'Planes', 'Planes', 'manage_options', 'petsgo-plans', [$this, 'admin_page_plans']);
@@ -61,6 +66,8 @@ class PetsGo_Core {
 
     public function admin_styles($hook) {
         if (strpos($hook, 'petsgo') === false) return;
+        // Cargar jQuery UI para el datepicker si se necesita
+        wp_enqueue_media(); // Media uploader de WordPress
         echo '<style>
             .petsgo-wrap { max-width: 1200px; }
             .petsgo-wrap h1 { color: #00A8E8; }
@@ -70,7 +77,7 @@ class PetsGo_Core {
             .petsgo-card p { color: #666; margin: 8px 0 0; }
             .petsgo-table { border-collapse: collapse; width: 100%; background: #fff; }
             .petsgo-table th { background: #00A8E8; color: #fff; padding: 10px 14px; text-align: left; }
-            .petsgo-table td { padding: 10px 14px; border-bottom: 1px solid #eee; }
+            .petsgo-table td { padding: 10px 14px; border-bottom: 1px solid #eee; vertical-align: middle; }
             .petsgo-table tr:hover td { background: #f0faff; }
             .petsgo-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
             .petsgo-badge.active, .petsgo-badge.delivered { background: #d4edda; color: #155724; }
@@ -78,6 +85,55 @@ class PetsGo_Core {
             .petsgo-badge.processing, .petsgo-badge.in_transit { background: #cce5ff; color: #004085; }
             .petsgo-badge.cancelled { background: #f8d7da; color: #721c24; }
             .petsgo-badge.inactive { background: #e2e3e5; color: #383d41; }
+            .petsgo-btn { display: inline-block; padding: 6px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; border: none; transition: .2s; }
+            .petsgo-btn-primary { background: #00A8E8; color: #fff; }
+            .petsgo-btn-primary:hover { background: #0090c7; color: #fff; }
+            .petsgo-btn-warning { background: #FFC400; color: #2F3A40; }
+            .petsgo-btn-warning:hover { background: #e6b000; color: #2F3A40; }
+            .petsgo-btn-danger { background: #dc3545; color: #fff; }
+            .petsgo-btn-danger:hover { background: #c82333; color: #fff; }
+            .petsgo-btn-sm { padding: 4px 10px; font-size: 12px; }
+            .petsgo-search-bar { display: flex; gap: 10px; margin: 16px 0; align-items: center; flex-wrap: wrap; }
+            .petsgo-search-bar input, .petsgo-search-bar select { padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+            .petsgo-search-bar input[type=text] { min-width: 280px; }
+            .petsgo-thumb { width: 50px; height: 50px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
+            .petsgo-stock-low { color: #dc3545; font-weight: 700; }
+            .petsgo-stock-ok { color: #28a745; }
+            /* --- Product Form Page --- */
+            .petsgo-form-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 24px; margin-top: 16px; }
+            .petsgo-form-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
+            .petsgo-form-section h3 { margin-top: 0; color: #2F3A40; border-bottom: 2px solid #00A8E8; padding-bottom: 8px; }
+            .petsgo-field { margin-bottom: 16px; }
+            .petsgo-field label { display: block; font-weight: 600; margin-bottom: 4px; color: #333; font-size: 13px; }
+            .petsgo-field input, .petsgo-field select, .petsgo-field textarea { width: 100%; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+            .petsgo-field textarea { resize: vertical; min-height: 80px; }
+            .petsgo-field .field-hint { font-size: 11px; color: #888; margin-top: 3px; }
+            .petsgo-field .field-error { font-size: 12px; color: #dc3545; margin-top: 3px; display: none; }
+            .petsgo-field.has-error input, .petsgo-field.has-error select, .petsgo-field.has-error textarea { border-color: #dc3545; }
+            .petsgo-field.has-error .field-error { display: block; }
+            .petsgo-img-upload { display: flex; gap: 16px; flex-wrap: wrap; }
+            .petsgo-img-slot { width: 160px; height: 160px; border: 2px dashed #ccc; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: #fafafa; transition: .2s; }
+            .petsgo-img-slot:hover { border-color: #00A8E8; background: #f0faff; }
+            .petsgo-img-slot img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+            .petsgo-img-slot .slot-label { font-size: 12px; color: #888; text-align: center; pointer-events: none; }
+            .petsgo-img-slot .slot-label .dashicons { font-size: 28px; display: block; margin: 0 auto 4px; color: #bbb; }
+            .petsgo-img-slot .remove-img { position: absolute; top: 4px; right: 4px; background: rgba(220,53,69,.9); color: #fff; border: none; border-radius: 50%; width: 22px; height: 22px; font-size: 14px; cursor: pointer; display: none; z-index: 2; line-height: 20px; text-align: center; }
+            .petsgo-img-slot.has-image .remove-img { display: block; }
+            .petsgo-img-slot.has-image .slot-label { display: none; }
+            .petsgo-img-specs { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; color: #555; }
+            .petsgo-img-specs strong { color: #333; }
+            .petsgo-preview-card { background: #fff; border: 1px solid #ddd; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+            .petsgo-preview-card .preview-imgs { display: flex; gap: 4px; height: 180px; background: #f5f5f5; overflow: hidden; }
+            .petsgo-preview-card .preview-imgs img { flex: 1; object-fit: cover; min-width: 0; }
+            .petsgo-preview-card .preview-imgs .no-img { flex: 1; display: flex; align-items: center; justify-content: center; color: #bbb; font-size: 40px; }
+            .petsgo-preview-card .preview-body { padding: 16px; }
+            .petsgo-preview-card .preview-body h4 { margin: 0 0 6px; font-size: 16px; color: #2F3A40; }
+            .petsgo-preview-card .preview-body .preview-price { font-size: 22px; font-weight: 700; color: #00A8E8; }
+            .petsgo-preview-card .preview-body .preview-cat { display: inline-block; background: #e3f5fc; color: #00A8E8; font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-top: 6px; }
+            .petsgo-preview-card .preview-body .preview-desc { font-size: 13px; color: #666; margin-top: 8px; line-height: 1.4; }
+            .petsgo-preview-card .preview-body .preview-stock { font-size: 12px; margin-top: 6px; }
+            .petsgo-loader { display: none; }
+            .petsgo-loader.active { display: inline-block; }
         </style>';
     }
 
@@ -129,74 +185,597 @@ class PetsGo_Core {
         <?php
     }
 
-    /* --- PRODUCTOS --- */
+    /* --- PRODUCTOS (Lista con AJAX search) --- */
     public function admin_page_products() {
         global $wpdb;
-        
-        // Manejar acciones (eliminar, editar)
-        if (isset($_POST['petsgo_add_product']) && wp_verify_nonce($_POST['_wpnonce'], 'petsgo_product')) {
-            $wpdb->insert("{$wpdb->prefix}petsgo_inventory", [
-                'vendor_id'    => intval($_POST['vendor_id']),
-                'product_name' => sanitize_text_field($_POST['product_name']),
-                'price'        => floatval($_POST['price']),
-                'stock'        => intval($_POST['stock']),
-                'category'     => sanitize_text_field($_POST['category']),
-            ]);
-            echo '<div class="notice notice-success"><p>Producto agregado correctamente.</p></div>';
-        }
-        if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['product_id'])) {
-            $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => intval($_GET['product_id'])]);
-            echo '<div class="notice notice-warning"><p>Producto eliminado.</p></div>';
-        }
-
-        $products = $wpdb->get_results("SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id = v.id ORDER BY i.id DESC");
         $vendors = $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name");
+        $categories = ['Alimento','Juguetes','Salud','Accesorios','Higiene','Ropa','Camas','Transporte'];
+        $total = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory");
         ?>
         <div class="wrap petsgo-wrap">
-            <h1>🛒 Productos (<?php echo count($products); ?>)</h1>
-            
-            <details style="margin:16px 0; background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px;">
-                <summary style="cursor:pointer; font-weight:600; font-size:14px;">➕ Agregar Nuevo Producto</summary>
-                <form method="post" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
-                    <?php wp_nonce_field('petsgo_product'); ?>
-                    <label>Nombre: <input type="text" name="product_name" required style="width:100%;"></label>
-                    <label>Precio: <input type="number" name="price" step="0.01" required style="width:100%;"></label>
-                    <label>Stock: <input type="number" name="stock" required style="width:100%;"></label>
-                    <label>Categoría: 
-                        <select name="category" style="width:100%;">
-                            <option>Alimento</option><option>Juguetes</option><option>Salud</option>
-                            <option>Accesorios</option><option>Higiene</option><option>Ropa</option>
-                        </select>
-                    </label>
-                    <label>Tienda:
-                        <select name="vendor_id" style="width:100%;">
-                            <?php foreach ($vendors as $v): ?>
-                            <option value="<?php echo $v->id; ?>"><?php echo esc_html($v->store_name); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                    <div><button type="submit" name="petsgo_add_product" class="button button-primary" style="margin-top:20px;">Guardar Producto</button></div>
-                </form>
-            </details>
-            
-            <table class="petsgo-table">
-                <thead><tr><th>ID</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><th>Tienda</th><th>Acciones</th></tr></thead>
-                <tbody>
-                <?php foreach ($products as $p): ?>
-                <tr>
-                    <td><?php echo $p->id; ?></td>
-                    <td><strong><?php echo esc_html($p->product_name); ?></strong></td>
-                    <td>$<?php echo number_format($p->price, 0, ',', '.'); ?></td>
-                    <td><?php echo $p->stock; ?></td>
-                    <td><?php echo esc_html($p->category); ?></td>
-                    <td><?php echo esc_html($p->store_name ?? '—'); ?></td>
-                    <td><a href="<?php echo admin_url('admin.php?page=petsgo-products&action=delete&product_id=' . $p->id); ?>" onclick="return confirm('¿Eliminar este producto?')" style="color:#dc3545;">Eliminar</a></td>
-                </tr>
-                <?php endforeach; ?>
+            <h1>🛒 Productos (<span id="pg-total"><?php echo $total; ?></span>)</h1>
+
+            <div class="petsgo-search-bar">
+                <input type="text" id="pg-search" placeholder="🔍 Buscar por nombre..." autocomplete="off">
+                <select id="pg-filter-cat">
+                    <option value="">Todas las categorías</option>
+                    <?php foreach ($categories as $c): ?><option><?php echo $c; ?></option><?php endforeach; ?>
+                </select>
+                <select id="pg-filter-vendor">
+                    <option value="">Todas las tiendas</option>
+                    <?php foreach ($vendors as $v): ?><option value="<?php echo $v->id; ?>"><?php echo esc_html($v->store_name); ?></option><?php endforeach; ?>
+                </select>
+                <span class="petsgo-loader" id="pg-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+                <a href="<?php echo admin_url('admin.php?page=petsgo-product-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Producto</a>
+            </div>
+
+            <table class="petsgo-table" id="pg-products-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px;">Foto</th>
+                        <th>Producto</th>
+                        <th style="width:100px;">Precio</th>
+                        <th style="width:70px;">Stock</th>
+                        <th>Categoría</th>
+                        <th>Tienda</th>
+                        <th style="width:150px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="pg-products-body">
+                    <tr><td colspan="7" style="text-align:center; padding:30px; color:#999;">Cargando productos...</td></tr>
                 </tbody>
             </table>
         </div>
+
+        <script>
+        jQuery(function($){
+            var timer = null;
+            function loadProducts(){
+                $('#pg-loader').addClass('active');
+                $.post(ajaxurl, {
+                    action: 'petsgo_search_products',
+                    _ajax_nonce: '<?php echo wp_create_nonce("petsgo_ajax"); ?>',
+                    search: $('#pg-search').val(),
+                    category: $('#pg-filter-cat').val(),
+                    vendor_id: $('#pg-filter-vendor').val()
+                }, function(res){
+                    $('#pg-loader').removeClass('active');
+                    if(!res.success) return;
+                    var rows = '';
+                    $('#pg-total').text(res.data.length);
+                    if(res.data.length === 0){
+                        rows = '<tr><td colspan="7" style="text-align:center; padding:30px; color:#999;">No se encontraron productos.</td></tr>';
+                    }
+                    $.each(res.data, function(i, p){
+                        var thumb = p.image_url ? '<img src="'+p.image_url+'" class="petsgo-thumb">' : '<span style="display:inline-block;width:50px;height:50px;background:#f0f0f0;border-radius:6px;text-align:center;line-height:50px;color:#bbb;">📷</span>';
+                        var stockClass = p.stock < 5 ? 'petsgo-stock-low' : 'petsgo-stock-ok';
+                        rows += '<tr>';
+                        rows += '<td>' + thumb + '</td>';
+                        rows += '<td><strong>' + $('<span>').text(p.product_name).html() + '</strong>';
+                        if(p.description) rows += '<br><small style="color:#888;">' + $('<span>').text(p.description.substring(0,60)).html() + (p.description.length > 60 ? '...' : '') + '</small>';
+                        rows += '</td>';
+                        rows += '<td>$' + Number(p.price).toLocaleString('es-CL') + '</td>';
+                        rows += '<td class="'+stockClass+'">' + p.stock + '</td>';
+                        rows += '<td>' + $('<span>').text(p.category || '—').html() + '</td>';
+                        rows += '<td>' + $('<span>').text(p.store_name || '—').html() + '</td>';
+                        rows += '<td>';
+                        rows += '<a href="<?php echo admin_url("admin.php?page=petsgo-product-form&id="); ?>' + p.id + '" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️ Editar</a> ';
+                        rows += '<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pg-delete-btn" data-id="'+p.id+'">🗑️</button>';
+                        rows += '</td>';
+                        rows += '</tr>';
+                    });
+                    $('#pg-products-body').html(rows);
+                });
+            }
+
+            // Búsqueda en tiempo real (debounce 300ms)
+            $('#pg-search').on('input', function(){ clearTimeout(timer); timer = setTimeout(loadProducts, 300); });
+            $('#pg-filter-cat, #pg-filter-vendor').on('change', loadProducts);
+
+            // Eliminar producto
+            $(document).on('click', '.pg-delete-btn', function(){
+                if(!confirm('¿Seguro que deseas eliminar este producto?')) return;
+                var btn = $(this);
+                $.post(ajaxurl, {
+                    action: 'petsgo_delete_product',
+                    _ajax_nonce: '<?php echo wp_create_nonce("petsgo_ajax"); ?>',
+                    id: btn.data('id')
+                }, function(res){
+                    if(res.success) loadProducts();
+                    else alert(res.data || 'Error al eliminar');
+                });
+            });
+
+            // Carga inicial
+            loadProducts();
+        });
+        </script>
         <?php
+    }
+
+    /* --- FORMULARIO AGREGAR / EDITAR PRODUCTO (página separada) --- */
+    public function admin_page_product_form() {
+        global $wpdb;
+        $product_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+        $product = null;
+        $images = ['', '', ''];
+
+        if ($product_id) {
+            $product = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_inventory WHERE id = %d", $product_id));
+            if ($product) {
+                $images[0] = $product->image_id ? wp_get_attachment_url($product->image_id) : '';
+                $images[1] = $product->image_id_2 ? wp_get_attachment_url($product->image_id_2) : '';
+                $images[2] = $product->image_id_3 ? wp_get_attachment_url($product->image_id_3) : '';
+            }
+        }
+
+        $vendors = $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name");
+        $categories = ['Alimento','Juguetes','Salud','Accesorios','Higiene','Ropa','Camas','Transporte'];
+        $page_title = $product_id ? 'Editar Producto #' . $product_id : 'Nuevo Producto';
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🛒 <?php echo $page_title; ?></h1>
+            <a href="<?php echo admin_url('admin.php?page=petsgo-products'); ?>" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" style="margin-bottom:16px; display:inline-block;">← Volver a Productos</a>
+
+            <form id="petsgo-product-form" novalidate>
+                <input type="hidden" id="pf-id" value="<?php echo $product_id; ?>">
+                <?php wp_nonce_field('petsgo_ajax', 'pf-nonce'); ?>
+
+                <div class="petsgo-form-grid">
+                    <!-- COLUMNA IZQUIERDA: Datos -->
+                    <div>
+                        <div class="petsgo-form-section">
+                            <h3>📝 Información del Producto</h3>
+
+                            <div class="petsgo-field" id="field-name">
+                                <label for="pf-name">Nombre del producto *</label>
+                                <input type="text" id="pf-name" maxlength="255" placeholder="Ej: Royal Canin Adulto 15kg" value="<?php echo esc_attr($product->product_name ?? ''); ?>">
+                                <div class="field-hint">Máx. 255 caracteres. Sé descriptivo con marca y presentación.</div>
+                                <div class="field-error">El nombre es obligatorio (mín. 3 caracteres).</div>
+                            </div>
+
+                            <div class="petsgo-field" id="field-desc">
+                                <label for="pf-desc">Descripción *</label>
+                                <textarea id="pf-desc" maxlength="1000" rows="4" placeholder="Describe el producto, sus beneficios y características..."><?php echo esc_textarea($product->description ?? ''); ?></textarea>
+                                <div class="field-hint">Máx. 1000 caracteres. Incluye materiales, tamaños, ingredientes relevantes.</div>
+                                <div class="field-error">La descripción es obligatoria (mín. 10 caracteres).</div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                                <div class="petsgo-field" id="field-price">
+                                    <label for="pf-price">Precio (CLP) *</label>
+                                    <input type="number" id="pf-price" min="1" max="99999999" step="1" placeholder="Ej: 25990" value="<?php echo esc_attr($product->price ?? ''); ?>">
+                                    <div class="field-error">Precio debe ser mayor a 0.</div>
+                                </div>
+                                <div class="petsgo-field" id="field-stock">
+                                    <label for="pf-stock">Stock (unidades) *</label>
+                                    <input type="number" id="pf-stock" min="0" max="999999" step="1" placeholder="Ej: 50" value="<?php echo esc_attr($product->stock ?? ''); ?>">
+                                    <div class="field-error">Stock debe ser 0 o mayor.</div>
+                                </div>
+                            </div>
+
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                                <div class="petsgo-field" id="field-category">
+                                    <label for="pf-category">Categoría *</label>
+                                    <select id="pf-category">
+                                        <option value="">— Seleccionar —</option>
+                                        <?php foreach ($categories as $c): ?>
+                                        <option <?php selected(($product->category ?? ''), $c); ?>><?php echo $c; ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="field-error">Selecciona una categoría.</div>
+                                </div>
+                                <div class="petsgo-field" id="field-vendor">
+                                    <label for="pf-vendor">Tienda *</label>
+                                    <select id="pf-vendor">
+                                        <option value="">— Seleccionar —</option>
+                                        <?php foreach ($vendors as $v): ?>
+                                        <option value="<?php echo $v->id; ?>" <?php selected(($product->vendor_id ?? ''), $v->id); ?>><?php echo esc_html($v->store_name); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <div class="field-error">Selecciona una tienda.</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- FOTOS -->
+                        <div class="petsgo-form-section" style="margin-top:20px;">
+                            <h3>📸 Fotos del Producto (máx. 3)</h3>
+                            <div class="petsgo-img-upload">
+                                <?php for ($i = 0; $i < 3; $i++): 
+                                    $label = $i === 0 ? 'Foto Principal *' : 'Foto ' . ($i + 1) . ' (opcional)';
+                                    $has = !empty($images[$i]);
+                                ?>
+                                <div class="petsgo-img-slot <?php echo $has ? 'has-image' : ''; ?>" id="img-slot-<?php echo $i; ?>" data-index="<?php echo $i; ?>">
+                                    <?php if ($has): ?><img src="<?php echo esc_url($images[$i]); ?>"><?php endif; ?>
+                                    <span class="slot-label"><span class="dashicons dashicons-cloud-upload"></span><?php echo $label; ?></span>
+                                    <button type="button" class="remove-img" title="Quitar imagen">×</button>
+                                    <input type="hidden" class="img-id-input" id="pf-image-<?php echo $i; ?>" value="<?php 
+                                        if ($i === 0) echo esc_attr($product->image_id ?? '');
+                                        elseif ($i === 1) echo esc_attr($product->image_id_2 ?? '');
+                                        else echo esc_attr($product->image_id_3 ?? '');
+                                    ?>">
+                                </div>
+                                <?php endfor; ?>
+                            </div>
+                            <div class="petsgo-img-specs">
+                                <strong>📐 Especificaciones de imagen:</strong><br>
+                                • <strong>Formato:</strong> JPG, PNG o WebP<br>
+                                • <strong>Dimensiones recomendadas:</strong> 800×800 px (cuadrada) — Mínimo: 400×400 px — Máximo: 2000×2000 px<br>
+                                • <strong>Peso máximo:</strong> 2 MB por imagen<br>
+                                • <strong>Fondo:</strong> Preferiblemente blanco o neutro para mejor visualización
+                            </div>
+                            <div class="field-error" id="img-error" style="display:none;">La foto principal es obligatoria.</div>
+                        </div>
+
+                        <!-- BOTONES -->
+                        <div style="margin-top:20px; display:flex; gap:12px; align-items:center;">
+                            <button type="submit" class="petsgo-btn petsgo-btn-primary" style="font-size:15px; padding:10px 30px;">
+                                <?php echo $product_id ? '💾 Guardar Cambios' : '✅ Crear Producto'; ?>
+                            </button>
+                            <a href="<?php echo admin_url('admin.php?page=petsgo-products'); ?>" class="petsgo-btn" style="background:#e2e3e5; color:#333;">Cancelar</a>
+                            <span class="petsgo-loader" id="pf-loader"><span class="spinner is-active" style="float:none; margin:0;"></span> Guardando...</span>
+                            <div id="pf-message" style="display:none;"></div>
+                        </div>
+                    </div>
+
+                    <!-- COLUMNA DERECHA: Vista Previa -->
+                    <div>
+                        <div class="petsgo-form-section" style="position:sticky; top:40px;">
+                            <h3>👁️ Vista Previa</h3>
+                            <div class="petsgo-preview-card" id="pf-preview">
+                                <div class="preview-imgs" id="preview-imgs">
+                                    <div class="no-img">📷</div>
+                                </div>
+                                <div class="preview-body">
+                                    <span class="preview-cat" id="preview-cat">Categoría</span>
+                                    <h4 id="preview-name">Nombre del producto</h4>
+                                    <div class="preview-price" id="preview-price">$0</div>
+                                    <div class="preview-desc" id="preview-desc">Descripción del producto...</div>
+                                    <div class="preview-stock" id="preview-stock">Stock: —</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <script>
+        jQuery(function($){
+            // --- Media Uploader ---
+            $('.petsgo-img-slot').on('click', function(e){
+                if($(e.target).hasClass('remove-img')) return;
+                var slot = $(this);
+                var idx = slot.data('index');
+                var frame = wp.media({
+                    title: 'Seleccionar imagen del producto',
+                    button: { text: 'Usar esta imagen' },
+                    multiple: false,
+                    library: { type: ['image/jpeg','image/png','image/webp'] }
+                });
+                frame.on('select', function(){
+                    var att = frame.state().get('selection').first().toJSON();
+                    // Validar dimensiones
+                    if(att.width < 400 || att.height < 400){
+                        alert('⚠️ La imagen es muy pequeña. Mínimo 400×400 px.\nActual: ' + att.width + '×' + att.height + ' px');
+                        return;
+                    }
+                    if(att.width > 2000 || att.height > 2000){
+                        alert('⚠️ La imagen es muy grande. Máximo 2000×2000 px.\nActual: ' + att.width + '×' + att.height + ' px');
+                        return;
+                    }
+                    if(att.filesizeInBytes > 2 * 1024 * 1024){
+                        alert('⚠️ La imagen pesa más de 2 MB (' + (att.filesizeInBytes / 1024 / 1024).toFixed(1) + ' MB).');
+                        return;
+                    }
+                    var allowed = ['image/jpeg','image/png','image/webp'];
+                    if(allowed.indexOf(att.mime) === -1){
+                        alert('⚠️ Formato no válido. Solo JPG, PNG o WebP.');
+                        return;
+                    }
+                    // Preview
+                    var url = att.sizes && att.sizes.medium ? att.sizes.medium.url : att.url;
+                    slot.find('img').remove();
+                    slot.prepend('<img src="'+url+'">');
+                    slot.addClass('has-image');
+                    slot.find('.img-id-input').val(att.id);
+                    updatePreview();
+                });
+                frame.open();
+            });
+
+            // Quitar imagen
+            $('.remove-img').on('click', function(e){
+                e.stopPropagation();
+                var slot = $(this).closest('.petsgo-img-slot');
+                slot.find('img').remove();
+                slot.removeClass('has-image');
+                slot.find('.img-id-input').val('');
+                updatePreview();
+            });
+
+            // --- Vista previa en tiempo real ---
+            function updatePreview(){
+                var name = $('#pf-name').val() || 'Nombre del producto';
+                var price = parseFloat($('#pf-price').val()) || 0;
+                var cat = $('#pf-category').val() || 'Categoría';
+                var desc = $('#pf-desc').val() || 'Descripción del producto...';
+                var stock = $('#pf-stock').val();
+
+                $('#preview-name').text(name);
+                $('#preview-price').text('$' + price.toLocaleString('es-CL'));
+                $('#preview-cat').text(cat);
+                $('#preview-desc').text(desc.length > 120 ? desc.substring(0, 120) + '...' : desc);
+
+                if(stock === '' || stock === undefined){
+                    $('#preview-stock').html('Stock: —');
+                } else {
+                    var s = parseInt(stock);
+                    var color = s < 5 ? '#dc3545' : '#28a745';
+                    $('#preview-stock').html('Stock: <strong style="color:'+color+';">' + s + ' unidades</strong>');
+                }
+
+                // Imágenes
+                var imgs = '';
+                $('.petsgo-img-slot').each(function(){
+                    var img = $(this).find('img');
+                    if(img.length) imgs += '<img src="'+img.attr('src')+'">';
+                });
+                if(imgs){
+                    $('#preview-imgs').html(imgs);
+                } else {
+                    $('#preview-imgs').html('<div class="no-img">📷</div>');
+                }
+            }
+
+            $('#pf-name, #pf-price, #pf-stock, #pf-category, #pf-desc').on('input change', updatePreview);
+            updatePreview(); // init
+
+            // --- Validación ---
+            function validate(){
+                var ok = true;
+                // Nombre
+                var name = $.trim($('#pf-name').val());
+                if(name.length < 3){ 
+                    $('#field-name').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-name').removeClass('has-error'); 
+                }
+                // Descripcion
+                var desc = $.trim($('#pf-desc').val());
+                if(desc.length < 10){ 
+                    $('#field-desc').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-desc').removeClass('has-error'); 
+                }
+                // Precio
+                var price = parseFloat($('#pf-price').val());
+                if(!price || price <= 0){ 
+                    $('#field-price').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-price').removeClass('has-error'); 
+                }
+                // Stock
+                var stock = $('#pf-stock').val();
+                if(stock === '' || parseInt(stock) < 0){ 
+                    $('#field-stock').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-stock').removeClass('has-error'); 
+                }
+                // Categoría
+                if(!$('#pf-category').val()){ 
+                    $('#field-category').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-category').removeClass('has-error'); 
+                }
+                // Vendor
+                if(!$('#pf-vendor').val()){ 
+                    $('#field-vendor').addClass('has-error'); ok = false; 
+                } else { 
+                    $('#field-vendor').removeClass('has-error'); 
+                }
+                // Foto principal
+                if(!$('#pf-image-0').val()){
+                    $('#img-error').show(); ok = false;
+                } else {
+                    $('#img-error').hide();
+                }
+                return ok;
+            }
+
+            // Quitar error al interactuar
+            $('.petsgo-field input, .petsgo-field select, .petsgo-field textarea').on('input change', function(){
+                $(this).closest('.petsgo-field').removeClass('has-error');
+            });
+
+            // --- Submit (AJAX) ---
+            $('#petsgo-product-form').on('submit', function(e){
+                e.preventDefault();
+                if(!validate()) return;
+
+                $('#pf-loader').addClass('active');
+                $('#pf-message').hide();
+
+                $.post(ajaxurl, {
+                    action: 'petsgo_save_product',
+                    _ajax_nonce: $('#pf-nonce').val(),
+                    id:           $('#pf-id').val(),
+                    product_name: $.trim($('#pf-name').val()),
+                    description:  $.trim($('#pf-desc').val()),
+                    price:        $('#pf-price').val(),
+                    stock:        $('#pf-stock').val(),
+                    category:     $('#pf-category').val(),
+                    vendor_id:    $('#pf-vendor').val(),
+                    image_id:     $('#pf-image-0').val(),
+                    image_id_2:   $('#pf-image-1').val(),
+                    image_id_3:   $('#pf-image-2').val()
+                }, function(res){
+                    $('#pf-loader').removeClass('active');
+                    if(res.success){
+                        var msg = '<div class="notice notice-success" style="padding:10px;"><p>✅ ' + res.data.message + '</p></div>';
+                        $('#pf-message').html(msg).show();
+                        if(!$('#pf-id').val() && res.data.id){
+                            $('#pf-id').val(res.data.id);
+                            // Update URL sin recargar
+                            history.replaceState(null, '', '<?php echo admin_url("admin.php?page=petsgo-product-form&id="); ?>' + res.data.id);
+                        }
+                    } else {
+                        var msg = '<div class="notice notice-error" style="padding:10px;"><p>❌ ' + (res.data || 'Error desconocido') + '</p></div>';
+                        $('#pf-message').html(msg).show();
+                    }
+                }).fail(function(){
+                    $('#pf-loader').removeClass('active');
+                    $('#pf-message').html('<div class="notice notice-error" style="padding:10px;"><p>❌ Error de conexión</p></div>').show();
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
+    /* === AJAX HANDLERS === */
+
+    // Buscar productos (AJAX live search)
+    public function ajax_search_products() {
+        check_ajax_referer('petsgo_ajax');
+        global $wpdb;
+
+        $search    = sanitize_text_field($_POST['search'] ?? '');
+        $category  = sanitize_text_field($_POST['category'] ?? '');
+        $vendor_id = intval($_POST['vendor_id'] ?? 0);
+
+        $sql = "SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i 
+                LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id = v.id WHERE 1=1";
+        $args = [];
+
+        if ($search) {
+            $sql .= " AND i.product_name LIKE %s";
+            $args[] = '%' . $wpdb->esc_like($search) . '%';
+        }
+        if ($category) {
+            $sql .= " AND i.category = %s";
+            $args[] = $category;
+        }
+        if ($vendor_id) {
+            $sql .= " AND i.vendor_id = %d";
+            $args[] = $vendor_id;
+        }
+
+        $sql .= " ORDER BY i.id DESC";
+
+        if (!empty($args)) {
+            $sql = $wpdb->prepare($sql, ...$args);
+        }
+
+        $products = $wpdb->get_results($sql);
+
+        $data = array_map(function($p) {
+            return [
+                'id'           => (int) $p->id,
+                'product_name' => $p->product_name,
+                'description'  => $p->description,
+                'price'        => (float) $p->price,
+                'stock'        => (int) $p->stock,
+                'category'     => $p->category,
+                'store_name'   => $p->store_name,
+                'image_url'    => $p->image_id ? wp_get_attachment_image_url($p->image_id, 'thumbnail') : null,
+            ];
+        }, $products);
+
+        wp_send_json_success($data);
+    }
+
+    // Obtener un producto (AJAX)
+    public function ajax_get_product() {
+        check_ajax_referer('petsgo_ajax');
+        global $wpdb;
+        $id = intval($_POST['id']);
+        $p = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_inventory WHERE id = %d", $id));
+        if (!$p) wp_send_json_error('Producto no encontrado');
+        wp_send_json_success($p);
+    }
+
+    // Guardar producto (crear o editar, AJAX)
+    public function ajax_save_product() {
+        check_ajax_referer('petsgo_ajax');
+        if (!current_user_can('manage_options')) wp_send_json_error('Sin permisos');
+
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+
+        // Validación server-side
+        $name  = sanitize_text_field($_POST['product_name'] ?? '');
+        $desc  = sanitize_textarea_field($_POST['description'] ?? '');
+        $price = floatval($_POST['price'] ?? 0);
+        $stock = intval($_POST['stock'] ?? 0);
+        $cat   = sanitize_text_field($_POST['category'] ?? '');
+        $vendor = intval($_POST['vendor_id'] ?? 0);
+        $img1  = intval($_POST['image_id'] ?? 0) ?: null;
+        $img2  = intval($_POST['image_id_2'] ?? 0) ?: null;
+        $img3  = intval($_POST['image_id_3'] ?? 0) ?: null;
+
+        $errors = [];
+        if (strlen($name) < 3) $errors[] = 'Nombre muy corto (mín. 3 caracteres)';
+        if (strlen($desc) < 10) $errors[] = 'Descripción muy corta (mín. 10 caracteres)';
+        if ($price <= 0) $errors[] = 'Precio debe ser mayor a 0';
+        if ($stock < 0) $errors[] = 'Stock no puede ser negativo';
+        if (!$cat) $errors[] = 'Categoría obligatoria';
+        if (!$vendor) $errors[] = 'Tienda obligatoria';
+        if (!$img1) $errors[] = 'Foto principal obligatoria';
+
+        // Validar dimensiones de imágenes
+        foreach ([$img1, $img2, $img3] as $img_id) {
+            if ($img_id) {
+                $meta = wp_get_attachment_metadata($img_id);
+                if ($meta) {
+                    if (($meta['width'] ?? 0) < 400 || ($meta['height'] ?? 0) < 400) {
+                        $errors[] = 'Imagen ID ' . $img_id . ' es menor a 400×400 px';
+                    }
+                    if (($meta['width'] ?? 0) > 2000 || ($meta['height'] ?? 0) > 2000) {
+                        $errors[] = 'Imagen ID ' . $img_id . ' excede 2000×2000 px';
+                    }
+                }
+                $mime = get_post_mime_type($img_id);
+                $allowed_mimes = ['image/jpeg', 'image/png', 'image/webp'];
+                if ($mime && !in_array($mime, $allowed_mimes)) {
+                    $errors[] = 'Imagen ID ' . $img_id . ': formato no permitido (' . $mime . ')';
+                }
+            }
+        }
+
+        if (!empty($errors)) wp_send_json_error(implode('. ', $errors));
+
+        $data = [
+            'vendor_id'    => $vendor,
+            'product_name' => $name,
+            'description'  => $desc,
+            'price'        => $price,
+            'stock'        => $stock,
+            'category'     => $cat,
+            'image_id'     => $img1,
+            'image_id_2'   => $img2,
+            'image_id_3'   => $img3,
+        ];
+
+        if ($id) {
+            $wpdb->update("{$wpdb->prefix}petsgo_inventory", $data, ['id' => $id]);
+            wp_send_json_success(['message' => 'Producto actualizado correctamente', 'id' => $id]);
+        } else {
+            $wpdb->insert("{$wpdb->prefix}petsgo_inventory", $data);
+            wp_send_json_success(['message' => 'Producto creado correctamente', 'id' => $wpdb->insert_id]);
+        }
+    }
+
+    // Eliminar producto (AJAX)
+    public function ajax_delete_product() {
+        check_ajax_referer('petsgo_ajax');
+        if (!current_user_can('manage_options')) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) wp_send_json_error('ID inválido');
+        $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => $id]);
+        wp_send_json_success(['message' => 'Producto eliminado']);
     }
 
     /* --- TIENDAS / VENDORS --- */
