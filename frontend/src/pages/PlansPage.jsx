@@ -3,9 +3,9 @@ import { Check, Star, Crown, Store, Send, User, Mail, Phone, MapPin, Building2, 
 import { getPlans } from '../services/api';
 
 const DEMO_PLANS = [
-  { id: 1, plan_name: 'Básico', monthly_price: 29990, features_json: '{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}' },
-  { id: 2, plan_name: 'Pro', monthly_price: 59990, features_json: '{"max_products":200,"commission_rate":10,"support":"email+chat","analytics":true,"featured":true}' },
-  { id: 3, plan_name: 'Enterprise', monthly_price: 99990, features_json: '{"max_products":-1,"commission_rate":5,"support":"prioritario","analytics":true,"featured":true,"api_access":true}' },
+  { id: 1, plan_name: 'Básico', monthly_price: 29990, is_featured: 0, features_json: '{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}' },
+  { id: 2, plan_name: 'Pro', monthly_price: 59990, is_featured: 1, features_json: '{"max_products":200,"commission_rate":10,"support":"email+chat","analytics":true,"featured":true}' },
+  { id: 3, plan_name: 'Enterprise', monthly_price: 99990, is_featured: 0, features_json: '{"max_products":-1,"commission_rate":5,"support":"prioritario","analytics":true,"featured":true,"api_access":true}' },
 ];
 
 const featuresToList = (json) => {
@@ -141,8 +141,8 @@ const PlansPage = () => {
           display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px',
         }}>
           {(loading ? DEMO_PLANS : plans).map((plan, idx) => {
-            const features = featuresToList(plan.features_json);
-            const isPro = idx === 1;
+            const features = featuresToList(plan.features_json || plan.features);
+            const isPro = parseInt(plan.is_featured) === 1;
             const color = colors[idx] || '#00A8E8';
             const Icon = icons[idx] || Star;
 

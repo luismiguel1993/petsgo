@@ -525,6 +525,37 @@ class PetsGo_Core {
                                 </div>
                             </div>
                         </div>
+                        <!-- DESCUENTO -->
+                        <div class="petsgo-form-section" style="margin-top:20px;">
+                            <h3>🏷️ Descuento</h3>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                                <div class="petsgo-field">
+                                    <label>Descuento (%)</label>
+                                    <input type="number" id="pf-discount" min="0" max="99" step="1" placeholder="0 = sin descuento" value="<?php echo esc_attr($product->discount_percent ?? '0'); ?>">
+                                    <div class="field-hint">0 = sin descuento. Máx 99%.</div>
+                                </div>
+                                <div class="petsgo-field">
+                                    <label>Vigencia</label>
+                                    <select id="pf-discount-type">
+                                        <option value="none" <?php if(empty($product->discount_percent) || floatval($product->discount_percent ?? 0) == 0) echo 'selected'; ?>>Sin descuento</option>
+                                        <option value="indefinite" <?php if(floatval($product->discount_percent ?? 0) > 0 && empty($product->discount_start) && empty($product->discount_end)) echo 'selected'; ?>>Indefinido</option>
+                                        <option value="scheduled" <?php if(!empty($product->discount_start) || !empty($product->discount_end)) echo 'selected'; ?>>Programado (fecha/hora)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="pf-discount-dates" style="display:<?php echo (!empty($product->discount_start) || !empty($product->discount_end)) ? 'grid' : 'none'; ?>;grid-template-columns:1fr 1fr;gap:16px;margin-top:12px;">
+                                <div class="petsgo-field">
+                                    <label>Desde (fecha y hora)</label>
+                                    <input type="datetime-local" id="pf-discount-start" value="<?php echo esc_attr($product->discount_start ? date('Y-m-d\TH:i', strtotime($product->discount_start)) : ''); ?>">
+                                </div>
+                                <div class="petsgo-field">
+                                    <label>Hasta (fecha y hora)</label>
+                                    <input type="datetime-local" id="pf-discount-end" value="<?php echo esc_attr($product->discount_end ? date('Y-m-d\TH:i', strtotime($product->discount_end)) : ''); ?>">
+                                </div>
+                            </div>
+                            <div id="pf-discount-preview" style="display:none;margin-top:12px;padding:12px;background:#fff3cd;border-radius:8px;border:1px solid #ffc107;">
+                            </div>
+                        </div>
                         <!-- FOTOS -->
                         <div class="petsgo-form-section" style="margin-top:20px;">
                             <h3>📸 Fotos del Producto (máx. 3)</h3>
@@ -565,7 +596,13 @@ class PetsGo_Core {
                                 <div class="preview-body">
                                     <span class="preview-cat" id="preview-cat">Categoría</span>
                                     <h4 id="preview-name">Nombre del producto</h4>
-                                    <div class="preview-price" id="preview-price">$0</div>
+                                    <div id="preview-price-wrap">
+                                        <div class="preview-price" id="preview-price">$0</div>
+                                        <div id="preview-discount" style="display:none;margin-top:4px;">
+                                            <span style="text-decoration:line-through;color:#999;font-size:13px;" id="preview-original-price"></span>
+                                            <span style="background:#dc3545;color:#fff;font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700;margin-left:6px;" id="preview-discount-badge"></span>
+                                        </div>
+                                    </div>
                                     <div class="preview-desc" id="preview-desc">Descripción...</div>
                                     <div class="preview-stock" id="preview-stock">Stock: —</div>
                                 </div>
@@ -597,7 +634,21 @@ class PetsGo_Core {
 
             function upd(){
                 $('#preview-name').text($('#pf-name').val()||'Nombre');
-                $('#preview-price').text(PG.money($('#pf-price').val()));
+                var price=parseFloat($('#pf-price').val())||0;
+                var disc=parseFloat($('#pf-discount').val())||0;
+                var dtype=$('#pf-discount-type').val();
+                if(disc>0 && dtype!=='none'){
+                    var finalPrice=Math.round(price*(1-disc/100));
+                    $('#preview-price').text(PG.money(finalPrice)).css('color','#dc3545');
+                    $('#preview-original-price').text(PG.money(price));
+                    $('#preview-discount-badge').text('-'+disc+'%');
+                    $('#preview-discount').show();
+                    $('#pf-discount-preview').html('💰 <strong>Precio original:</strong> '+PG.money(price)+' → <strong>Con descuento:</strong> '+PG.money(finalPrice)+' <span style=\"color:#dc3545;font-weight:700;\">(-'+disc+'%)</span>'+(dtype==='scheduled'?' <br>📅 Programado':'  ♾️ Indefinido')).show();
+                }else{
+                    $('#preview-price').text(PG.money(price)).css('color','#00A8E8');
+                    $('#preview-discount').hide();
+                    $('#pf-discount-preview').hide();
+                }
                 $('#preview-cat').text($('#pf-category').val()||'Categoría');
                 var d=$('#pf-desc').val()||'Descripción...';$('#preview-desc').text(d.length>120?d.substring(0,120)+'...':d);
                 var s=$('#pf-stock').val();
@@ -605,7 +656,15 @@ class PetsGo_Core {
                 var imgs='';$('.petsgo-img-slot').each(function(){var im=$(this).find('img');if(im.length)imgs+='<img src="'+im.attr('src')+'">';});
                 $('#preview-imgs').html(imgs||'<div class="no-img">📷</div>');
             }
-            $('#pf-name,#pf-price,#pf-stock,#pf-category,#pf-desc').on('input change',upd);upd();
+            $('#pf-name,#pf-price,#pf-stock,#pf-category,#pf-desc,#pf-discount,#pf-discount-type').on('input change',upd);
+            // Toggle discount dates visibility
+            $('#pf-discount-type').on('change',function(){
+                if($(this).val()==='scheduled'){$('#pf-discount-dates').css('display','grid');}
+                else{$('#pf-discount-dates').hide();$('#pf-discount-start,#pf-discount-end').val('');}
+                if($(this).val()==='none'){$('#pf-discount').val(0);}
+                upd();
+            });
+            upd();
 
             function validate(){
                 var ok=true;
@@ -626,7 +685,9 @@ class PetsGo_Core {
                 PG.post('petsgo_save_product',{
                     id:$('#pf-id').val(),product_name:$.trim($('#pf-name').val()),description:$.trim($('#pf-desc').val()),
                     price:$('#pf-price').val(),stock:$('#pf-stock').val(),category:$('#pf-category').val(),vendor_id:$('#pf-vendor').val(),
-                    image_id:$('#pf-image-0').val(),image_id_2:$('#pf-image-1').val(),image_id_3:$('#pf-image-2').val()
+                    image_id:$('#pf-image-0').val(),image_id_2:$('#pf-image-1').val(),image_id_3:$('#pf-image-2').val(),
+                    discount_percent:$('#pf-discount').val()||0,discount_type:$('#pf-discount-type').val(),
+                    discount_start:$('#pf-discount-start').val()||'',discount_end:$('#pf-discount-end').val()||''
                 },function(r){
                     $('#pf-loader').removeClass('active');
                     if(r.success){
@@ -1084,6 +1145,7 @@ class PetsGo_Core {
                             <textarea id="pp-features" rows="6" placeholder='{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}'></textarea>
                             <small style="color:#888;">Campos: max_products (-1=ilimitado), commission_rate, support (email|email+chat|prioritario), analytics (true/false), featured (true/false), api_access (true/false)</small>
                         </div>
+                        <div class="petsgo-field" style="margin-top:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="pp-featured" style="width:18px;height:18px;"> <span>⭐ Plan destacado</span></label><small style="color:#888;">Se mostrará resaltado con badge "MÁS POPULAR" en el frontend. Solo 1 plan puede ser destacado.</small></div>
                         <div style="display:flex;gap:12px;margin-top:12px;">
                             <button class="petsgo-btn petsgo-btn-primary" id="pp-save">💾 Guardar</button>
                             <button class="petsgo-btn" style="background:#e2e3e5;color:#333;" id="pp-cancel">Cancelar</button>
@@ -1139,7 +1201,7 @@ class PetsGo_Core {
             function renderPreview(plans){
                 var html='';
                 $.each(plans,function(i,p){
-                    var color=planColors[i%3];var isPro=(i===1);
+                    var color=planColors[i%3];var isPro=(parseInt(p.is_featured)===1);
                     html+='<div style="background:#fff;border-radius:20px;padding:28px 24px;border:'+(isPro?'2px solid #FFC400':'1px solid #f0f0f0')+';box-shadow:'+(isPro?'0 16px 50px rgba(255,196,0,0.12)':'0 4px 16px rgba(0,0,0,0.04)')+';position:relative;'+(isPro?'transform:scale(1.03);z-index:2;':'')+'">';
                     if(isPro) html+='<span style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FFC400,#ffb300);color:#2F3A40;font-size:10px;font-weight:800;padding:4px 16px;border-radius:50px;letter-spacing:1px;">⭐ MÁS POPULAR</span>';
                     html+=renderCard(p.plan_name,p.monthly_price,p.features_json,color,isPro);
@@ -1160,8 +1222,10 @@ class PetsGo_Core {
                         rows+='<tr><td>'+p.id+'</td><td><strong>'+PG.esc(p.plan_name)+'</strong></td>';
                         rows+='<td>'+PG.money(p.monthly_price)+'</td>';
                         rows+='<td>'+featHtml+'</td>';
-                        rows+='<td><button class="petsgo-btn petsgo-btn-warning petsgo-btn-sm pp-edit" data-id="'+p.id+'" data-name="'+PG.esc(p.plan_name)+'" data-price="'+p.monthly_price+'" data-features="'+PG.esc(p.features_json||'').replace(/"/g,'&quot;')+'">✏️</button> ';
+                        rows+='<td><button class="petsgo-btn petsgo-btn-warning petsgo-btn-sm pp-edit" data-id="'+p.id+'" data-name="'+PG.esc(p.plan_name)+'" data-price="'+p.monthly_price+'" data-featured="'+(p.is_featured||0)+'">✏️</button> ';
                         rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pp-del" data-id="'+p.id+'">🗑️</button></td></tr>';
+                        // Store features JSON in a separate map to avoid jQuery data() auto-parsing
+                        window._ppFeatures=window._ppFeatures||{};window._ppFeatures[p.id]=p.features_json||'';
                     });
                     if(!r.data.length) rows='<tr><td colspan="5" style="text-align:center;padding:30px;color:#999;">Sin planes.</td></tr>';
                     $('#pp-body').html(rows);
@@ -1172,21 +1236,24 @@ class PetsGo_Core {
                 var color='#00A8E8';
                 $('#pp-live-card').html(renderCard($('#pp-name').val(),$('#pp-price').val(),$('#pp-features').val(),color,false));
             }
-            function resetForm(){$('#pp-id').val(0);$('#pp-name,#pp-price,#pp-features').val('');$('#pp-form-title').text('Nuevo Plan');$('#pp-msg').hide();updateLiveCard();}
+            function resetForm(){$('#pp-id').val(0);$('#pp-name,#pp-price,#pp-features').val('');$('#pp-featured').prop('checked',false);$('#pp-form-title').text('Nuevo Plan');$('#pp-msg').hide();updateLiveCard();}
             $('#pp-add-btn').on('click',function(){resetForm();$('#pp-form-wrap').slideDown();});
             $('#pp-cancel').on('click',function(){$('#pp-form-wrap').slideUp();});
             $('#pp-name,#pp-price,#pp-features').on('input',function(){updateLiveCard();});
             $(document).on('click','.pp-edit',function(){
-                $('#pp-id').val($(this).data('id'));$('#pp-name').val($(this).data('name'));$('#pp-price').val($(this).data('price'));
-                var ft=$(this).data('features')||'';$('#pp-features').val(ft);
-                $('#pp-form-title').text('Editar Plan #'+$(this).data('id'));$('#pp-form-wrap').slideDown();$('#pp-msg').hide();updateLiveCard();
+                var pid=$(this).data('id');
+                $('#pp-id').val(pid);$('#pp-name').val($(this).data('name'));$('#pp-price').val($(this).data('price'));
+                var ft=window._ppFeatures&&window._ppFeatures[pid]?window._ppFeatures[pid]:'';
+                $('#pp-features').val(typeof ft==='object'?JSON.stringify(ft):ft);
+                $('#pp-featured').prop('checked',$(this).data('featured')==1);
+                $('#pp-form-title').text('Editar Plan #'+pid);$('#pp-form-wrap').slideDown();$('#pp-msg').hide();updateLiveCard();
             });
             $('#pp-save').on('click',function(){
                 if(!$.trim($('#pp-name').val())||!$('#pp-price').val()){alert('Nombre y precio obligatorios');return;}
                 // Validate JSON
                 var fv=$('#pp-features').val();
                 if(fv){try{JSON.parse(fv);}catch(e){alert('Las características deben ser un JSON válido. Ejemplo:\n{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}');return;}}
-                PG.post('petsgo_save_plan',{id:$('#pp-id').val(),plan_name:$('#pp-name').val(),monthly_price:$('#pp-price').val(),features:$('#pp-features').val()},function(r){
+                PG.post('petsgo_save_plan',{id:$('#pp-id').val(),plan_name:$('#pp-name').val(),monthly_price:$('#pp-price').val(),features:$('#pp-features').val(),is_featured:$('#pp-featured').is(':checked')?1:0},function(r){
                     if(r.success){$('#pp-form-wrap').slideUp();load();}else{$('#pp-msg').html('<span style="color:red;">'+r.data+'</span>').show();}
                 });
             });
@@ -1219,7 +1286,17 @@ class PetsGo_Core {
         if ($args) $sql = $wpdb->prepare($sql, ...$args);
 
         $data = array_map(function($p) {
-            return ['id'=>(int)$p->id,'product_name'=>$p->product_name,'description'=>$p->description,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'image_url'=>$p->image_id?wp_get_attachment_image_url($p->image_id,'thumbnail'):null];
+            $disc = floatval($p->discount_percent ?? 0);
+            $active = false;
+            if ($disc > 0) {
+                if (empty($p->discount_start) && empty($p->discount_end)) { $active = true; }
+                else {
+                    $now = current_time('mysql');
+                    $active = (!$p->discount_start || $now >= $p->discount_start) && (!$p->discount_end || $now <= $p->discount_end);
+                }
+            }
+            return ['id'=>(int)$p->id,'product_name'=>$p->product_name,'description'=>$p->description,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'image_url'=>$p->image_id?wp_get_attachment_image_url($p->image_id,'thumbnail'):null,
+                'discount_percent'=>$disc,'discount_start'=>$p->discount_start,'discount_end'=>$p->discount_end,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):$p->price];
         }, $wpdb->get_results($sql));
         wp_send_json_success($data);
     }
@@ -1250,6 +1327,22 @@ class PetsGo_Core {
         if($errors) wp_send_json_error(implode('. ',$errors));
 
         $data=['vendor_id'=>$vendor_id,'product_name'=>$name,'description'=>$desc,'price'=>$price,'stock'=>$stock,'category'=>$cat,'image_id'=>$img1,'image_id_2'=>$img2,'image_id_3'=>$img3];
+
+        // Descuento
+        $disc_type = sanitize_text_field($_POST['discount_type'] ?? 'none');
+        $disc_pct  = floatval($_POST['discount_percent'] ?? 0);
+        if ($disc_type === 'none' || $disc_pct <= 0) {
+            $data['discount_percent'] = 0; $data['discount_start'] = null; $data['discount_end'] = null;
+        } elseif ($disc_type === 'indefinite') {
+            $data['discount_percent'] = min($disc_pct, 99); $data['discount_start'] = null; $data['discount_end'] = null;
+        } else { // scheduled
+            $data['discount_percent'] = min($disc_pct, 99);
+            $ds = sanitize_text_field($_POST['discount_start'] ?? '');
+            $de = sanitize_text_field($_POST['discount_end'] ?? '');
+            $data['discount_start'] = $ds ? date('Y-m-d H:i:s', strtotime($ds)) : null;
+            $data['discount_end']   = $de ? date('Y-m-d H:i:s', strtotime($de)) : null;
+        }
+
         if($id){$wpdb->update("{$wpdb->prefix}petsgo_inventory",$data,['id'=>$id]);$this->audit($id?'product_update':'product_create','product',$id,$name);wp_send_json_success(['message'=>'Producto actualizado','id'=>$id]);}
         else{$wpdb->insert("{$wpdb->prefix}petsgo_inventory",$data);$nid=$wpdb->insert_id;$this->audit('product_create','product',$nid,$name);wp_send_json_success(['message'=>'Producto creado','id'=>$nid]);}
     }
@@ -1440,8 +1533,11 @@ class PetsGo_Core {
         if(!$this->is_admin()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id=intval($_POST['id']??0);
-        $data=['plan_name'=>$this->san('plan_name'),'monthly_price'=>floatval($_POST['monthly_price']??0),'features_json'=>sanitize_textarea_field($_POST['features']??'')];
+        $is_featured=intval($_POST['is_featured']??0);
+        $data=['plan_name'=>$this->san('plan_name'),'monthly_price'=>floatval($_POST['monthly_price']??0),'features_json'=>sanitize_textarea_field($_POST['features']??''),'is_featured'=>$is_featured];
         if(!$data['plan_name'])wp_send_json_error('Nombre obligatorio');
+        // Only one plan can be featured
+        if($is_featured) $wpdb->update("{$wpdb->prefix}petsgo_subscriptions",['is_featured'=>0],['is_featured'=>1]);
         if($id){$wpdb->update("{$wpdb->prefix}petsgo_subscriptions",$data,['id'=>$id]);$this->audit('plan_update','plan',$id,$data['plan_name']);wp_send_json_success(['message'=>'Plan actualizado']);}
         else{$wpdb->insert("{$wpdb->prefix}petsgo_subscriptions",$data);$nid=$wpdb->insert_id;$this->audit('plan_create','plan',$nid,$data['plan_name']);wp_send_json_success(['message'=>'Plan creado','id'=>$nid]);}
     }
@@ -2031,21 +2127,32 @@ class PetsGo_Core {
         if($s=$request->get_param('search')){$sql.=" AND i.product_name LIKE %s";$args[]='%'.$wpdb->esc_like($s).'%';}
         if($args) $sql=$wpdb->prepare($sql,...$args);
         $products=$wpdb->get_results($sql);
-        return rest_ensure_response(['data'=>array_map(function($p){return['id'=>(int)$p->id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>4.8,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null];},$products)]);
+        return rest_ensure_response(['data'=>array_map(function($p){
+            $disc=floatval($p->discount_percent??0);$active=false;
+            if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
+            return['id'=>(int)$p->id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>4.8,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price];
+        },$products)]);
     }
     public function api_get_product_detail($request) {
         global $wpdb;$id=$request->get_param('id');
         $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
         if(!$p) return new WP_Error('not_found','Producto no encontrado',['status'=>404]);
-        return rest_ensure_response(['id'=>(int)$p->id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null]);
+        $disc=floatval($p->discount_percent??0);$active=false;
+        if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
+        return rest_ensure_response(['id'=>(int)$p->id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price]);
     }
     // --- API Vendors ---
     public function api_get_vendors() { global $wpdb; return rest_ensure_response(['data'=>$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE status='active'")]); }
     public function api_get_vendor_detail($request) { global $wpdb;$v=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$request->get_param('id')));if(!$v) return new WP_Error('not_found','No encontrada',['status'=>404]);return rest_ensure_response($v); }
     // --- API Plans ---
     public function api_get_plans() {
-        global $wpdb;$plans=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions");
-        if(empty($plans)) $plans=[['id'=>1,'plan_name'=>'Básico','monthly_price'=>19990,'features'=>['Hasta 50 productos','Comisión 10%']],['id'=>2,'plan_name'=>'Pro','monthly_price'=>39990,'features'=>['Hasta 500 productos','Comisión 7%']]];
+        global $wpdb;$rows=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions ORDER BY monthly_price ASC");
+        if(empty($rows)) return rest_ensure_response(['data'=>[]]);
+        $plans=array_map(function($r){
+            $features=json_decode($r->features_json,true);
+            if(!is_array($features))$features=[];
+            return['id'=>(int)$r->id,'plan_name'=>$r->plan_name,'monthly_price'=>(float)$r->monthly_price,'features'=>$features,'is_featured'=>(int)($r->is_featured??0)];
+        },$rows);
         return rest_ensure_response(['data'=>$plans]);
     }
     // --- API Auth ---
