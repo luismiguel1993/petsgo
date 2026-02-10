@@ -1141,9 +1141,12 @@ class PetsGo_Core {
                         <input type="hidden" id="pp-id" value="0">
                         <div class="petsgo-field"><label>Nombre *</label><input type="text" id="pp-name" placeholder="Ej: Básico, Pro, Enterprise"></div>
                         <div class="petsgo-field"><label>Precio mensual (CLP) *</label><input type="number" id="pp-price" min="0" step="1" placeholder="29990"></div>
-                        <div class="petsgo-field"><label>Características (JSON)</label>
-                            <textarea id="pp-features" rows="6" placeholder='{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}'></textarea>
-                            <small style="color:#888;">Campos: max_products (-1=ilimitado), commission_rate, support (email|email+chat|prioritario), analytics (true/false), featured (true/false), api_access (true/false)</small>
+                        <div class="petsgo-field"><label>Características</label>
+                            <textarea id="pp-features" rows="6" placeholder="Hasta 50 productos
+Comisión 15%
+Soporte por email
+Dashboard con analíticas"></textarea>
+                            <small style="color:#888;">Una característica por línea. Se mostrará así en la tarjeta del plan.</small>
                         </div>
                         <div class="petsgo-field" style="margin-top:8px;"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="pp-featured" style="width:18px;height:18px;"> <span>⭐ Plan destacado</span></label><small style="color:#888;">Se mostrará resaltado con badge "MÁS POPULAR" en el frontend. Solo 1 plan puede ser destacado.</small></div>
                         <div style="display:flex;gap:12px;margin-top:12px;">
@@ -1164,10 +1167,15 @@ class PetsGo_Core {
         jQuery(function($){
             var planColors=['#00A8E8','#FFC400','#2F3A40'];
             function fmtMoney(v){return '$'+parseInt(v).toLocaleString('es-CL');}
-            function parseFeatures(json){
+            function parseFeatures(raw){
+                if(!raw)return [];
+                // If it's already an array, return it
+                if(Array.isArray(raw))return raw;
+                // Try JSON parse
                 try{
-                    var obj=typeof json==='string'?JSON.parse(json):json;
+                    var obj=JSON.parse(raw);
                     if(Array.isArray(obj))return obj;
+                    // Legacy JSON object → convert to readable list
                     var l=[];
                     if(obj.max_products===-1)l.push('Productos ilimitados');
                     else if(obj.max_products)l.push('Hasta '+obj.max_products+' productos');
@@ -1179,7 +1187,14 @@ class PetsGo_Core {
                     if(obj.featured)l.push('Productos destacados');
                     if(obj.api_access)l.push('Acceso API personalizado');
                     return l;
-                }catch(e){return json?json.split('\n').filter(function(x){return x.trim();}):[]; }
+                }catch(e){}
+                // Plain text: one feature per line
+                return raw.split('\n').map(function(x){return x.trim();}).filter(Boolean);
+            }
+            // Convert features (JSON or lines) to plain text lines for the textarea
+            function featuresToLines(raw){
+                var feats=parseFeatures(raw);
+                return feats.join('\n');
             }
             function renderCard(name,price,featuresJson,color,isPro){
                 var feats=parseFeatures(featuresJson);
@@ -1244,15 +1259,12 @@ class PetsGo_Core {
                 var pid=$(this).data('id');
                 $('#pp-id').val(pid);$('#pp-name').val($(this).data('name'));$('#pp-price').val($(this).data('price'));
                 var ft=window._ppFeatures&&window._ppFeatures[pid]?window._ppFeatures[pid]:'';
-                $('#pp-features').val(typeof ft==='object'?JSON.stringify(ft):ft);
+                $('#pp-features').val(featuresToLines(ft));
                 $('#pp-featured').prop('checked',$(this).data('featured')==1);
                 $('#pp-form-title').text('Editar Plan #'+pid);$('#pp-form-wrap').slideDown();$('#pp-msg').hide();updateLiveCard();
             });
             $('#pp-save').on('click',function(){
                 if(!$.trim($('#pp-name').val())||!$('#pp-price').val()){alert('Nombre y precio obligatorios');return;}
-                // Validate JSON
-                var fv=$('#pp-features').val();
-                if(fv){try{JSON.parse(fv);}catch(e){alert('Las características deben ser un JSON válido. Ejemplo:\n{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}');return;}}
                 PG.post('petsgo_save_plan',{id:$('#pp-id').val(),plan_name:$('#pp-name').val(),monthly_price:$('#pp-price').val(),features:$('#pp-features').val(),is_featured:$('#pp-featured').is(':checked')?1:0},function(r){
                     if(r.success){$('#pp-form-wrap').slideUp();load();}else{$('#pp-msg').html('<span style="color:red;">'+r.data+'</span>').show();}
                 });
@@ -1534,7 +1546,30 @@ class PetsGo_Core {
         global $wpdb;
         $id=intval($_POST['id']??0);
         $is_featured=intval($_POST['is_featured']??0);
-        $data=['plan_name'=>$this->san('plan_name'),'monthly_price'=>floatval($_POST['monthly_price']??0),'features_json'=>sanitize_textarea_field($_POST['features']??''),'is_featured'=>$is_featured];
+        // Convert plain-text lines to JSON array for storage
+        $raw_features = sanitize_textarea_field($_POST['features'] ?? '');
+        $json_test = json_decode($raw_features, true);
+        if (is_array($json_test)) {
+            // Already valid JSON array or legacy JSON object → convert object to readable list
+            if (array_values($json_test) !== $json_test) {
+                // Associative (legacy object) → convert to feature lines
+                $lines = [];
+                if (isset($json_test['max_products'])) $lines[] = $json_test['max_products'] == -1 ? 'Productos ilimitados' : 'Hasta '.$json_test['max_products'].' productos';
+                if (isset($json_test['commission_rate'])) $lines[] = 'Comisión '.$json_test['commission_rate'].'%';
+                if (isset($json_test['support'])) { $s=$json_test['support']; $lines[]=$s==='email'?'Soporte por email':($s==='email+chat'?'Soporte email + chat':($s==='prioritario'?'Soporte prioritario 24/7':'Soporte: '.$s)); }
+                if (!empty($json_test['analytics'])) $lines[] = 'Dashboard con analíticas';
+                if (!empty($json_test['featured'])) $lines[] = 'Productos destacados';
+                if (!empty($json_test['api_access'])) $lines[] = 'Acceso API personalizado';
+                $features_json = wp_json_encode($lines, JSON_UNESCAPED_UNICODE);
+            } else {
+                $features_json = wp_json_encode($json_test, JSON_UNESCAPED_UNICODE);
+            }
+        } else {
+            // Plain text lines → convert to JSON array
+            $lines = array_values(array_filter(array_map('trim', explode("\n", $raw_features))));
+            $features_json = wp_json_encode($lines, JSON_UNESCAPED_UNICODE);
+        }
+        $data=['plan_name'=>$this->san('plan_name'),'monthly_price'=>floatval($_POST['monthly_price']??0),'features_json'=>$features_json,'is_featured'=>$is_featured];
         if(!$data['plan_name'])wp_send_json_error('Nombre obligatorio');
         // Only one plan can be featured
         if($is_featured) $wpdb->update("{$wpdb->prefix}petsgo_subscriptions",['is_featured'=>0],['is_featured'=>1]);
