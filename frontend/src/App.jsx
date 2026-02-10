@@ -72,7 +72,7 @@ function App() {
         </Routes>
       </main>
       <Footer />
-      <BotChatOverlay />
+      <BotChatOverlay cartOpen={cartOpen} />
     </div>
   )
 }

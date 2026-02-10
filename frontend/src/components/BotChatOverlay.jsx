@@ -31,7 +31,11 @@ const chatCSS = `
     justify-content: center !important;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
     z-index: 9990 !important;
-    transition: transform 0.2s !important;
+    transition: transform 0.2s, right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .pgchat-trigger.pgchat-left {
+    right: auto !important;
+    left: 30px !important;
   }
   .pgchat-trigger:hover {
     transform: scale(1.08) !important;
@@ -47,6 +51,11 @@ const chatCSS = `
     height: 120px !important;
     pointer-events: none !important;
     z-index: 9991 !important;
+    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .pgchat-orbit.pgchat-left {
+    right: auto !important;
+    left: 0px !important;
   }
   .pgchat-orbiter {
     position: absolute !important;
@@ -97,6 +106,15 @@ const chatCSS = `
     white-space: nowrap !important;
     animation: pgchat-bounce 2s ease-in-out infinite !important;
     font-family: 'Poppins', sans-serif !important;
+    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .pgchat-tooltip.pgchat-left {
+    right: auto !important;
+    left: 20px !important;
+  }
+  .pgchat-tooltip.pgchat-left::after {
+    right: auto !important;
+    left: 26px !important;
   }
   .pgchat-tooltip::after {
     content: '' !important;
@@ -128,6 +146,12 @@ const chatCSS = `
     flex-direction: column !important;
     overflow: hidden !important;
     z-index: 9999 !important;
+    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+  }
+  .pgchat-window.pgchat-left {
+    right: auto !important;
+    left: 30px !important;
+  }
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
   }
 
@@ -318,7 +342,7 @@ const chatCSS = `
 
 const ANIMALS = ['🐶', '🐱', '🐰', '🐦', '🐹', '🦎', '🐠', '🐾', '🦜', '🐢', '🐕', '🐈'];
 
-const BotChatOverlay = () => {
+const BotChatOverlay = ({ cartOpen = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [currentAnimal, setCurrentAnimal] = useState(() => ANIMALS[Math.floor(Math.random() * ANIMALS.length)]);
@@ -398,21 +422,23 @@ const BotChatOverlay = () => {
     }, 800 + Math.random() * 700);
   };
 
+  const leftClass = cartOpen ? ' pgchat-left' : '';
+
   return (
     <>
       {/* BOTÓN FLOTANTE CON ANIMAL ORBITANDO */}
       {!isOpen && (
         <>
           {/* Tooltip invitación */}
-          <div className="pgchat-tooltip">
+          <div className={`pgchat-tooltip${leftClass}`}>
             🐾 ¿Dudas? ¡Te ayudo!
           </div>
           {/* Anillo tipo Saturno */}
-          <div className="pgchat-orbit">
+          <div className={`pgchat-orbit${leftClass}`}>
             <div className="pgchat-ring-visual" />
             <span className="pgchat-orbiter" key={currentAnimal}>{currentAnimal}</span>
           </div>
-          <button className="pgchat-trigger" onClick={() => setIsOpen(true)} aria-label="Abrir chat">
+          <button className={`pgchat-trigger${leftClass}`} onClick={() => setIsOpen(true)} aria-label="Abrir chat">
             <img src={huellaSvg} alt="Chat" style={{ width: '32px', height: '32px' }} />
           </button>
         </>
@@ -420,7 +446,7 @@ const BotChatOverlay = () => {
 
       {/* VENTANA DE CHAT */}
       {isOpen && (
-        <div className="pgchat-widget pgchat-window">
+        <div className={`pgchat-widget pgchat-window${leftClass}`}>
           {/* HEADER */}
           <div className="pgchat-header">
             <div className="pgchat-header-left">
