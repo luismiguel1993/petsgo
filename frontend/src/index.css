@@ -1,0 +1,645 @@
+@import "tailwindcss";
+
+/* ==========================================
+   CORRECCIÓN GLOBAL: Anti-Preflight
+   Restaura estilos base que Tailwind v4 elimina
+   Aplica a TODAS las secciones del sitio
+   ========================================== */
+
+@layer base {
+
+  /* Restaurar backgrounds y bordes en botones */
+  button, [type="button"], [type="submit"], [type="reset"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    cursor: pointer;
+  }
+
+  /* Restaurar estilos de input/textarea */
+  input, textarea, select {
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #333;
+    outline: none;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: #00A8E8;
+    box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.1);
+  }
+  input::placeholder, textarea::placeholder {
+    color: #999;
+  }
+
+  /* Restaurar estilos de links */
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Restaurar listas */
+  ul, ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* Imágenes responsivas */
+  img, video, svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Tipografía base */
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  p {
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  /* Contenedor raíz */
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+  }
+}
+
+/* ==========================================
+   PetsGo Marketplace - Design System
+   Mapa Técnico y Visual - Alta Fidelidad
+   ========================================== */
+
+:root {
+  /* Paleta Principal */
+  --petsgo-primary: #00A8E8;      /* Azul Cyan - Acción */
+  --petsgo-secondary: #FFC400;    /* Amarillo - IA/Promos */
+  --petsgo-dark: #2F3A40;         /* Gris Oscuro - UI/Textos */
+  --petsgo-bg: #FDFCFB;           /* Crema Suave - Fondo General */
+  --petsgo-white: #FFFFFF;
+  --petsgo-text: #2F3A40;
+  
+  /* Radios - Más suaves y modernos */
+  --petsgo-radius-card: 16px;     /* Tarjetas de producto */
+  --petsgo-radius-chat: 20px;     /* Ventana de chat */
+  --petsgo-radius-btn-cta: 12px;  /* Botones CTA */
+  --petsgo-radius-btn-add: 10px;  /* Botón añadir */
+  --petsgo-radius-search: 12px;   /* Barra de búsqueda */
+  --petsgo-radius-bubble: 16px;   /* Burbujas de chat */
+  --petsgo-radius-logo: 12px;     /* Contenedor logo */
+  --petsgo-radius-checkbox: 6px;  /* Checkboxes */
+  
+  /* Tipografía Hero */
+  --hero-title-size: clamp(48px, 8vw, 90px);
+  --hero-leading: 0.95;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--petsgo-bg);
+  color: var(--petsgo-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Contenedor Principal - Max 1280px */
+.petsgo-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .petsgo-container {
+    padding: 0 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .petsgo-container {
+    padding: 0 2rem;
+  }
+}
+
+/* Espaciado global entre secciones */
+.petsgo-section {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .petsgo-section {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .petsgo-section {
+    margin-top: 2.5rem;
+    margin-bottom: 2.5rem;
+  }
+}
+
+/* Animación pulse suave para badges */
+@keyframes gentle-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.animate-gentle-pulse {
+  animation: gentle-pulse 2s ease-in-out infinite;
+}
+
+/* Scrollbar personalizada */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--petsgo-primary); }
+
+/* ==========================================
+   Tarjeta de Producto - Fidelidad 60px
+   ========================================== */
+.petsgo-card {
+  background: var(--petsgo-white);
+  border-radius: var(--petsgo-radius-card);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  border: 1px solid #f1f1f1;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+}
+
+.petsgo-card:hover {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transform: translateY(-8px);
+}
+
+.petsgo-card-image {
+  background-color: #FAFAFA;
+  transition: transform 0.5s ease;
+}
+
+.petsgo-card:hover .petsgo-card-image {
+  transform: scale(1.1);
+}
+
+/* ==========================================
+   Botones del Sistema
+   ========================================== */
+.petsgo-btn {
+  background: var(--petsgo-primary);
+  color: white;
+  border: none;
+  border-radius: var(--petsgo-radius-btn-cta);
+  padding: 16px 32px;
+  font-weight: 900;
+  font-size: 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.petsgo-btn:hover {
+  background: #0090c8;
+  box-shadow: 0 10px 30px rgba(0,168,232,0.4);
+  transform: translateY(-2px);
+}
+
+.petsgo-btn-secondary {
+  background: var(--petsgo-secondary);
+  color: var(--petsgo-dark);
+}
+
+.petsgo-btn-secondary:hover {
+  background: #e6b000;
+  box-shadow: 0 10px 30px rgba(255,196,0,0.4);
+}
+
+/* Botón Añadir Producto - Circular 30px */
+.petsgo-btn-add {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--petsgo-radius-btn-add);
+  background: var(--petsgo-primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 168, 232, 0.4);
+}
+
+.petsgo-btn-add:hover {
+  background: #0090c8;
+  transform: scale(1.1);
+}
+
+/* Ocultar scrollbar horizontal en móvil */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ==========================================
+   Barra de Búsqueda - Radio 25px
+   ========================================== */
+.petsgo-search {
+  background: #F8FAFC;
+  border-radius: var(--petsgo-radius-search);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.petsgo-search:focus-within {
+  border-color: var(--petsgo-primary);
+  background: white;
+  box-shadow: 0 0 0 4px rgba(0, 168, 232, 0.1), inset 0 2px 4px rgba(0,0,0,0.02);
+}
+
+/* ==========================================
+   Hero Section - 650px Desktop
+   ========================================== */
+.petsgo-hero {
+  position: relative;
+  height: 450px;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .petsgo-hero {
+    height: 650px;
+  }
+}
+
+.petsgo-hero-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: heroZoom 15s ease-in-out infinite alternate;
+}
+
+@keyframes heroZoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.1); }
+}
+
+.petsgo-hero-title {
+  font-size: var(--hero-title-size);
+  font-weight: 900;
+  font-style: italic;
+  line-height: var(--hero-leading);
+  letter-spacing: -0.02em;
+}
+
+.petsgo-hero-accent {
+  color: var(--petsgo-primary);
+}
+
+/* ==========================================
+   Categorías - Iconos 40px con bordes 35px
+   ========================================== */
+.petsgo-category-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  transition: all 0.3s ease;
+}
+
+@media (min-width: 1024px) {
+  .petsgo-category-icon {
+    width: 100px;
+    height: 100px;
+  }
+}
+
+/* ==========================================
+   Sidebar Filtros - Sticky
+   ========================================== */
+.petsgo-sidebar {
+  position: sticky;
+  top: 100px;
+}
+
+.petsgo-sidebar-title {
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.petsgo-checkbox {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--petsgo-radius-checkbox);
+  border: 2px solid #e2e8f0;
+  transition: all 0.2s ease;
+}
+
+.petsgo-checkbox.checked {
+  background: var(--petsgo-primary);
+  border-color: var(--petsgo-primary);
+}
+
+/* Responsive cards */
+@media (max-width: 640px) {
+  .petsgo-card {
+    border-radius: 32px;
+  }
+  .petsgo-card:hover {
+    transform: none;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  }
+  .petsgo-btn {
+    padding: 14px 24px;
+    font-size: 1rem;
+  }
+}
+
+/* Cards más grandes en pantallas 2xl (1536px+) */
+@media (min-width: 1536px) {
+  .petsgo-card {
+    border-radius: var(--petsgo-radius-card);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  }
+  .petsgo-card:hover {
+    box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.25);
+    transform: translateY(-10px);
+  }
+  .petsgo-btn {
+    border-radius: var(--petsgo-radius-btn-cta);
+    padding: 18px 40px;
+    font-size: 1.5rem;
+  }
+}
+
+/* Touch-friendly buttons */
+@media (hover: none) and (pointer: coarse) {
+  .petsgo-card:hover {
+    transform: none;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  }
+}
+
+/* Breakpoint xs personalizado */
+@media (min-width: 380px) {
+  .xs\:inline { display: inline; }
+  .xs\:hidden { display: none; }
+}
+
+/* ==========================================
+   Precio - Fuente Black 4xl
+   ========================================== */
+.petsgo-price {
+  font-size: 1.875rem;
+  font-weight: 900;
+  color: var(--petsgo-dark);
+}
+
+@media (min-width: 768px) {
+  .petsgo-price {
+    font-size: 2.25rem;
+  }
+}
+
+/* ==========================================
+   Asistente IA - Botón Flotante
+   ========================================== */
+.petsgo-ai-button {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--petsgo-secondary);
+  border: 4px solid white;
+  box-shadow: 0 20px 40px -8px rgba(255, 196, 0, 0.5);
+  cursor: pointer;
+  transition: all 0.3s ease;
+  animation: aiPulse 2s ease-in-out infinite;
+}
+
+@media (min-width: 1024px) {
+  .petsgo-ai-button {
+    width: 96px;
+    height: 96px;
+  }
+}
+
+@keyframes aiPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+.petsgo-ai-button:hover {
+  transform: scale(1.1);
+  animation: none;
+}
+
+/* Ventana de Chat IA - 400x600 con bordes 40px */
+.petsgo-chat-window {
+  width: 400px;
+  max-width: calc(100vw - 16px);
+  height: 600px;
+  max-height: calc(100vh - 120px);
+  border-radius: var(--petsgo-radius-chat);
+  background: white;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+/* Burbujas de Chat - Radio 25px */
+.petsgo-chat-bubble-user {
+  background: var(--petsgo-primary);
+  color: white;
+  border-radius: var(--petsgo-radius-bubble);
+  border-bottom-right-radius: 8px;
+}
+
+.petsgo-chat-bubble-bot {
+  background: white;
+  color: var(--petsgo-dark);
+  border: 1px solid #e5e7eb;
+  border-radius: var(--petsgo-radius-bubble);
+  border-bottom-left-radius: 8px;
+}
+
+/* ==========================================
+   Animaciones del Sistema
+   ========================================== */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Animación swing para campana de notificación */
+@keyframes swing {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(15deg); }
+  40% { transform: rotate(-10deg); }
+  60% { transform: rotate(5deg); }
+  80% { transform: rotate(-5deg); }
+}
+
+.animate-swing {
+  animation: swing 2s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-bounce-subtle {
+  animation: bounce-subtle 2s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slideInFromBottom 0.4s ease-out forwards;
+}
+
+/* Delay utilities for staggered animations */
+.animation-delay-100 { animation-delay: 0.1s; }
+.animation-delay-200 { animation-delay: 0.2s; }
+.animation-delay-300 { animation-delay: 0.3s; }
+.animation-delay-400 { animation-delay: 0.4s; }
+.animation-delay-500 { animation-delay: 0.5s; }
+
+/* Glassmorphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Gradient text */
+.text-gradient {
+  background: linear-gradient(135deg, #00A8E8 0%, #0077B6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Hover glow effect */
+.hover-glow:hover {
+  box-shadow: 0 0 30px rgba(0, 168, 232, 0.3);
+}
+
+/* Button press effect */
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+/* ==========================================
+   Footer - Fondo Gris Oscuro
+   ========================================== */
+
+/* Cart responsive grid */
+@media (max-width: 768px) {
+  .cart-grid-responsive {
+    grid-template-columns: 1fr !important;
+  }
+  .cart-item-responsive {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .cart-item-responsive .cart-controls {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+.petsgo-footer {
+  background: var(--petsgo-dark);
+}
+
+.petsgo-footer-link {
+  font-weight: 700;
+  opacity: 0.6;
+  transition: opacity 0.3s ease;
+}
+
+.petsgo-footer-link:hover {
+  opacity: 1;
+}
+
+.petsgo-footer-copyright {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}

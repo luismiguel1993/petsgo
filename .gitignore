@@ -1,0 +1,28 @@
+# Dependencies
+frontend/node_modules/
+node_modules/
+
+# Build output
+frontend/dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# WordPress
+wp-content/uploads/
+wp-content/upgrade/
+wp-content/cache/
+
+# Logs
+*.log
+npm-debug.log*

@@ -1,0 +1,323 @@
+import React, { useState } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
+import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check } from 'lucide-react';
+import { useCart } from '../context/CartContext';
+
+const CATEGORY_IMAGES = {
+  'Alimento Perros': 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
+  'Alimento Gatos': 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?auto=format&fit=crop&q=80&w=800',
+  'Alimento': 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
+  'Accesorios': 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800',
+  'Juguetes': 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&q=80&w=800',
+  'Higiene': 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=800',
+  'default': 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800',
+};
+
+const ProductDetailPage = () => {
+  const { id } = useParams();
+  const location = useLocation();
+  const product = location.state?.product;
+  const { addItem, getItemQuantity, updateQuantity } = useCart();
+  const [selectedImage, setSelectedImage] = useState(0);
+  const [addedToCart, setAddedToCart] = useState(false);
+
+  const formatPrice = (price) =>
+    new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(price);
+
+  if (!product) {
+    return (
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '80px 24px', textAlign: 'center', fontFamily: 'Poppins, sans-serif' }}>
+        <div style={{ fontSize: '64px', marginBottom: '16px' }}>🐾</div>
+        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#2F3A40', marginBottom: '8px' }}>Producto no encontrado</h2>
+        <p style={{ color: '#9ca3af', marginBottom: '24px' }}>No pudimos encontrar la información de este producto.</p>
+        <Link to="/" style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          background: '#00A8E8', color: '#fff', padding: '12px 28px',
+          borderRadius: '12px', fontWeight: 700, fontSize: '14px', textDecoration: 'none',
+        }}>
+          <ArrowLeft size={16} /> Volver al Inicio
+        </Link>
+      </div>
+    );
+  }
+
+  const productImage = product.image || product.image_url || CATEGORY_IMAGES[product.category] || CATEGORY_IMAGES['default'];
+  const qty = getItemQuantity(product.id);
+  const discount = product.originalPrice ? Math.round((1 - product.price / product.originalPrice) * 100) : null;
+
+  const handleAddToCart = () => {
+    addItem({ ...product, quantity: 1 });
+    setAddedToCart(true);
+    setTimeout(() => setAddedToCart(false), 2000);
+  };
+
+  const features = [
+    { icon: Truck, label: 'Despacho gratis', desc: 'En tu primer pedido' },
+    { icon: Shield, label: 'Compra segura', desc: 'Pago 100% protegido' },
+    { icon: Clock, label: 'Entrega rápida', desc: '24-48 hrs hábiles' },
+  ];
+
+  return (
+    <div style={{ fontFamily: 'Poppins, sans-serif', background: '#f8f9fa' }}>
+      <style>{`
+        @media (max-width: 768px) {
+          .pd-main { grid-template-columns: 1fr !important; gap: 24px !important; padding: 16px 16px 48px !important; }
+          .pd-breadcrumb { padding: 16px 16px 0 !important; }
+          .pd-title { font-size: 22px !important; }
+          .pd-price-box { padding: 16px !important; }
+          .pd-price { font-size: 28px !important; }
+          .pd-features { grid-template-columns: 1fr !important; }
+          .pd-thumbs { justify-content: flex-start !important; }
+        }
+      `}</style>
+      {/* Breadcrumb */}
+      <div className="pd-breadcrumb" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px 32px 0' }}>
+        <Link to="/" style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          color: '#9ca3af', fontSize: '13px', fontWeight: 600, textDecoration: 'none',
+          transition: 'color 0.2s',
+        }}
+          onMouseEnter={(e) => e.target.style.color = '#00A8E8'}
+          onMouseLeave={(e) => e.target.style.color = '#9ca3af'}
+        >
+          <ArrowLeft size={16} /> Volver a productos
+        </Link>
+      </div>
+
+      {/* Main content */}
+      <div className="pd-main" style={{
+        maxWidth: '1200px', margin: '0 auto', padding: '24px 32px 64px',
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', alignItems: 'start',
+      }}>
+        {/* Image section */}
+        <div>
+          <div style={{
+            background: '#fff', borderRadius: '24px', overflow: 'hidden',
+            aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '40px', position: 'relative', border: '1px solid #f0f0f0',
+          }}>
+            {discount && (
+              <span style={{
+                position: 'absolute', top: '20px', left: '20px',
+                background: '#ef4444', color: '#fff', fontSize: '13px', fontWeight: 800,
+                padding: '6px 14px', borderRadius: '10px',
+              }}>
+                -{discount}%
+              </span>
+            )}
+            <img
+              src={productImage}
+              alt={product.name || product.product_name}
+              style={{
+                maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
+                transition: 'transform 0.4s ease',
+              }}
+              onError={(e) => { e.target.src = CATEGORY_IMAGES['default']; }}
+            />
+          </div>
+          {/* Thumbnail strip placeholder */}
+          <div className="pd-thumbs" style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                onClick={() => setSelectedImage(i)}
+                style={{
+                  width: '72px', height: '72px', borderRadius: '14px', overflow: 'hidden',
+                  border: selectedImage === i ? '2px solid #00A8E8' : '2px solid #f0f0f0',
+                  cursor: 'pointer', background: '#fff', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', padding: '8px',
+                  transition: 'border-color 0.2s',
+                }}
+              >
+                <img
+                  src={productImage}
+                  alt=""
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', opacity: i === 0 ? 1 : 0.5 }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Info section */}
+        <div>
+          {/* Category & Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            {product.category && (
+              <span style={{
+                background: '#e0f2fe', color: '#0284c7', fontSize: '11px', fontWeight: 700,
+                padding: '5px 12px', borderRadius: '8px', letterSpacing: '0.5px', textTransform: 'uppercase',
+              }}>
+                {product.category}
+              </span>
+            )}
+            {product.brand && (
+              <span style={{ color: '#9ca3af', fontSize: '13px', fontWeight: 600 }}>
+                {product.brand}
+              </span>
+            )}
+          </div>
+
+          {/* Name */}
+          <h1 className="pd-title" style={{
+            fontSize: '28px', fontWeight: 800, color: '#1f2937',
+            lineHeight: 1.3, marginBottom: '16px',
+          }}>
+            {product.name || product.product_name}
+          </h1>
+
+          {/* Rating */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star
+                  key={s}
+                  size={18}
+                  fill={s <= Math.floor(product.rating || 4.5) ? '#FFC400' : 'none'}
+                  color={s <= Math.floor(product.rating || 4.5) ? '#FFC400' : '#d1d5db'}
+                />
+              ))}
+            </div>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: '#374151' }}>{product.rating || 4.5}</span>
+            <span style={{ fontSize: '13px', color: '#9ca3af' }}>(128 reseñas)</span>
+          </div>
+
+          {/* Price */}
+          <div className="pd-price-box" style={{
+            background: '#f0fdf4', borderRadius: '16px', padding: '20px 24px',
+            marginBottom: '28px', display: 'flex', alignItems: 'baseline', gap: '12px',
+            flexWrap: 'wrap',
+          }}>
+            <span className="pd-price" style={{ fontSize: '36px', fontWeight: 900, color: '#059669' }}>
+              {formatPrice(product.price)}
+            </span>
+            {product.originalPrice && (
+              <>
+                <span style={{
+                  fontSize: '18px', color: '#9ca3af', textDecoration: 'line-through', fontWeight: 500,
+                }}>
+                  {formatPrice(product.originalPrice)}
+                </span>
+                <span style={{
+                  background: '#ef4444', color: '#fff', fontSize: '12px', fontWeight: 800,
+                  padding: '4px 10px', borderRadius: '8px',
+                }}>
+                  Ahorras {formatPrice(product.originalPrice - product.price)}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Description */}
+          <div style={{ marginBottom: '28px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>Descripción</h3>
+            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.7 }}>
+              {product.description || `${product.name || product.product_name} - Alimento premium de alta calidad para tu mascota. Formulado con ingredientes seleccionados para una nutrición completa y balanceada. Ideal para mantener la salud y vitalidad de tu compañero.`}
+            </p>
+          </div>
+
+          {/* Stock info */}
+          {product.stock !== undefined && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px',
+              fontSize: '13px', color: product.stock > 10 ? '#059669' : '#f59e0b', fontWeight: 600,
+            }}>
+              <div style={{
+                width: '8px', height: '8px', borderRadius: '50%',
+                background: product.stock > 10 ? '#059669' : '#f59e0b',
+              }} />
+              {product.stock > 10 ? `Stock disponible (${product.stock} unidades)` : `¡Últimas ${product.stock} unidades!`}
+            </div>
+          )}
+
+          {/* Add to cart */}
+          <div style={{
+            display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '32px',
+          }}>
+            {qty > 0 ? (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '4px',
+                background: '#f0f9ff', borderRadius: '14px', padding: '6px',
+              }}>
+                <button
+                  onClick={() => updateQuantity(product.id, qty - 1)}
+                  style={{
+                    width: '44px', height: '44px', borderRadius: '10px',
+                    border: 'none', background: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)', transition: 'all 0.15s',
+                  }}
+                >
+                  <Minus size={18} color="#00A8E8" />
+                </button>
+                <span style={{
+                  fontSize: '18px', fontWeight: 700, color: '#1f2937',
+                  minWidth: '40px', textAlign: 'center',
+                }}>
+                  {qty}
+                </span>
+                <button
+                  onClick={() => addItem({ ...product, quantity: 1 })}
+                  style={{
+                    width: '44px', height: '44px', borderRadius: '10px',
+                    border: 'none', background: '#00A8E8', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 6px rgba(0,168,232,0.3)',
+                  }}
+                >
+                  <Plus size={18} color="#fff" />
+                </button>
+              </div>
+            ) : null}
+
+            <button
+              onClick={handleAddToCart}
+              style={{
+                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                background: addedToCart ? '#059669' : '#00A8E8', color: '#fff',
+                border: 'none', borderRadius: '14px', padding: '16px 28px',
+                fontSize: '15px', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.3s', boxShadow: '0 4px 16px rgba(0,168,232,0.25)',
+              }}
+              onMouseEnter={(e) => { if (!addedToCart) e.currentTarget.style.background = '#0090c7'; }}
+              onMouseLeave={(e) => { if (!addedToCart) e.currentTarget.style.background = '#00A8E8'; }}
+            >
+              {addedToCart ? <Check size={20} /> : <ShoppingCart size={20} />}
+              {addedToCart ? '¡Agregado al carrito!' : qty > 0 ? 'Agregar más al carrito' : 'Agregar al carrito'}
+            </button>
+
+            <button style={{
+              width: '52px', height: '52px', borderRadius: '14px',
+              border: '2px solid #f0f0f0', background: '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
+            }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#ef4444'; e.currentTarget.querySelector('svg').style.color = '#ef4444'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#f0f0f0'; e.currentTarget.querySelector('svg').style.color = '#9ca3af'; }}
+            >
+              <Heart size={20} color="#9ca3af" style={{ transition: 'color 0.2s' }} />
+            </button>
+          </div>
+
+          {/* Features */}
+          <div className="pd-features" style={{
+            display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px',
+          }}>
+            {features.map((feat, i) => (
+              <div key={i} style={{
+                background: '#fff', borderRadius: '14px', padding: '16px',
+                textAlign: 'center', border: '1px solid #f0f0f0',
+              }}>
+                <feat.icon size={22} color="#00A8E8" style={{ margin: '0 auto 8px' }} />
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#374151', marginBottom: '2px' }}>{feat.label}</div>
+                <div style={{ fontSize: '11px', color: '#9ca3af' }}>{feat.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProductDetailPage;

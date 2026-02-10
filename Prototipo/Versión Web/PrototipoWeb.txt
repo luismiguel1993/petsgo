@@ -1,0 +1,395 @@
+import React, { useState } from 'react';
+import { 
+  Search, ShoppingCart, User, PawPrint, ChevronRight, Star, Plus, Minus, 
+  CheckCircle2, Menu, X, MapPin, Filter, ArrowRight, Heart, Home, Store, 
+  Camera, Smartphone, Monitor, Clock, ChevronLeft, Maximize, Minimize,
+  Send, Bot, Bell, ShieldCheck, Truck
+} from 'lucide-react';
+
+// --- CONFIGURACIÓN DE MARCA ---
+const COLORS = {
+  primary: '#00A8E8',   // Azul Cyan
+  secondary: '#FFC400', // Amarillo Bot
+  dark: '#2F3A40',      // Gris Oscuro
+  bg: '#FDFCFB',
+  white: '#FFFFFF',
+  text: '#1a1a1a'
+};
+
+// --- BASE DE DATOS DE PRODUCTOS (IMÁGENES REALES DE ALTA DISPONIBILIDAD) ---
+const PRODUCTS = [
+  { id: 1, name: 'Alimento Premium Adulto 15kg', price: 48990, store: 'PetShop Las Condes', rating: 4.9, reviews: 124, cat: 'Comida', img: 'https://images.unsplash.com/photo-1589924691106-073b19f5538d?auto=format&fit=crop&q=80&w=800' },
+  { id: 2, name: 'Rascador Gato Multinivel XL', price: 34500, store: 'Mundo Animal Centro', rating: 4.8, reviews: 86, cat: 'Juguetes', img: 'https://images.unsplash.com/photo-1545249390-6bdfa286032f?auto=format&fit=crop&q=80&w=800' },
+  { id: 3, name: 'Arnés Táctico Ajustable Pro', price: 15900, store: 'La Huella Store', rating: 4.7, reviews: 210, cat: 'Accesorios', img: 'https://images.unsplash.com/photo-1525253013412-55c1a69a5738?auto=format&fit=crop&q=80&w=800' },
+  { id: 4, name: 'Cama XL Memory Foam Confort', price: 52000, store: 'PetShop Las Condes', rating: 5.0, reviews: 45, cat: 'Camas', img: 'https://images.unsplash.com/photo-1591333139265-28b776214371?auto=format&fit=crop&q=80&w=800' },
+  { id: 5, name: 'Pack Snacks Naturales 1kg', price: 9990, store: 'Mundo Animal Centro', rating: 4.9, reviews: 312, cat: 'Snacks', img: 'https://images.unsplash.com/photo-1585846416120-3a7354ed7d39?auto=format&fit=crop&q=80&w=800' },
+  { id: 6, name: 'Bol de Cerámica Ergonómico', price: 7500, store: 'La Huella Store', rating: 4.6, reviews: 18, cat: 'Accesorios', img: 'https://images.unsplash.com/photo-1583511666444-a9526e033785?auto=format&fit=crop&q=80&w=800' }
+];
+
+// --- COMPONENTE DE CHAT (ASISTENTE IA) ---
+const BotChatOverlay = ({ isOpen, onClose }) => {
+  const [messages, setMessages] = useState([
+    { id: 1, type: 'bot', text: '¡Hola! Soy el asistente inteligente de PetsGo. 🐾 ¿Buscas algo para tu perro o gato?' }
+  ]);
+  const [inputValue, setInputValue] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSend = (text = inputValue) => {
+    if (!text.trim()) return;
+    setMessages([...messages, { id: Date.now(), type: 'user', text }]);
+    setInputValue('');
+    setTimeout(() => {
+      setMessages(prev => [...prev, { id: Date.now()+1, type: 'bot', text: 'Tengo excelentes opciones de alimento premium con 20% de descuento en la tienda Las Condes. ¿Te gustaría verlas? 🦴' }]);
+    }, 1000);
+  };
+
+  return (
+    <div className="fixed bottom-24 right-12 w-[400px] h-[600px] bg-white shadow-[0_20px_50px_rgba(0,0,0,0.2)] rounded-[40px] flex flex-col z-[10000] overflow-hidden border border-gray-100 animate-in slide-in-from-bottom-10">
+      <div style={{ backgroundColor: COLORS.dark }} className="p-8 text-white flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div style={{ backgroundColor: COLORS.secondary }} className="p-2 rounded-2xl text-yellow-900 shadow-lg"><PawPrint size={24} /></div>
+          <div>
+            <h4 className="font-black text-lg leading-none">Asistente IA</h4>
+            <span className="text-[10px] uppercase font-bold opacity-50 tracking-widest">Atención 24/7</span>
+          </div>
+        </div>
+        <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X size={20} /></button>
+      </div>
+      <div className="flex-1 p-6 space-y-6 overflow-y-auto bg-slate-50">
+        {messages.map(m => (
+          <div key={m.id} className={`flex ${m.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-4 rounded-[25px] text-sm font-bold leading-relaxed shadow-sm ${m.type === 'user' ? 'bg-[#00A8E8] text-white rounded-tr-none' : 'bg-white text-slate-700 border border-gray-100 rounded-tl-none'}`}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="p-6 bg-white border-t">
+        <div className="bg-slate-100 rounded-full p-2 flex items-center border border-slate-200 focus-within:border-cyan-400 focus-within:bg-white transition-all px-4">
+          <input value={inputValue} onChange={e=>setInputValue(e.target.value)} onKeyPress={e=>e.key==='Enter'&&handleSend()} type="text" placeholder="Pregunta lo que necesites..." className="flex-1 py-3 text-sm font-bold bg-transparent outline-none" />
+          <button onClick={()=>handleSend()} style={{ backgroundColor: COLORS.primary }} className="w-10 h-10 rounded-full flex items-center justify-center text-white shadow-lg"><Send size={18} /></button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- COMPONENTE MÓVIL (APP) ---
+const MobileApp = ({ openBot }) => {
+  const [activeTab, setActiveTab] = useState('home');
+
+  return (
+    <div className="h-full flex flex-col bg-white overflow-hidden font-sans relative">
+      <div className="h-8 bg-white flex justify-between px-8 pt-3 items-center text-[10px] font-black text-gray-400 shrink-0">
+        <span>9:41</span>
+        <div className="flex gap-1.5 items-center">
+          <div className="w-3.5 h-2 bg-gray-300 rounded-sm"></div>
+          <div className="w-2.5 h-2.5 bg-gray-300 rounded-full"></div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pb-24 no-scrollbar">
+        <header className="px-6 pt-6 pb-8 bg-white rounded-b-[40px] shadow-sm border-b border-gray-50">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-2">
+              <MapPin size={16} color={COLORS.primary} />
+              <span className="text-[11px] font-black tracking-tight" style={{ color: COLORS.dark }}>SANTIAGO, RM</span>
+            </div>
+            <div className="flex gap-4">
+              <Search size={22} color={COLORS.dark} />
+              <div className="relative">
+                <ShoppingCart size={22} color={COLORS.dark} />
+                <div style={{ backgroundColor: COLORS.secondary }} className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm"></div>
+              </div>
+            </div>
+          </div>
+          <h2 className="text-2xl font-black leading-tight" style={{ color: COLORS.dark }}>
+            Todo para tu mascota <br/>
+            con <span style={{ color: COLORS.primary }}>envío express</span> ⚡
+          </h2>
+        </header>
+
+        <div className="p-6">
+          <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4">Tiendas cercanas</h3>
+          <div className="flex gap-5 overflow-x-auto pb-4 no-scrollbar">
+            <div className="min-w-[260px] bg-white rounded-[32px] p-3 shadow-sm border border-gray-100">
+              <img src="https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=600" className="h-32 w-full object-cover rounded-[24px] mb-4" alt="Tienda 1" />
+              <div className="flex justify-between items-center px-2 pb-2">
+                <div>
+                  <h4 className="font-black text-sm" style={{ color: COLORS.dark }}>PetShop Las Condes</h4>
+                  <div className="flex items-center gap-1.5 mt-1 opacity-50 font-bold text-[10px]">
+                    <Clock size={12} color={COLORS.primary} /> 15-25 min
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-2 rounded-xl"><Star size={12} fill={COLORS.secondary} color={COLORS.secondary} /></div>
+              </div>
+            </div>
+            <div className="min-w-[260px] bg-white rounded-[32px] p-3 shadow-sm border border-gray-100">
+              <img src="https://images.unsplash.com/photo-1541599540903-216a46ca1dfc?auto=format&fit=crop&q=80&w=600" className="h-32 w-full object-cover rounded-[24px] mb-4" alt="Tienda 2" />
+              <div className="flex justify-between items-center px-2 pb-2">
+                <div>
+                  <h4 className="font-black text-sm" style={{ color: COLORS.dark }}>Mundo Animal Centro</h4>
+                  <div className="flex items-center gap-1.5 mt-1 opacity-50 font-bold text-[10px]">
+                    <Clock size={12} color={COLORS.primary} /> 20-35 min
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-2 rounded-xl"><Star size={12} fill={COLORS.secondary} color={COLORS.secondary} /></div>
+              </div>
+            </div>
+          </div>
+
+          <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-widest mt-10 mb-5">Sugerido para hoy</h3>
+          <div className="grid grid-cols-2 gap-5">
+            {PRODUCTS.slice(0, 4).map(p => (
+              <div key={p.id} className="bg-white rounded-[32px] p-4 shadow-sm border border-gray-50 flex flex-col active:scale-95 transition-all">
+                <div className="relative mb-3 bg-gray-50 rounded-2xl p-2 flex items-center justify-center aspect-square">
+                  <img src={p.img} className="max-w-full max-h-full object-contain" alt={p.name} />
+                </div>
+                <h5 className="font-bold text-[11px] leading-tight mb-3 h-8 line-clamp-2" style={{ color: COLORS.dark }}>{p.name}</h5>
+                <div className="flex justify-between items-center mt-auto font-black text-xs">
+                  <span style={{ color: COLORS.dark }}>${p.price.toLocaleString()}</span>
+                  <div style={{ backgroundColor: COLORS.primary }} className="w-7 h-7 rounded-xl flex items-center justify-center text-white shadow-lg"><Plus size={16} /></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="absolute bottom-0 w-full bg-white/95 backdrop-blur-xl border-t px-10 py-5 flex justify-between items-center rounded-t-[35px] shadow-2xl z-50">
+        <Home size={26} className={activeTab === 'home' ? 'text-cyan-500' : 'text-gray-300'} onClick={() => setActiveTab('home')} />
+        <Store size={26} className={activeTab === 'stores' ? 'text-cyan-500' : 'text-gray-300'} onClick={() => setActiveTab('stores')} />
+        <div onClick={openBot} style={{ backgroundColor: COLORS.secondary }} className="w-14 h-14 rounded-full flex items-center justify-center text-yellow-900 shadow-2xl -mt-16 border-4 border-white active:scale-90 transition-all cursor-pointer group">
+          <PawPrint size={28} className="group-hover:animate-bounce" />
+        </div>
+        <Search size={26} className={activeTab === 'search' ? 'text-cyan-500' : 'text-gray-300'} onClick={() => setActiveTab('search')} />
+        <User size={26} className={activeTab === 'user' ? 'text-cyan-500' : 'text-gray-300'} onClick={() => setActiveTab('user')} />
+      </div>
+    </div>
+  );
+};
+
+// --- COMPONENTE DESKTOP WEB ---
+const DesktopWeb = ({ openBot }) => {
+  return (
+    <div className="min-h-screen bg-white flex flex-col font-sans">
+      {/* Top Utility Bar */}
+      <div style={{ backgroundColor: COLORS.dark }} className="py-2 px-12 text-[10px] text-white font-black flex justify-between uppercase tracking-[0.2em]">
+        <div className="flex gap-8">
+          <span className="flex items-center gap-2"><Truck size={12} color={COLORS.secondary} /> Delivery Express en 30 min</span>
+          <span className="flex items-center gap-2"><ShieldCheck size={12} color={COLORS.secondary} /> Pago Seguro Protegido</span>
+        </div>
+        <div className="flex gap-6">
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors">Vende con nosotros</span>
+          <span className="cursor-pointer hover:text-cyan-400 transition-colors">Ayuda</span>
+        </div>
+      </div>
+
+      {/* Main Navigation */}
+      <nav className="bg-white px-12 py-8 shadow-sm flex items-center justify-between sticky top-0 z-50 border-b border-gray-100">
+        <div className="flex items-center gap-3">
+          <div style={{ backgroundColor: COLORS.primary }} className="p-2.5 rounded-2xl shadow-lg shadow-cyan-100">
+            <PawPrint color="white" size={32} />
+          </div>
+          <h1 className="text-4xl font-black italic tracking-tighter text-slate-800">
+            Pets<span style={{ color: COLORS.secondary }}>Go</span>
+          </h1>
+        </div>
+        
+        <div className="flex-1 max-w-2xl mx-24 relative">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-400" size={24} />
+          <input 
+            type="text" 
+            placeholder="¿Qué busca tu mejor amigo hoy? Alimento, juguetes, accesorios..." 
+            className="w-full bg-slate-50 border-2 border-transparent rounded-[25px] py-5 pl-16 pr-6 focus:ring-4 focus:ring-cyan-50 focus:bg-white focus:border-cyan-400 transition-all outline-none font-bold text-lg" 
+          />
+        </div>
+
+        <div className="flex items-center gap-12">
+          <div className="flex flex-col items-center cursor-pointer group">
+            <div className="relative">
+              <ShoppingCart size={32} className="text-slate-800 group-hover:text-cyan-500 transition-colors" />
+              <div style={{ backgroundColor: COLORS.secondary }} className="absolute -top-2 -right-2 w-6 h-6 flex items-center justify-center text-[10px] font-black text-white rounded-full border-4 border-white">2</div>
+            </div>
+            <span className="text-[10px] font-black mt-2 text-slate-400 group-hover:text-cyan-500 uppercase tracking-widest">Carrito</span>
+          </div>
+          <button style={{ backgroundColor: COLORS.dark }} className="text-white px-10 py-4 rounded-[20px] font-black text-sm hover:scale-105 shadow-2xl transition-all tracking-widest uppercase">Mi Cuenta</button>
+        </div>
+      </nav>
+
+      {/* Hero Banner */}
+      <header className="relative h-[700px] w-full overflow-hidden">
+        <img 
+          src="https://images.unsplash.com/photo-1544568100-847a948585b9?auto=format&fit=crop&q=80&w=1600" 
+          className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-[20s]" 
+          alt="PetsGo Home" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/30 to-transparent flex items-center px-24">
+          <div className="max-w-4xl text-white">
+            <div style={{ backgroundColor: COLORS.secondary }} className="px-6 py-2 rounded-full text-black font-black text-sm mb-10 inline-block shadow-2xl tracking-[0.2em]">
+              OFERTAS DE INVIERNO HASTA -40% ❄️
+            </div>
+            <h2 className="text-[90px] font-black leading-[0.95] mb-10 drop-shadow-2xl italic">
+              Todo para <br/><span style={{ color: COLORS.primary }}>su bienestar.</span>
+            </h2>
+            <p className="text-3xl opacity-90 mb-14 max-w-2xl font-medium leading-relaxed">
+              El marketplace más grande de Chile para mascotas. Conectamos tiendas locales con despacho ultra rápido garantizado.
+            </p>
+            <div className="flex gap-8">
+              <button style={{ backgroundColor: COLORS.primary }} className="px-16 py-7 rounded-[35px] font-black text-2xl flex items-center gap-5 hover:scale-105 transition-all shadow-2xl shadow-cyan-500/30">
+                VER CATÁLOGO <ArrowRight size={32} />
+              </button>
+              <button className="bg-white/10 backdrop-blur-xl border-2 border-white/20 px-16 py-7 rounded-[35px] font-black text-2xl hover:bg-white/20 transition-all uppercase tracking-widest">
+                VER TIENDAS
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Categories Bar */}
+      <div className="bg-white py-12 px-12 border-b border-gray-100">
+        <div className="max-w-7xl mx-auto flex justify-between">
+          {['Comida', 'Snacks', 'Juguetes', 'Accesorios', 'Higiene', 'Farmacia'].map(c => (
+            <div key={c} className="flex flex-col items-center gap-4 cursor-pointer group">
+              <div className="w-24 h-24 bg-slate-50 rounded-[35px] flex items-center justify-center group-hover:bg-cyan-50 group-hover:shadow-xl transition-all border border-transparent group-hover:border-cyan-100">
+                <PawPrint size={40} className="text-slate-300 group-hover:text-cyan-500" />
+              </div>
+              <span className="font-black text-xs uppercase tracking-widest text-slate-400 group-hover:text-cyan-500 transition-colors">{c}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Grid Content */}
+      <main className="max-w-7xl mx-auto w-full py-32 px-12 grid grid-cols-12 gap-20">
+        {/* Sidebar */}
+        <aside className="col-span-3 space-y-12">
+          <div>
+            <h3 className="text-2xl font-black mb-10 flex items-center gap-4 text-slate-800">
+              <Filter size={24} color={COLORS.primary} /> FILTRAR POR
+            </h3>
+            <div className="space-y-4">
+              {['Top Ventas', 'Ofertas del Día', 'Nuevos Arribos', 'Suscripciones'].map(f => (
+                <div key={f} className="flex items-center gap-4 cursor-pointer group">
+                  <div className="w-6 h-6 rounded-lg border-2 border-slate-200 group-hover:border-cyan-400"></div>
+                  <span className="font-black text-sm text-slate-500 group-hover:text-cyan-500 transition-colors">{f}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: COLORS.dark }} className="p-10 rounded-[60px] text-white relative overflow-hidden group shadow-2xl">
+            <h4 className="text-2xl font-black mb-4 relative z-10">Asistente <span style={{ color: COLORS.secondary }}>IA</span></h4>
+            <p className="text-sm opacity-60 mb-10 relative z-10 leading-relaxed font-bold italic">¿No sabes qué alimento elegir? Nuestra IA analiza a tu mascota y te recomienda lo mejor.</p>
+            <button onClick={openBot} style={{ backgroundColor: COLORS.secondary }} className="w-full py-5 rounded-[25px] font-black text-black text-sm relative z-10 hover:scale-105 active:scale-95 transition-transform shadow-xl uppercase tracking-widest">
+              Consultar IA 🐾
+            </button>
+            <PawPrint className="absolute -bottom-10 -right-10 text-white/5 w-48 h-48 rotate-12 group-hover:rotate-0 transition-transform duration-700" />
+          </div>
+        </aside>
+
+        {/* Product Grid */}
+        <section className="col-span-9">
+          <div className="flex justify-between items-end mb-16">
+            <div>
+              <h3 className="text-5xl font-black mb-4 text-slate-800 tracking-tighter text-slate-900">Sugeridos para hoy</h3>
+              <p className="font-bold text-slate-400 uppercase tracking-[0.2em] text-xs flex items-center gap-2">
+                <Bell size={14} color={COLORS.primary} /> Basado en tus búsquedas recientes
+              </p>
+            </div>
+            <button style={{ color: COLORS.primary }} className="font-black text-sm flex items-center gap-2 hover:underline uppercase tracking-widest">Ver todo el catálogo <ArrowRight size={20} /></button>
+          </div>
+          
+          <div className="grid grid-cols-3 gap-14">
+            {PRODUCTS.map(p => (
+              <div key={p.id} className="group bg-white rounded-[60px] overflow-hidden shadow-sm hover:shadow-[0_60px_100px_rgba(0,0,0,0.1)] transition-all duration-700 flex flex-col border border-slate-50">
+                <div className="relative h-[380px] bg-slate-50 flex items-center justify-center p-14 overflow-hidden">
+                  <img src={p.img} className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-1000" alt={p.name} />
+                  <div className="absolute top-10 right-10 bg-white/95 backdrop-blur px-5 py-2.5 rounded-full shadow-lg flex items-center gap-2 font-black text-sm">
+                    <Star size={16} fill={COLORS.secondary} color={COLORS.secondary} />
+                    <span>{p.rating}</span>
+                  </div>
+                </div>
+                <div className="p-12 flex-1 flex flex-col">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div style={{ backgroundColor: COLORS.secondary }} className="w-2.5 h-2.5 rounded-full animate-pulse"></div>
+                    <span className="text-[10px] font-black uppercase text-cyan-600 tracking-widest">{p.store}</span>
+                  </div>
+                  <h4 className="text-2xl font-bold mb-10 leading-tight min-h-[64px] text-slate-800">{p.name}</h4>
+                  <div className="mt-auto flex items-center justify-between font-black text-slate-900 text-3xl">
+                    <span>${p.price.toLocaleString()}</span>
+                    <button style={{ backgroundColor: COLORS.primary }} className="w-16 h-16 rounded-[25px] flex items-center justify-center text-white shadow-2xl shadow-cyan-200 hover:rotate-90 transition-all"><Plus size={32} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+};
+
+// --- CONTROLADOR DE VISTAS PRINCIPAL ---
+const App = () => {
+  const [view, setView] = useState('desktop');
+  const [isImmersive, setIsImmersive] = useState(false);
+  const [isBotOpen, setIsBotOpen] = useState(false);
+
+  return (
+    <div className={`min-h-screen bg-neutral-950 flex flex-col font-sans transition-all duration-500 ${isImmersive ? 'fixed inset-0 z-[9999]' : ''}`}>
+      <div className="bg-black/80 backdrop-blur-2xl px-10 py-5 flex justify-between items-center border-b border-white/5 sticky top-0 z-[10000]">
+        <div className="flex items-center gap-5 text-white">
+          <div className="bg-cyan-500 p-2 rounded-xl shadow-lg"><PawPrint size={22} color="white" /></div>
+          <div className="flex flex-col">
+            <span className="text-white font-black text-base tracking-widest uppercase leading-none">PetsGo Marketplace</span>
+            <span className="text-cyan-500/60 text-[10px] font-black uppercase mt-1 tracking-widest">Phase 1: Web Master System</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-10">
+          <div className="flex bg-neutral-900 p-1.5 rounded-[22px] border border-white/10 shadow-2xl">
+            <button onClick={() => setView('desktop')} className={`flex items-center gap-3 px-10 py-3 rounded-[18px] font-black text-xs transition-all duration-500 ${view === 'desktop' ? 'bg-white text-black shadow-xl scale-100' : 'text-slate-500 hover:text-white scale-95 opacity-50'}`}><Monitor size={18} /> VISTA WEB</button>
+            <button onClick={() => setView('mobile')} className={`flex items-center gap-3 px-10 py-3 rounded-[18px] font-black text-xs transition-all duration-500 ${view === 'mobile' ? 'bg-white text-black shadow-xl scale-100' : 'text-slate-500 hover:text-white scale-95 opacity-50'}`}><Smartphone size={18} /> VISTA MOBILE</button>
+          </div>
+          <button onClick={() => setIsImmersive(!isImmersive)} className="flex items-center gap-3 px-8 py-3 rounded-2xl font-black text-[11px] text-white/70 hover:text-white border border-white/10 bg-neutral-800/50 uppercase tracking-widest transition-all">
+            {isImmersive ? <Minimize size={16} /> : <Maximize size={16} />} {isImmersive ? 'Salir' : 'Maximizar'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex items-center justify-center overflow-hidden p-8 relative">
+        {view === 'desktop' ? (
+          <div className="w-full h-full overflow-y-auto bg-white rounded-[40px] shadow-2xl animate-in zoom-in-95 duration-700">
+            <DesktopWeb openBot={() => setIsBotOpen(true)} />
+          </div>
+        ) : (
+          <div className="relative animate-in slide-in-from-bottom-12 duration-700">
+            <div className="w-[410px] h-[860px] bg-[#0c0c0c] rounded-[80px] p-6 shadow-[0_80px_160px_-40px_rgba(0,168,232,0.4)] border-[14px] border-[#222] relative overflow-hidden">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-36 h-9 bg-[#222] rounded-b-[30px] z-[1000]"></div>
+              <MobileApp openBot={() => setIsBotOpen(true)} />
+            </div>
+            <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-[150%] h-[25%] bg-cyan-500/15 blur-[150px] -z-10 rounded-full"></div>
+          </div>
+        )}
+      </div>
+
+      <BotChatOverlay isOpen={isBotOpen} onClose={() => setIsBotOpen(false)} />
+
+      <button 
+        onClick={() => setIsBotOpen(true)}
+        style={{ backgroundColor: COLORS.secondary }}
+        className={`fixed bottom-12 right-12 w-24 h-24 rounded-full shadow-[0_30px_60px_-10px_rgba(255,196,0,0.6)] flex items-center justify-center text-yellow-900 border-[8px] border-white z-[20000] active:scale-90 transition-all hover:rotate-12 group ${isImmersive && !isBotOpen ? 'scale-75 opacity-30 hover:opacity-100 hover:scale-100' : ''}`}
+      >
+        <div className="relative">
+          <PawPrint size={48} className="group-hover:animate-bounce" />
+          <div className="absolute -top-1 -right-1 w-6 h-6 bg-red-500 rounded-full border-4 border-white animate-pulse"></div>
+        </div>
+      </button>
+    </div>
+  );
+};
+
+export default App;
