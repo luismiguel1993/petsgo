@@ -27,12 +27,12 @@ const HomePage = () => {
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + heroImages.length) % heroImages.length);
 
   const featuredProducts = [
-    { id: 1, name: 'Royal Canin Medium Adult 15kg', brand: 'Royal Canin', price: 52990, originalPrice: 59990, image: 'https://images.unsplash.com/photo-1589924749359-6852750f50e8?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.8, description: 'Alimento seco completo para perros adultos de raza mediana (11-25 kg). Con nutrientes que fortalecen las defensas naturales.' },
+    { id: 1, name: 'Royal Canin Medium Adult 15kg', brand: 'Royal Canin', price: 52990, originalPrice: 59990, image: 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.8, description: 'Alimento seco completo para perros adultos de raza mediana (11-25 kg). Con nutrientes que fortalecen las defensas naturales.' },
     { id: 2, name: 'Pro Plan Gato Adulto Pollo 7.5kg', brand: 'Pro Plan', price: 38990, originalPrice: 42990, image: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.7, description: 'Fórmula avanzada con pollo real como ingrediente principal. Rico en proteínas para gatos adultos activos.' },
     { id: 3, name: 'Hills Science Diet Puppy 12kg', brand: 'Hills', price: 48990, originalPrice: null, image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.9, description: 'Nutrición clínicamente probada para cachorros en crecimiento. DHA de aceite de pescado para desarrollo cerebral.' },
     { id: 4, name: 'Whiskas Adulto Pollo 10kg', brand: 'Whiskas', price: 12990, originalPrice: 15990, image: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.5, description: 'Alimento balanceado con sabor a pollo que a los gatos les encanta. Vitaminas y minerales esenciales.' },
     { id: 5, name: 'Eukanuba Large Breed Adult 15kg', brand: 'Eukanuba', price: 62990, originalPrice: 69990, image: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.6, description: 'Formulado especialmente para razas grandes. Con glucosamina y condroitina para articulaciones saludables.' },
-    { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1567612529009-afe25413fe2f?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
+    { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
     { id: 7, name: 'Bravecto Perro 10-20kg', brand: 'Bravecto', price: 29990, originalPrice: 34990, image: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=400&auto=format&fit=crop&q=80', category: 'Farmacia', rating: 4.8, description: 'Antiparasitario oral contra pulgas y garrapatas. Protección de hasta 12 semanas con una sola dosis.' },
     { id: 8, name: 'Cama Ortopédica Premium L', brand: 'PetsGo Select', price: 45990, originalPrice: 54990, image: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.7, description: 'Cama ortopédica con espuma viscoelástica. Funda lavable antialérgica. Ideal para perros grandes.' },
   ];
@@ -326,6 +326,7 @@ const HomePage = () => {
                       src={product.image} 
                       alt={product.name} 
                       className="max-w-full max-h-full object-contain group-hover:scale-110 transition-transform duration-700" 
+                      onError={(e) => { e.target.onerror = null; e.target.src = 'https://placehold.co/400x400/f3f4f6/9ca3af?text=' + encodeURIComponent(product.name); }}
                     />
                     {discount && (
                       <span className="absolute top-4 left-4 bg-red-500 text-white text-xs font-black px-3 py-1.5 rounded-lg shadow-md">
@@ -581,7 +582,7 @@ const HomePage = () => {
                   {doubled.map((store, i) => (
                     <Link key={`${store.id}-${i}`} to="/tiendas" className="store-card">
                       <div className="store-icon" style={store.img ? { background: '#fff', padding: '4px' } : {}}>
-                        {store.img ? <img src={store.img} alt={store.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} /> : store.emoji}
+                        {store.img ? <img src={store.img} alt={store.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} onError={(e) => { e.target.onerror = null; e.target.style.display='none'; e.target.parentNode.textContent = store.emoji; }} /> : store.emoji}
                       </div>
                       <div className="store-name">{store.name}</div>
                       <div className="store-products">{store.products}</div>
@@ -648,14 +649,14 @@ const HomePage = () => {
 
           {(() => {
             const brands = [
-              { name: 'Royal Canin', color: '#E2001A', bg: '#FFF5F5', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Royal_Canin_logo.svg/200px-Royal_Canin_logo.svg.png' },
-              { name: "Hill's", color: '#003DA5', bg: '#F0F4FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Hill%27s_Pet_Nutrition_logo.svg/200px-Hill%27s_Pet_Nutrition_logo.svg.png' },
+              { name: 'Royal Canin', color: '#E2001A', bg: '#FFF5F5', logo: null },
+              { name: "Hill's", color: '#003DA5', bg: '#F0F4FF', logo: null },
               { name: 'Pro Plan', color: '#E31837', bg: '#FFF5F7', logo: null },
               { name: 'Bravecto', color: '#FF6B00', bg: '#FFF7F0', logo: null },
               { name: 'Eukanuba', color: '#1B3C71', bg: '#F0F3F9', logo: null },
-              { name: 'Pedigree', color: '#FFD100', bg: '#FFFCF0', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Pedigree_logo.svg/200px-Pedigree_logo.svg.png' },
-              { name: 'Whiskas', color: '#6B2D8B', bg: '#F8F0FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Whiskas_logo.svg/200px-Whiskas_logo.svg.png' },
-              { name: 'Purina', color: '#E31837', bg: '#FFF5F7', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Purina_logo.svg/200px-Purina_logo.svg.png' },
+              { name: 'Pedigree', color: '#FFD100', bg: '#FFFCF0', logo: null },
+              { name: 'Whiskas', color: '#6B2D8B', bg: '#F8F0FF', logo: null },
+              { name: 'Purina', color: '#E31837', bg: '#FFF5F7', logo: null },
             ];
             const doubled = [...brands, ...brands];
             return (
