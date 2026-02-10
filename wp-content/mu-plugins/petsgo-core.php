@@ -136,7 +136,7 @@ class PetsGo_Core {
         add_submenu_page('petsgo-dashboard', 'Boletas', 'Boletas', $cap_all, 'petsgo-invoices', [$this, 'page_invoices']);
 
         // Config Boleta Tienda (hidden page)
-        add_submenu_page(null, 'Config Boleta', 'Config Boleta', $cap_all, 'petsgo-invoice-config', [$this, 'page_invoice_config']);
+        add_submenu_page('petsgo-dashboard', 'Config Boleta', '🧾 Config Boleta', $cap_all, 'petsgo-invoice-config', [$this, 'page_invoice_config']);
 
         // Auditoría — solo admin
         add_submenu_page('petsgo-dashboard', 'Auditoría', 'Auditoría', $cap_admin, 'petsgo-audit', [$this, 'page_audit_log']);
@@ -672,7 +672,8 @@ class PetsGo_Core {
                         rows+='<td>'+PG.esc(v.email)+'</td><td>'+PG.esc(v.phone)+'</td><td>'+v.sales_commission+'%</td>';
                         rows+='<td>'+v.total_products+'</td><td>'+v.total_orders+'</td>';
                         rows+='<td>'+PG.badge(v.status)+'</td>';
-                        rows+='<td><a href="'+PG.adminUrl+'?page=petsgo-vendor-form&id='+v.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
+                        rows+='<td><a href="'+PG.adminUrl+'?page=petsgo-vendor-form&id='+v.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm" title="Editar">✏️</a> ';
+                        rows+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&vendor_id='+v.id+'" class="petsgo-btn petsgo-btn-sm" style="background:#00A8E8;color:#fff;" title="Config Boleta">🧾</a> ';
                         rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pv-del" data-id="'+v.id+'">🗑️</button></td></tr>';
                     });
                     $('#pv-body').html(rows);
@@ -692,10 +693,35 @@ class PetsGo_Core {
         $vid = intval($_GET['id'] ?? 0);
         $vendor = $vid ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $vid)) : null;
         $users = $wpdb->get_results("SELECT ID, user_login, display_name FROM {$wpdb->users} ORDER BY display_name");
+        // Chile regions/comunas
+        $regiones = [
+            'Arica y Parinacota'=>['Arica','Camarones','General Lagos','Putre'],
+            'Tarapacá'=>['Alto Hospicio','Camina','Colchane','Huara','Iquique','Pica','Pozo Almonte'],
+            'Antofagasta'=>['Antofagasta','Calama','María Elena','Mejillones','Ollagüe','San Pedro de Atacama','Sierra Gorda','Taltal','Tocopilla'],
+            'Atacama'=>['Caldera','Chañaral','Copiapó','Diego de Almagro','Freirina','Huasco','Tierra Amarilla','Vallenar'],
+            'Coquimbo'=>['Andacollo','Canela','Combarbalá','Coquimbo','Illapel','La Higuera','La Serena','Los Vilos','Monte Patria','Ovalle','Paihuano','Punitaqui','Río Hurtado','Salamanca','Vicuña'],
+            'Valparaíso'=>['Algarrobo','Cabildo','Calera','Cartagena','Casablanca','Catemu','Concón','El Quisco','El Tabo','Hijuelas','Isla de Pascua','Juan Fernández','La Cruz','La Ligua','Limache','Llaillay','Los Andes','Nogales','Olmué','Panquehue','Papudo','Petorca','Puchuncaví','Putaendo','Quillota','Quilpué','Quintero','Rinconada','San Antonio','San Esteban','San Felipe','Santa María','Santo Domingo','Valparaíso','Villa Alemana','Viña del Mar','Zapallar'],
+            'Metropolitana'=>['Alhué','Buin','Calera de Tango','Cerrillos','Cerro Navia','Colina','Conchalí','Curacaví','El Bosque','El Monte','Estación Central','Huechuraba','Independencia','Isla de Maipo','La Cisterna','La Florida','La Granja','La Pintana','La Reina','Lampa','Las Condes','Lo Barnechea','Lo Espejo','Lo Prado','Macul','Maipú','María Pinto','Melipilla','Ñuñoa','Padre Hurtado','Paine','Pedro Aguirre Cerda','Peñaflor','Peñalolén','Pirque','Providencia','Pudahuel','Puente Alto','Quilicura','Quinta Normal','Recoleta','Renca','San Bernardo','San Joaquín','San José de Maipo','San Miguel','San Pedro','San Ramón','Santiago','Talagante','Tiltil','Vitacura'],
+            'O\'Higgins'=>['Chépica','Chimbarongo','Codegua','Coinco','Coltauco','Doñihue','Graneros','La Estrella','Las Cabras','Litueche','Lolol','Machalí','Malloa','Marchihue','Mostazal','Nancagua','Navidad','Olivar','Palmilla','Paredones','Peralillo','Peumo','Pichidegua','Pichilemu','Placilla','Pumanque','Quinta de Tilcoco','Rancagua','Rengo','Requínoa','San Fernando','San Vicente','Santa Cruz'],
+            'Maule'=>['Cauquenes','Chanco','Colbún','Constitución','Curepto','Curicó','Empedrado','Hualañé','Licantén','Linares','Longaví','Maule','Molina','Parral','Pelarco','Pelluhue','Pencahue','Rauco','Retiro','Río Claro','Romeral','Sagrada Familia','San Clemente','San Javier','San Rafael','Talca','Teno','Vichuquén','Villa Alegre','Yerbas Buenas'],
+            'Ñuble'=>['Bulnes','Chillán','Chillán Viejo','Cobquecura','Coelemu','Coihueco','El Carmen','Ninhue','Ñiquén','Pemuco','Pinto','Portezuelo','Quillón','Quirihue','Ránquil','San Carlos','San Fabián','San Ignacio','San Nicolás','Treguaco','Yungay'],
+            'Biobío'=>['Alto Biobío','Antuco','Arauco','Cabrero','Cañete','Chiguayante','Concepción','Contulmo','Coronel','Curanilahue','Florida','Hualpén','Hualqui','Laja','Lebu','Los Álamos','Los Ángeles','Lota','Mulchén','Nacimiento','Negrete','Penco','Quilaco','Quilleco','San Pedro de la Paz','San Rosendo','Santa Bárbara','Santa Juana','Talcahuano','Tirúa','Tomé','Tucapel','Yumbel'],
+            'Araucanía'=>['Angol','Carahue','Cholchol','Collipulli','Cunco','Curacautín','Curarrehue','Ercilla','Freire','Galvarino','Gorbea','Lautaro','Loncoche','Lonquimay','Los Sauces','Lumaco','Melipeuco','Nueva Imperial','Padre Las Casas','Perquenco','Pitrufquén','Pucón','Purén','Renaico','Saavedra','Temuco','Teodoro Schmidt','Toltén','Traiguén','Victoria','Vilcún','Villarrica'],
+            'Los Ríos'=>['Corral','Futrono','La Unión','Lago Ranco','Lanco','Los Lagos','Máfil','Mariquina','Paillaco','Panguipulli','Río Bueno','Valdivia'],
+            'Los Lagos'=>['Ancud','Calbuco','Castro','Chaitén','Chonchi','Cochamó','Curaco de Vélez','Dalcahue','Fresia','Frutillar','Futaleufú','Hualaihué','Llanquihue','Los Muermos','Maullín','Osorno','Palena','Puerto Montt','Puerto Octay','Puerto Varas','Puqueldón','Purranque','Puyehue','Queilén','Quellón','Quemchi','Quinchao','Río Negro','San Juan de la Costa','San Pablo'],
+            'Aysén'=>['Aysén','Chile Chico','Cisnes','Cochrane','Coyhaique','Guaitecas','Lago Verde','O\'Higgins','Río Ibáñez','Tortel'],
+            'Magallanes'=>['Antártica','Cabo de Hornos','Laguna Blanca','Natales','Porvenir','Primavera','Punta Arenas','Río Verde','San Gregorio','Timaukel','Torres del Paine']
+        ];
+        $regiones_json = json_encode($regiones, JSON_UNESCAPED_UNICODE);
         ?>
         <div class="wrap petsgo-wrap">
             <h1>🏪 <?php echo $vid ? 'Editar Tienda #'.$vid : 'Nueva Tienda'; ?></h1>
-            <a href="<?php echo admin_url('admin.php?page=petsgo-vendors'); ?>" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" style="margin-bottom:16px;display:inline-block;">← Volver</a>
+            <div style="display:flex;gap:8px;margin-bottom:16px;">
+                <a href="<?php echo admin_url('admin.php?page=petsgo-vendors'); ?>" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm">← Volver</a>
+                <?php if ($vid): ?>
+                <a href="<?php echo admin_url('admin.php?page=petsgo-invoice-config&vendor_id='.$vid); ?>" class="petsgo-btn petsgo-btn-sm" style="background:#00A8E8;color:#fff;">🧾 Config Boleta</a>
+                <?php endif; ?>
+            </div>
             <form id="vendor-form" novalidate>
                 <input type="hidden" id="vf-id" value="<?php echo $vid; ?>">
                 <div class="petsgo-form-section" style="max-width:700px;">
@@ -705,7 +731,20 @@ class PetsGo_Core {
                         <div class="petsgo-field" id="vf-f-rut"><label>RUT *</label><input type="text" id="vf-rut" value="<?php echo esc_attr($vendor->rut ?? ''); ?>" maxlength="20" placeholder="12.345.678-9"><div class="field-error">Obligatorio.</div></div>
                         <div class="petsgo-field" id="vf-f-email"><label>Email *</label><input type="email" id="vf-email" value="<?php echo esc_attr($vendor->email ?? ''); ?>"><div class="field-error">Email válido obligatorio.</div></div>
                         <div class="petsgo-field" id="vf-f-phone"><label>Teléfono</label><input type="text" id="vf-phone" value="<?php echo esc_attr($vendor->phone ?? ''); ?>"></div>
-                        <div class="petsgo-field"><label>Dirección</label><input type="text" id="vf-address" value="<?php echo esc_attr($vendor->address ?? ''); ?>"></div>
+                    </div>
+                    <h3 style="margin-top:24px;">📍 Ubicación</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="petsgo-field"><label>Región</label>
+                            <select id="vf-region"><option value="">— Seleccionar Región —</option>
+                            <?php foreach (array_keys($regiones) as $r): ?>
+                            <option value="<?php echo esc_attr($r); ?>" <?php selected(($vendor->region ?? ''), $r); ?>><?php echo esc_html($r); ?></option>
+                            <?php endforeach; ?></select></div>
+                        <div class="petsgo-field"><label>Comuna</label>
+                            <select id="vf-comuna"><option value="">— Seleccionar Comuna —</option></select></div>
+                        <div class="petsgo-field" style="grid-column:1/3;"><label>Dirección (calle, número, depto.)</label><input type="text" id="vf-address" value="<?php echo esc_attr($vendor->address ?? ''); ?>" placeholder="Av. Libertador 1234, Depto 5B"></div>
+                    </div>
+                    <h3 style="margin-top:24px;">⚙️ Configuración</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                         <div class="petsgo-field" id="vf-f-user"><label>Usuario WP asociado *</label>
                             <select id="vf-user"><option value="">— Seleccionar —</option>
                             <?php foreach ($users as $u): ?><option value="<?php echo $u->ID; ?>" <?php selected(($vendor->user_id ?? ''), $u->ID); ?>><?php echo esc_html($u->display_name . ' (' . $u->user_login . ')'); ?></option><?php endforeach; ?>
@@ -731,6 +770,22 @@ class PetsGo_Core {
         </div>
         <script>
         jQuery(function($){
+            var regiones=<?php echo $regiones_json; ?>;
+            // Populate comunas based on region
+            function loadComunas(region,selected){
+                var $c=$('#vf-comuna');$c.html('<option value="">— Seleccionar Comuna —</option>');
+                if(region && regiones[region]){
+                    $.each(regiones[region],function(i,com){
+                        $c.append('<option value="'+com+'"'+(com===selected?' selected':'')+'>'+com+'</option>');
+                    });
+                }
+            }
+            $('#vf-region').on('change',function(){loadComunas($(this).val(),'');});
+            // Load saved comuna on page load
+            <?php if($vendor && !empty($vendor->region)): ?>
+            loadComunas('<?php echo esc_js($vendor->region); ?>','<?php echo esc_js($vendor->comuna ?? ''); ?>');
+            <?php endif; ?>
+
             $('#vendor-form').on('submit',function(e){
                 e.preventDefault();var ok=true;
                 if(!$.trim($('#vf-name').val())){$('#vf-f-name').addClass('has-error');ok=false;}else{$('#vf-f-name').removeClass('has-error');}
@@ -741,8 +796,8 @@ class PetsGo_Core {
                 $('#vf-loader').addClass('active');$('#vf-msg').hide();
                 PG.post('petsgo_save_vendor',{
                     id:$('#vf-id').val(),store_name:$('#vf-name').val(),rut:$('#vf-rut').val(),email:$('#vf-email').val(),
-                    phone:$('#vf-phone').val(),address:$('#vf-address').val(),user_id:$('#vf-user').val(),
-                    sales_commission:$('#vf-commission').val(),plan_id:$('#vf-plan').val(),status:$('#vf-status').val()
+                    phone:$('#vf-phone').val(),region:$('#vf-region').val(),comuna:$('#vf-comuna').val(),address:$('#vf-address').val(),
+                    user_id:$('#vf-user').val(),sales_commission:$('#vf-commission').val(),plan_id:$('#vf-plan').val(),status:$('#vf-status').val()
                 },function(r){
                     $('#vf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
@@ -1010,49 +1065,127 @@ class PetsGo_Core {
             </div>
             <table class="petsgo-table"><thead><tr><th>ID</th><th>Plan</th><th>Precio/mes</th><th>Características</th><th>Acciones</th></tr></thead>
             <tbody id="pp-body"><tr><td colspan="5" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+
+            <!-- Frontend Preview -->
+            <div style="margin-top:30px;padding:24px;background:#f8f9fa;border-radius:12px;border:1px solid #e5e7eb;">
+                <h3 style="margin:0 0 16px;color:#2F3A40;">👁️ Vista Previa — Así se verán los planes en el frontend</h3>
+                <div id="pp-preview" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:900px;"></div>
+            </div>
+
             <!-- Inline form -->
             <div id="pp-form-wrap" style="display:none;margin-top:20px;">
-                <div class="petsgo-form-section" style="max-width:600px;">
-                    <h3 id="pp-form-title">Nuevo Plan</h3>
-                    <input type="hidden" id="pp-id" value="0">
-                    <div class="petsgo-field"><label>Nombre *</label><input type="text" id="pp-name"></div>
-                    <div class="petsgo-field"><label>Precio mensual (CLP) *</label><input type="number" id="pp-price" min="0" step="1"></div>
-                    <div class="petsgo-field"><label>Características (una por línea)</label><textarea id="pp-features" rows="4"></textarea></div>
-                    <div style="display:flex;gap:12px;margin-top:12px;">
-                        <button class="petsgo-btn petsgo-btn-primary" id="pp-save">💾 Guardar</button>
-                        <button class="petsgo-btn" style="background:#e2e3e5;color:#333;" id="pp-cancel">Cancelar</button>
-                        <div id="pp-msg" style="display:none;"></div>
+                <div style="display:grid;grid-template-columns:1fr 320px;gap:24px;max-width:960px;">
+                    <div class="petsgo-form-section">
+                        <h3 id="pp-form-title">Nuevo Plan</h3>
+                        <input type="hidden" id="pp-id" value="0">
+                        <div class="petsgo-field"><label>Nombre *</label><input type="text" id="pp-name" placeholder="Ej: Básico, Pro, Enterprise"></div>
+                        <div class="petsgo-field"><label>Precio mensual (CLP) *</label><input type="number" id="pp-price" min="0" step="1" placeholder="29990"></div>
+                        <div class="petsgo-field"><label>Características (JSON)</label>
+                            <textarea id="pp-features" rows="6" placeholder='{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}'></textarea>
+                            <small style="color:#888;">Campos: max_products (-1=ilimitado), commission_rate, support (email|email+chat|prioritario), analytics (true/false), featured (true/false), api_access (true/false)</small>
+                        </div>
+                        <div style="display:flex;gap:12px;margin-top:12px;">
+                            <button class="petsgo-btn petsgo-btn-primary" id="pp-save">💾 Guardar</button>
+                            <button class="petsgo-btn" style="background:#e2e3e5;color:#333;" id="pp-cancel">Cancelar</button>
+                            <div id="pp-msg" style="display:none;"></div>
+                        </div>
+                    </div>
+                    <!-- Live preview card while editing -->
+                    <div>
+                        <h4 style="margin:0 0 12px;color:#666;">Vista previa tarjeta:</h4>
+                        <div id="pp-live-card" style="background:#fff;border-radius:20px;padding:28px 24px;border:2px solid #00A8E8;box-shadow:0 8px 30px rgba(0,168,232,0.1);"></div>
                     </div>
                 </div>
             </div>
         </div>
         <script>
         jQuery(function($){
+            var planColors=['#00A8E8','#FFC400','#2F3A40'];
+            function fmtMoney(v){return '$'+parseInt(v).toLocaleString('es-CL');}
+            function parseFeatures(json){
+                try{
+                    var obj=typeof json==='string'?JSON.parse(json):json;
+                    if(Array.isArray(obj))return obj;
+                    var l=[];
+                    if(obj.max_products===-1)l.push('Productos ilimitados');
+                    else if(obj.max_products)l.push('Hasta '+obj.max_products+' productos');
+                    if(obj.commission_rate)l.push('Comisión '+obj.commission_rate+'%');
+                    if(obj.support==='email')l.push('Soporte por email');
+                    else if(obj.support==='email+chat')l.push('Soporte email + chat');
+                    else if(obj.support==='prioritario')l.push('Soporte prioritario 24/7');
+                    if(obj.analytics)l.push('Dashboard con analíticas');
+                    if(obj.featured)l.push('Productos destacados');
+                    if(obj.api_access)l.push('Acceso API personalizado');
+                    return l;
+                }catch(e){return json?json.split('\n').filter(function(x){return x.trim();}):[]; }
+            }
+            function renderCard(name,price,featuresJson,color,isPro){
+                var feats=parseFeatures(featuresJson);
+                var h='<div style="width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;background:'+color+'20;font-size:22px;">'+(isPro?'👑':'⭐')+'</div>';
+                h+='<h3 style="font-size:20px;font-weight:800;color:#2F3A40;margin:0 0 6px;">'+PG.esc(name||'Nombre del plan')+'</h3>';
+                h+='<div style="display:flex;align-items:baseline;gap:4px;margin-bottom:20px;">';
+                h+='<span style="font-size:32px;font-weight:900;color:'+color+';">'+fmtMoney(price||0)+'</span>';
+                h+='<span style="color:#9ca3af;font-size:13px;">/mes</span></div>';
+                h+='<div style="border-top:1px solid #f3f4f6;padding-top:16px;">';
+                if(feats.length){$.each(feats,function(i,f){
+                    h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:#4b5563;">';
+                    h+='<div style="width:20px;height:20px;border-radius:6px;background:'+color+'20;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="color:'+color+';font-size:12px;font-weight:bold;">✓</span></div>';
+                    h+=PG.esc(f)+'</div>';
+                });}else{h+='<p style="color:#ccc;font-size:13px;">Sin características definidas</p>';}
+                h+='</div>';
+                h+='<button style="width:100%;padding:12px;border-radius:12px;font-size:13px;font-weight:700;margin-top:16px;cursor:pointer;border:2px solid '+color+';background:'+(isPro?color:'transparent')+';color:'+(isPro?'#fff':color)+';">Elegir Plan</button>';
+                return h;
+            }
+            function renderPreview(plans){
+                var html='';
+                $.each(plans,function(i,p){
+                    var color=planColors[i%3];var isPro=(i===1);
+                    html+='<div style="background:#fff;border-radius:20px;padding:28px 24px;border:'+(isPro?'2px solid #FFC400':'1px solid #f0f0f0')+';box-shadow:'+(isPro?'0 16px 50px rgba(255,196,0,0.12)':'0 4px 16px rgba(0,0,0,0.04)')+';position:relative;'+(isPro?'transform:scale(1.03);z-index:2;':'')+'">';
+                    if(isPro) html+='<span style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#FFC400,#ffb300);color:#2F3A40;font-size:10px;font-weight:800;padding:4px 16px;border-radius:50px;letter-spacing:1px;">⭐ MÁS POPULAR</span>';
+                    html+=renderCard(p.plan_name,p.monthly_price,p.features_json,color,isPro);
+                    html+='</div>';
+                });
+                $('#pp-preview').html(html);
+            }
             function load(){
                 $('#pp-loader').addClass('active');
                 PG.post('petsgo_search_plans',{},function(r){
                     $('#pp-loader').removeClass('active');if(!r.success)return;
                     $('#pp-total').text(r.data.length);var rows='';
                     $.each(r.data,function(i,p){
+                        var feats=parseFeatures(p.features_json);
+                        var featHtml=feats.length?'<ul style="margin:0;padding-left:16px;">':'';
+                        $.each(feats,function(j,f){featHtml+='<li style="font-size:13px;margin:2px 0;">'+PG.esc(f)+'</li>';});
+                        if(feats.length)featHtml+='</ul>';else featHtml='<span style="color:#999;font-size:12px;">—</span>';
                         rows+='<tr><td>'+p.id+'</td><td><strong>'+PG.esc(p.plan_name)+'</strong></td>';
                         rows+='<td>'+PG.money(p.monthly_price)+'</td>';
-                        rows+='<td style="font-size:13px;">'+PG.esc(p.features_json||'').replace(/\n/g,'<br>')+'</td>';
-                        rows+='<td><button class="petsgo-btn petsgo-btn-warning petsgo-btn-sm pp-edit" data-id="'+p.id+'" data-name="'+PG.esc(p.plan_name)+'" data-price="'+p.monthly_price+'" data-features="'+PG.esc(p.features_json||'')+'">✏️</button> ';
+                        rows+='<td>'+featHtml+'</td>';
+                        rows+='<td><button class="petsgo-btn petsgo-btn-warning petsgo-btn-sm pp-edit" data-id="'+p.id+'" data-name="'+PG.esc(p.plan_name)+'" data-price="'+p.monthly_price+'" data-features="'+PG.esc(p.features_json||'').replace(/"/g,'&quot;')+'">✏️</button> ';
                         rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pp-del" data-id="'+p.id+'">🗑️</button></td></tr>';
                     });
                     if(!r.data.length) rows='<tr><td colspan="5" style="text-align:center;padding:30px;color:#999;">Sin planes.</td></tr>';
                     $('#pp-body').html(rows);
+                    renderPreview(r.data);
                 });
             }
-            function resetForm(){$('#pp-id').val(0);$('#pp-name,#pp-price,#pp-features').val('');$('#pp-form-title').text('Nuevo Plan');$('#pp-msg').hide();}
+            function updateLiveCard(){
+                var color='#00A8E8';
+                $('#pp-live-card').html(renderCard($('#pp-name').val(),$('#pp-price').val(),$('#pp-features').val(),color,false));
+            }
+            function resetForm(){$('#pp-id').val(0);$('#pp-name,#pp-price,#pp-features').val('');$('#pp-form-title').text('Nuevo Plan');$('#pp-msg').hide();updateLiveCard();}
             $('#pp-add-btn').on('click',function(){resetForm();$('#pp-form-wrap').slideDown();});
             $('#pp-cancel').on('click',function(){$('#pp-form-wrap').slideUp();});
+            $('#pp-name,#pp-price,#pp-features').on('input',function(){updateLiveCard();});
             $(document).on('click','.pp-edit',function(){
-                $('#pp-id').val($(this).data('id'));$('#pp-name').val($(this).data('name'));$('#pp-price').val($(this).data('price'));$('#pp-features').val($(this).data('features'));
-                $('#pp-form-title').text('Editar Plan #'+$(this).data('id'));$('#pp-form-wrap').slideDown();$('#pp-msg').hide();
+                $('#pp-id').val($(this).data('id'));$('#pp-name').val($(this).data('name'));$('#pp-price').val($(this).data('price'));
+                var ft=$(this).data('features')||'';$('#pp-features').val(ft);
+                $('#pp-form-title').text('Editar Plan #'+$(this).data('id'));$('#pp-form-wrap').slideDown();$('#pp-msg').hide();updateLiveCard();
             });
             $('#pp-save').on('click',function(){
                 if(!$.trim($('#pp-name').val())||!$('#pp-price').val()){alert('Nombre y precio obligatorios');return;}
+                // Validate JSON
+                var fv=$('#pp-features').val();
+                if(fv){try{JSON.parse(fv);}catch(e){alert('Las características deben ser un JSON válido. Ejemplo:\n{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}');return;}}
                 PG.post('petsgo_save_plan',{id:$('#pp-id').val(),plan_name:$('#pp-name').val(),monthly_price:$('#pp-price').val(),features:$('#pp-features').val()},function(r){
                     if(r.success){$('#pp-form-wrap').slideUp();load();}else{$('#pp-msg').html('<span style="color:red;">'+r.data+'</span>').show();}
                 });
@@ -1150,7 +1283,7 @@ class PetsGo_Core {
         if(!$this->is_admin()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id=intval($_POST['id']??0);
-        $data=['store_name'=>$this->san('store_name'),'rut'=>$this->san('rut'),'email'=>sanitize_email($_POST['email']??''),'phone'=>$this->san('phone'),'address'=>sanitize_textarea_field($_POST['address']??''),'user_id'=>intval($_POST['user_id']??0),'sales_commission'=>floatval($_POST['sales_commission']??10),'plan_id'=>intval($_POST['plan_id']??1),'status'=>$this->san('status')];
+        $data=['store_name'=>$this->san('store_name'),'rut'=>$this->san('rut'),'email'=>sanitize_email($_POST['email']??''),'phone'=>$this->san('phone'),'region'=>$this->san('region'),'comuna'=>$this->san('comuna'),'address'=>sanitize_textarea_field($_POST['address']??''),'user_id'=>intval($_POST['user_id']??0),'sales_commission'=>floatval($_POST['sales_commission']??10),'plan_id'=>intval($_POST['plan_id']??1),'status'=>$this->san('status')];
         $errors=[];
         if(!$data['store_name'])$errors[]='Nombre obligatorio';if(!$data['rut'])$errors[]='RUT obligatorio';
         if(!$data['email'])$errors[]='Email obligatorio';if(!$data['user_id'])$errors[]='Usuario obligatorio';
