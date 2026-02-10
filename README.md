@@ -111,6 +111,58 @@ Widget flotante con asistente virtual para resolver dudas de los usuarios. Inclu
 
 ---
 
+## 🌿 Flujo de Trabajo con Git
+
+### Ramas
+
+| Rama | Propósito |
+|------|-----------|
+| `main` | Versión estable / producción |
+| `develop` | Rama activa de desarrollo |
+
+### Clonar el repositorio
+
+```bash
+git clone https://github.com/luismiguel1993/petsgo.git
+cd petsgo
+```
+
+### Cambiar a la rama de desarrollo
+
+```bash
+git checkout develop
+```
+
+### Guardar cambios en develop
+
+```bash
+git add .
+git commit -m "Descripción del cambio"
+git push
+```
+
+### Promover develop a producción (merge a main)
+
+```bash
+git checkout main
+git merge develop
+git push
+git checkout develop   # Volver a develop para seguir trabajando
+```
+
+### Crear una rama para una funcionalidad específica (opcional)
+
+```bash
+git checkout -b feature/nombre-funcionalidad
+# ... trabajar ...
+git add .
+git commit -m "Implementar nombre-funcionalidad"
+git push -u origin feature/nombre-funcionalidad
+# Luego crear Pull Request en GitHub para mergear a develop
+```
+
+---
+
 ## 📄 Licencia
 
 Proyecto privado — Todos los derechos reservados © 2026 PetsGo
