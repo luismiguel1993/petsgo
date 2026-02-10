@@ -31,7 +31,7 @@ const chatCSS = `
     justify-content: center !important;
     box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
     z-index: 9990 !important;
-    transition: transform 0.2s, right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    transition: transform 0.2s, right 0.4s ease, left 0.4s ease !important;
   }
   .pgchat-trigger.pgchat-left {
     right: auto !important;
@@ -51,7 +51,7 @@ const chatCSS = `
     height: 120px !important;
     pointer-events: none !important;
     z-index: 9991 !important;
-    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    transition: right 0.4s ease, left 0.4s ease !important;
   }
   .pgchat-orbit.pgchat-left {
     right: auto !important;
@@ -106,7 +106,7 @@ const chatCSS = `
     white-space: nowrap !important;
     animation: pgchat-bounce 2s ease-in-out infinite !important;
     font-family: 'Poppins', sans-serif !important;
-    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    transition: right 0.4s ease, left 0.4s ease !important;
   }
   .pgchat-tooltip.pgchat-left {
     right: auto !important;
@@ -146,26 +146,22 @@ const chatCSS = `
     flex-direction: column !important;
     overflow: hidden !important;
     z-index: 9999 !important;
-    transition: right 0.4s cubic-bezier(0.4,0,0.2,1), left 0.4s cubic-bezier(0.4,0,0.2,1) !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+    transition: right 0.4s ease, left 0.4s ease !important;
   }
   .pgchat-window.pgchat-left {
     right: auto !important;
     left: 30px !important;
   }
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-  }
 
   .pgchat-header {
     background-color: #00A8E8 !important;
     color: #ffffff !important;
-    padding: 16px 18px !important;
+    padding: 15px !important;
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
     flex-shrink: 0 !important;
-    min-height: 60px !important;
-    border-bottom: 2px solid rgba(0,0,0,0.1) !important;
-    box-sizing: border-box !important;
   }
   .pgchat-header-left {
     display: flex !important;
@@ -173,11 +169,11 @@ const chatCSS = `
     gap: 10px !important;
   }
   .pgchat-header-avatar {
-    width: 38px !important;
-    height: 38px !important;
+    width: 32px !important;
+    height: 32px !important;
     border-radius: 50% !important;
     background-color: #fff !important;
-    padding: 5px !important;
+    padding: 4px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -193,12 +189,10 @@ const chatCSS = `
     flex-direction: column !important;
   }
   .pgchat-header-title {
-    font-weight: 700 !important;
-    font-size: 16px !important;
-    line-height: 1.3 !important;
-    color: #FFC400 !important;
-    letter-spacing: 0.2px !important;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.25) !important;
+    font-weight: 600 !important;
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+    color: #fff !important;
   }
   .pgchat-header-status {
     font-size: 11px !important;
@@ -216,22 +210,19 @@ const chatCSS = `
     display: inline-block !important;
   }
   .pgchat-close-btn {
-    background: rgba(255,255,255,0.2) !important;
+    background: none !important;
     border: none !important;
     color: #ffffff !important;
     cursor: pointer !important;
-    padding: 6px !important;
+    padding: 4px !important;
     line-height: 1 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-radius: 50% !important;
-    width: 32px !important;
-    height: 32px !important;
-    flex-shrink: 0 !important;
+    border-radius: 4px !important;
   }
   .pgchat-close-btn:hover {
-    background-color: rgba(255,255,255,0.35) !important;
+    background-color: rgba(255,255,255,0.2) !important;
   }
 
   .pgchat-messages {
@@ -434,14 +425,11 @@ const BotChatOverlay = ({ cartOpen = false }) => {
 
   return (
     <>
-      {/* BOTÓN FLOTANTE CON ANIMAL ORBITANDO */}
       {!isOpen && (
         <>
-          {/* Tooltip invitación */}
           <div className={`pgchat-tooltip${leftClass}`}>
             🐾 ¿Dudas? ¡Te ayudo!
           </div>
-          {/* Anillo tipo Saturno */}
           <div className={`pgchat-orbit${leftClass}`}>
             <div className="pgchat-ring-visual" />
             <span className="pgchat-orbiter" key={currentAnimal}>{currentAnimal}</span>
@@ -452,7 +440,6 @@ const BotChatOverlay = ({ cartOpen = false }) => {
         </>
       )}
 
-      {/* VENTANA DE CHAT */}
       {isOpen && (
         <div className={`pgchat-widget pgchat-window${leftClass}`}>
           {/* HEADER */}
