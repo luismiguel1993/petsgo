@@ -158,11 +158,14 @@ const chatCSS = `
   .pgchat-header {
     background-color: #00A8E8 !important;
     color: #ffffff !important;
-    padding: 15px !important;
+    padding: 16px 18px !important;
     display: flex !important;
     justify-content: space-between !important;
     align-items: center !important;
     flex-shrink: 0 !important;
+    min-height: 60px !important;
+    border-bottom: 2px solid rgba(0,0,0,0.1) !important;
+    box-sizing: border-box !important;
   }
   .pgchat-header-left {
     display: flex !important;
@@ -170,11 +173,11 @@ const chatCSS = `
     gap: 10px !important;
   }
   .pgchat-header-avatar {
-    width: 32px !important;
-    height: 32px !important;
+    width: 38px !important;
+    height: 38px !important;
     border-radius: 50% !important;
     background-color: #fff !important;
-    padding: 4px !important;
+    padding: 5px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -190,10 +193,12 @@ const chatCSS = `
     flex-direction: column !important;
   }
   .pgchat-header-title {
-    font-weight: 600 !important;
-    font-size: 15px !important;
-    line-height: 1.2 !important;
+    font-weight: 700 !important;
+    font-size: 16px !important;
+    line-height: 1.3 !important;
     color: #fff !important;
+    letter-spacing: 0.2px !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.15) !important;
   }
   .pgchat-header-status {
     font-size: 11px !important;
