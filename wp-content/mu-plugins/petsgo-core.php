@@ -250,105 +250,464 @@ class PetsGo_Core {
     }
 
     // ============================================================
-    // 1. DASHBOARD — por rol
+    // 1. DASHBOARD ANALÍTICO — admin ve todo, vendor ve su tienda (plan-gated)
     // ============================================================
     public function page_dashboard() {
         global $wpdb;
         $is_admin  = $this->is_admin();
         $is_vendor = $this->is_vendor();
         $is_rider  = $this->is_rider();
-        $vid = $this->get_my_vendor_id();
+        $vid       = $this->get_my_vendor_id();
+        $prefix    = $wpdb->prefix;
 
-        if ($is_admin) {
-            $products    = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory");
-            $vendors     = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors");
-            $orders      = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders");
-            $revenue     = $wpdb->get_var("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'");
-            $commissions = $wpdb->get_var("SELECT COALESCE(SUM(petsgo_commission),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'");
-            $users       = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
-        } elseif ($is_vendor && $vid) {
-            $products    = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id=%d", $vid));
-            $orders      = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d", $vid));
-            $revenue     = $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'", $vid));
-            $pending     = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='pending'", $vid));
-        } elseif ($is_rider) {
-            $assigned    = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d", get_current_user_id()));
-            $delivered   = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", get_current_user_id()));
-            $in_transit  = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='in_transit'", get_current_user_id()));
+        // Determine analytics access for vendors
+        $has_analytics = false;
+        $vendor_plan   = null;
+        $store_name    = '';
+        if ($is_vendor && $vid) {
+            $vendor_row = $wpdb->get_row($wpdb->prepare("SELECT v.store_name, v.plan_id, s.plan_name FROM {$prefix}petsgo_vendors v LEFT JOIN {$prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.id=%d", $vid));
+            $store_name  = $vendor_row->store_name ?? '';
+            $vendor_plan = strtolower($vendor_row->plan_name ?? 'basico');
+            $has_analytics = in_array($vendor_plan, ['pro','enterprise']);
         }
-        ?>
-        <div class="wrap petsgo-wrap">
-        <?php if ($is_admin): ?>
-            <h1>🐾 PetsGo — Dashboard Administrador</h1>
-            <div class="petsgo-cards">
-                <div class="petsgo-card"><h2><?php echo $products; ?></h2><p>Productos</p></div>
-                <div class="petsgo-card"><h2><?php echo $vendors; ?></h2><p>Tiendas</p></div>
-                <div class="petsgo-card"><h2><?php echo $orders; ?></h2><p>Pedidos</p></div>
-                <div class="petsgo-card"><h2><?php echo $users; ?></h2><p>Usuarios</p></div>
-                <div class="petsgo-card"><h2><?php echo $this->fmt($revenue); ?></h2><p>Ventas Totales</p></div>
-                <div class="petsgo-card"><h2><?php echo $this->fmt($commissions); ?></h2><p>Comisiones PetsGo</p></div>
-            </div>
-            <h3>Últimos 10 Pedidos</h3>
-            <?php $this->render_recent_orders(null, 10); ?>
+        if ($is_admin) $has_analytics = true;
 
-        <?php elseif ($is_vendor && $vid): 
-            $store = $wpdb->get_row($wpdb->prepare("SELECT store_name FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $vid));
-        ?>
-            <h1>🏪 Mi Tienda — <?php echo esc_html($store->store_name ?? ''); ?></h1>
-            <div class="petsgo-cards">
-                <div class="petsgo-card"><h2><?php echo $products; ?></h2><p>Mis Productos</p></div>
-                <div class="petsgo-card"><h2><?php echo $orders; ?></h2><p>Mis Pedidos</p></div>
-                <div class="petsgo-card"><h2><?php echo $this->fmt($revenue); ?></h2><p>Ventas</p></div>
-                <div class="petsgo-card"><h2><?php echo $pending; ?></h2><p>Pendientes</p></div>
-            </div>
-            <h3>Últimos Pedidos de mi Tienda</h3>
-            <?php $this->render_recent_orders($vid, 10); ?>
+        // === WHERE clause for scope ===
+        $scope = '';
+        if (!$is_admin && $vid) $scope = $wpdb->prepare(" AND o.vendor_id=%d", $vid);
+        $inv_scope = '';
+        if (!$is_admin && $vid) $inv_scope = $wpdb->prepare(" AND i.vendor_id=%d", $vid);
+        $prod_scope = '';
+        if (!$is_admin && $vid) $prod_scope = $wpdb->prepare(" AND i2.vendor_id=%d", $vid);
 
-        <?php elseif ($is_rider): ?>
+        // === KPI QUERIES ===
+        $total_orders     = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_orders o WHERE 1=1 $scope");
+        $delivered_orders = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' $scope");
+        $pending_orders   = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_orders o WHERE o.status='pending' $scope");
+        $in_transit       = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_orders o WHERE o.status='in_transit' $scope");
+        $cancelled_orders = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_orders o WHERE o.status='cancelled' $scope");
+        $total_revenue    = (float)$wpdb->get_var("SELECT COALESCE(SUM(o.total_amount),0) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' $scope");
+        $total_commission = (float)$wpdb->get_var("SELECT COALESCE(SUM(o.petsgo_commission),0) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' $scope");
+        $total_delivery_fees = (float)$wpdb->get_var("SELECT COALESCE(SUM(o.delivery_fee),0) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' $scope");
+        $avg_ticket       = $delivered_orders > 0 ? round($total_revenue / $delivered_orders) : 0;
+        $success_rate     = $total_orders > 0 ? round(($delivered_orders / $total_orders) * 100, 1) : 0;
+
+        // Revenue last 30 days vs previous 30
+        $rev_30 = (float)$wpdb->get_var("SELECT COALESCE(SUM(o.total_amount),0) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' AND o.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) $scope");
+        $rev_60 = (float)$wpdb->get_var("SELECT COALESCE(SUM(o.total_amount),0) FROM {$prefix}petsgo_orders o WHERE o.status='delivered' AND o.created_at >= DATE_SUB(NOW(), INTERVAL 60 DAY) AND o.created_at < DATE_SUB(NOW(), INTERVAL 30 DAY) $scope");
+        $rev_trend = $rev_60 > 0 ? round((($rev_30 - $rev_60) / $rev_60) * 100, 1) : ($rev_30 > 0 ? 100 : 0);
+
+        // Product stats
+        if ($is_admin) {
+            $total_products = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_inventory");
+            $low_stock = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_inventory WHERE stock < 5 AND stock > 0");
+            $out_of_stock = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_inventory WHERE stock = 0");
+            $total_vendors = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_vendors");
+            $active_vendors = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_vendors WHERE status='active'");
+            $total_users = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
+            $total_invoices = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$prefix}petsgo_invoices");
+        } else {
+            $total_products = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_inventory WHERE vendor_id=%d", $vid));
+            $low_stock = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_inventory WHERE vendor_id=%d AND stock < 5 AND stock > 0", $vid));
+            $out_of_stock = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_inventory WHERE vendor_id=%d AND stock = 0", $vid));
+        }
+
+        // Orders by status (for chart)
+        $status_data = $wpdb->get_results("SELECT o.status, COUNT(*) as cnt FROM {$prefix}petsgo_orders o WHERE 1=1 $scope GROUP BY o.status");
+        $status_map = [];
+        foreach ($status_data as $s) $status_map[$s->status] = (int)$s->cnt;
+
+        // Revenue by month (last 6 months)
+        $monthly_rev = $wpdb->get_results("SELECT DATE_FORMAT(o.created_at,'%Y-%m') as month, SUM(o.total_amount) as rev, COUNT(*) as cnt FROM {$prefix}petsgo_orders o WHERE o.status='delivered' AND o.created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH) $scope GROUP BY month ORDER BY month");
+
+        // Top 5 products by orders (simulated by inventory metrics)
+        $top_products = $wpdb->get_results("SELECT i2.product_name, i2.price, i2.stock, i2.category, v.store_name FROM {$prefix}petsgo_inventory i2 LEFT JOIN {$prefix}petsgo_vendors v ON i2.vendor_id=v.id WHERE 1=1 $prod_scope ORDER BY i2.stock ASC LIMIT 10");
+
+        // Revenue by category
+        $cat_revenue = $wpdb->get_results("SELECT i2.category, COUNT(*) as cnt, SUM(i2.price) as total_value FROM {$prefix}petsgo_inventory i2 WHERE 1=1 $prod_scope GROUP BY i2.category ORDER BY cnt DESC");
+
+        // Top vendors (admin only)
+        $top_vendors = $is_admin ? $wpdb->get_results("SELECT v.store_name, v.status, COUNT(o.id) as total_orders, SUM(CASE WHEN o.status='delivered' THEN o.total_amount ELSE 0 END) as revenue, SUM(CASE WHEN o.status='delivered' THEN o.petsgo_commission ELSE 0 END) as commission FROM {$prefix}petsgo_vendors v LEFT JOIN {$prefix}petsgo_orders o ON v.id=o.vendor_id GROUP BY v.id ORDER BY revenue DESC LIMIT 10") : [];
+
+        // Top riders
+        $top_riders = $wpdb->get_results("SELECT u.display_name, COUNT(o.id) as total_deliveries, SUM(CASE WHEN o.status='delivered' THEN 1 ELSE 0 END) as delivered, SUM(CASE WHEN o.status='delivered' THEN o.delivery_fee ELSE 0 END) as total_fees FROM {$prefix}petsgo_orders o JOIN {$wpdb->users} u ON o.rider_id=u.ID WHERE o.rider_id IS NOT NULL $scope GROUP BY o.rider_id ORDER BY delivered DESC LIMIT 10");
+
+        // Recent orders
+        $recent_orders = $wpdb->get_results("SELECT o.*, v.store_name, u.display_name as customer_name FROM {$prefix}petsgo_orders o LEFT JOIN {$prefix}petsgo_vendors v ON o.vendor_id=v.id LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID WHERE 1=1 $scope ORDER BY o.created_at DESC LIMIT 15");
+
+        // Rider dashboard
+        if ($is_rider) {
+            $uid = get_current_user_id();
+            $r_assigned = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_orders WHERE rider_id=%d", $uid));
+            $r_delivered = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid));
+            $r_transit = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$prefix}petsgo_orders WHERE rider_id=%d AND status='in_transit'", $uid));
+            $r_fees = (float)$wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(delivery_fee),0) FROM {$prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid));
+        }
+
+        // JSON data for charts
+        $chart_data = [
+            'status_labels' => array_keys($status_map),
+            'status_values' => array_values($status_map),
+            'monthly_labels' => array_column($monthly_rev,'month'),
+            'monthly_revenue' => array_map('floatval', array_column($monthly_rev,'rev')),
+            'monthly_orders' => array_map('intval', array_column($monthly_rev,'cnt')),
+            'cat_labels' => array_column($cat_revenue,'category'),
+            'cat_values' => array_map('intval', array_column($cat_revenue,'cnt')),
+        ];
+        ?>
+        <!-- Chart.js + html2canvas + jsPDF for export -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+        <style>
+        .pg-dash{font-family:'Poppins',sans-serif;padding:0 0 40px}
+        .pg-dash h1{font-size:24px;font-weight:800;color:#2F3A40;margin:0 0 4px}
+        .pg-dash .dash-subtitle{font-size:14px;color:#777;margin:0 0 24px}
+        .pg-dash .export-bar{display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap;align-items:center}
+        .pg-dash .export-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all .15s}
+        .pg-dash .export-btn.pdf{background:#dc3545;color:#fff}.pg-dash .export-btn.pdf:hover{background:#c82333}
+        .pg-dash .export-btn.img{background:#00A8E8;color:#fff}.pg-dash .export-btn.img:hover{background:#0090c5}
+        .pg-dash .export-btn.print{background:#6f42c1;color:#fff}.pg-dash .export-btn.print:hover{background:#5a32a3}
+        .pg-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:28px}
+        .pg-kpi{background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:1px solid #f0f0f0;position:relative;overflow:hidden}
+        .pg-kpi .kpi-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px}
+        .pg-kpi .kpi-value{font-size:26px;font-weight:800;color:#2F3A40;line-height:1.1}
+        .pg-kpi .kpi-label{font-size:12px;color:#888;margin-top:4px;font-weight:500}
+        .pg-kpi .kpi-trend{position:absolute;top:16px;right:16px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:8px}
+        .pg-kpi .kpi-trend.up{background:#d4edda;color:#155724}
+        .pg-kpi .kpi-trend.down{background:#f8d7da;color:#721c24}
+        .pg-kpi .kpi-trend.neutral{background:#e2e3e5;color:#383d41}
+        .pg-charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:28px}
+        .pg-chart-card{background:#fff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:1px solid #f0f0f0}
+        .pg-chart-card h3{font-size:15px;font-weight:700;color:#2F3A40;margin:0 0 16px}
+        .pg-chart-card canvas{max-height:260px}
+        .pg-section{background:#fff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:1px solid #f0f0f0;margin-bottom:20px}
+        .pg-section h3{font-size:15px;font-weight:700;color:#2F3A40;margin:0 0 16px}
+        .pg-analytics-lock{background:linear-gradient(135deg,#f8f9fa,#e9ecef);border-radius:16px;padding:40px;text-align:center;margin-bottom:20px;border:2px dashed #ddd}
+        .pg-analytics-lock h3{color:#555;margin:0 0 10px;font-size:18px}.pg-analytics-lock p{color:#888;margin:0 0 16px;font-size:14px}
+        .pg-analytics-lock a{display:inline-block;padding:10px 24px;background:#FFC400;color:#2F3A40;border-radius:10px;font-weight:700;text-decoration:none;font-size:14px}
+        @media(max-width:900px){.pg-charts-grid{grid-template-columns:1fr}.pg-kpi-grid{grid-template-columns:repeat(2,1fr)}}
+        @media(max-width:600px){.pg-kpi-grid{grid-template-columns:1fr}}
+        @media print{.export-bar,.no-print{display:none!important}.pg-dash{padding:0}.pg-kpi,.pg-chart-card,.pg-section{break-inside:avoid}}
+        </style>
+
+        <div class="wrap petsgo-wrap pg-dash" id="pg-dashboard-content">
+
+        <?php if ($is_rider): ?>
             <h1>🚴 Panel Delivery — <?php echo esc_html(wp_get_current_user()->display_name); ?></h1>
-            <div class="petsgo-cards">
-                <div class="petsgo-card"><h2><?php echo $assigned; ?></h2><p>Asignados</p></div>
-                <div class="petsgo-card"><h2><?php echo $in_transit; ?></h2><p>En Tránsito</p></div>
-                <div class="petsgo-card"><h2><?php echo $delivered; ?></h2><p>Entregados</p></div>
+            <p class="dash-subtitle">Resumen de tu actividad como repartidor</p>
+            <div class="pg-kpi-grid">
+                <div class="pg-kpi"><div class="kpi-icon" style="background:#e3f5fc">📦</div><div class="kpi-value"><?php echo $r_assigned; ?></div><div class="kpi-label">Asignados</div></div>
+                <div class="pg-kpi"><div class="kpi-icon" style="background:#fff3cd">🚚</div><div class="kpi-value"><?php echo $r_transit; ?></div><div class="kpi-label">En Tránsito</div></div>
+                <div class="pg-kpi"><div class="kpi-icon" style="background:#d4edda">✅</div><div class="kpi-value"><?php echo $r_delivered; ?></div><div class="kpi-label">Entregados</div></div>
+                <div class="pg-kpi"><div class="kpi-icon" style="background:#d1ecf1">💰</div><div class="kpi-value"><?php echo $this->fmt($r_fees); ?></div><div class="kpi-label">Ganado en Delivery</div></div>
             </div>
 
-        <?php else: ?>
+        <?php elseif (!$is_admin && !$is_vendor): ?>
             <h1>🐾 PetsGo</h1>
             <p>No tienes una tienda o rol asignado. Contacta al administrador.</p>
-        <?php endif; ?>
-        </div>
-        <?php
-    }
 
-    private function render_recent_orders($vendor_id = null, $limit = 10) {
-        global $wpdb;
-        $sql = "SELECT o.*, v.store_name, u.display_name AS customer_name 
-                FROM {$wpdb->prefix}petsgo_orders o 
-                LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
-                LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID";
-        if ($vendor_id) {
-            $sql .= $wpdb->prepare(" WHERE o.vendor_id = %d", $vendor_id);
+        <?php else: ?>
+            <?php if ($is_admin): ?>
+                <h1>🐾 PetsGo — Dashboard Analítico</h1>
+                <p class="dash-subtitle">Métricas globales del marketplace · Actualizado: <?php echo date('d/m/Y H:i'); ?></p>
+            <?php else: ?>
+                <h1>🏪 <?php echo esc_html($store_name); ?> — Dashboard</h1>
+                <p class="dash-subtitle">Métricas de tu tienda · Plan: <strong style="color:#FFC400;"><?php echo ucfirst($vendor_plan); ?></strong> · <?php echo date('d/m/Y H:i'); ?></p>
+            <?php endif; ?>
+
+            <!-- Export Bar -->
+            <div class="export-bar no-print">
+                <button class="export-btn pdf" onclick="pgExportPDF()">📄 Exportar PDF</button>
+                <button class="export-btn img" onclick="pgExportImage()">🖼️ Exportar Imagen</button>
+                <button class="export-btn print" onclick="window.print()">🖨️ Imprimir</button>
+                <span style="margin-left:auto;font-size:12px;color:#999;">Los gráficos se incluyen en la exportación</span>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="pg-kpi-grid">
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#e3f5fc">📦</div>
+                    <div class="kpi-value"><?php echo $total_orders; ?></div>
+                    <div class="kpi-label">Total Pedidos</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#d4edda">✅</div>
+                    <div class="kpi-value"><?php echo $delivered_orders; ?></div>
+                    <div class="kpi-label">Entregados</div>
+                    <div class="kpi-trend <?php echo $success_rate >= 80 ? 'up' : ($success_rate >= 50 ? 'neutral' : 'down'); ?>"><?php echo $success_rate; ?>% éxito</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#fff3cd">⏳</div>
+                    <div class="kpi-value"><?php echo $pending_orders; ?></div>
+                    <div class="kpi-label">Pendientes</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#d1ecf1">🚚</div>
+                    <div class="kpi-value"><?php echo $in_transit; ?></div>
+                    <div class="kpi-label">En Tránsito</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#cce5ff">💰</div>
+                    <div class="kpi-value"><?php echo $this->fmt($total_revenue); ?></div>
+                    <div class="kpi-label">Ventas (entregados)</div>
+                    <div class="kpi-trend <?php echo $rev_trend >= 0 ? 'up' : 'down'; ?>"><?php echo ($rev_trend >= 0 ? '+' : '').$rev_trend; ?>% vs 30d ant.</div>
+                </div>
+                <?php if ($is_admin): ?>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#f5e6ff">🏦</div>
+                    <div class="kpi-value"><?php echo $this->fmt($total_commission); ?></div>
+                    <div class="kpi-label">Comisiones PetsGo</div>
+                </div>
+                <?php endif; ?>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#ffecd2">🎫</div>
+                    <div class="kpi-value"><?php echo $this->fmt($avg_ticket); ?></div>
+                    <div class="kpi-label">Ticket Promedio</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#e8f5e9">🛒</div>
+                    <div class="kpi-value"><?php echo $total_products; ?></div>
+                    <div class="kpi-label">Productos</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#fff3cd">⚠️</div>
+                    <div class="kpi-value"><?php echo $low_stock; ?></div>
+                    <div class="kpi-label">Stock Bajo (&lt;5)</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#f8d7da">🚫</div>
+                    <div class="kpi-value"><?php echo $out_of_stock; ?></div>
+                    <div class="kpi-label">Sin Stock</div>
+                </div>
+                <?php if ($is_admin): ?>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#d1ecf1">🏪</div>
+                    <div class="kpi-value"><?php echo $active_vendors; ?> / <?php echo $total_vendors; ?></div>
+                    <div class="kpi-label">Tiendas Activas</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#e2e3e5">👥</div>
+                    <div class="kpi-value"><?php echo $total_users; ?></div>
+                    <div class="kpi-label">Usuarios Totales</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#cce5ff">🧾</div>
+                    <div class="kpi-value"><?php echo $total_invoices; ?></div>
+                    <div class="kpi-label">Boletas Emitidas</div>
+                </div>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#f5e6ff">🚴</div>
+                    <div class="kpi-value"><?php echo $this->fmt($total_delivery_fees); ?></div>
+                    <div class="kpi-label">Fees Delivery (pagados)</div>
+                </div>
+                <?php endif; ?>
+                <?php if ($cancelled_orders > 0): ?>
+                <div class="pg-kpi">
+                    <div class="kpi-icon" style="background:#f8d7da">❌</div>
+                    <div class="kpi-value"><?php echo $cancelled_orders; ?></div>
+                    <div class="kpi-label">Cancelados</div>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($has_analytics): ?>
+            <!-- === CHARTS (Pro/Enterprise/Admin) === -->
+            <div class="pg-charts-grid">
+                <div class="pg-chart-card">
+                    <h3>📊 Pedidos por Estado</h3>
+                    <canvas id="pgChartStatus"></canvas>
+                </div>
+                <div class="pg-chart-card">
+                    <h3>📈 Ingresos Mensuales (últimos 6 meses)</h3>
+                    <canvas id="pgChartRevenue"></canvas>
+                </div>
+                <div class="pg-chart-card">
+                    <h3>🏷️ Productos por Categoría</h3>
+                    <canvas id="pgChartCategories"></canvas>
+                </div>
+                <div class="pg-chart-card">
+                    <h3>📦 Pedidos Mensuales</h3>
+                    <canvas id="pgChartOrders"></canvas>
+                </div>
+            </div>
+
+            <!-- Top Riders -->
+            <?php if (!empty($top_riders)): ?>
+            <div class="pg-section">
+                <h3>🚴 Riders Destacados</h3>
+                <table class="petsgo-table">
+                    <thead><tr><th>#</th><th>Rider</th><th>Entregas</th><th>Total Asignadas</th><th>Tasa Éxito</th><th>Fees Ganados</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($top_riders as $i => $r): $rate = $r->total_deliveries > 0 ? round(($r->delivered / $r->total_deliveries) * 100, 1) : 0; ?>
+                    <tr>
+                        <td><?php echo $i + 1; ?></td>
+                        <td><strong><?php echo esc_html($r->display_name); ?></strong></td>
+                        <td><span class="petsgo-badge delivered"><?php echo $r->delivered; ?></span></td>
+                        <td><?php echo $r->total_deliveries; ?></td>
+                        <td><span class="petsgo-badge <?php echo $rate >= 80 ? 'active' : ($rate >= 50 ? 'pending' : 'cancelled'); ?>"><?php echo $rate; ?>%</span></td>
+                        <td><?php echo $this->fmt($r->total_fees); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <!-- Top Vendors (admin only) -->
+            <?php if ($is_admin && !empty($top_vendors)): ?>
+            <div class="pg-section">
+                <h3>🏆 Top Tiendas por Ingresos</h3>
+                <table class="petsgo-table">
+                    <thead><tr><th>#</th><th>Tienda</th><th>Estado</th><th>Pedidos</th><th>Ingresos</th><th>Comisión PetsGo</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($top_vendors as $i => $tv): ?>
+                    <tr>
+                        <td><?php echo $i + 1; ?></td>
+                        <td><strong><?php echo esc_html($tv->store_name); ?></strong></td>
+                        <td><span class="petsgo-badge <?php echo esc_attr($tv->status); ?>"><?php echo ucfirst($tv->status); ?></span></td>
+                        <td><?php echo $tv->total_orders; ?></td>
+                        <td><strong><?php echo $this->fmt($tv->revenue); ?></strong></td>
+                        <td><?php echo $this->fmt($tv->commission); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+
+            <!-- Product inventory table -->
+            <div class="pg-section">
+                <h3>📋 Productos — Inventario</h3>
+                <table class="petsgo-table">
+                    <thead><tr><th>Producto</th><th>Categoría</th><?php if($is_admin):?><th>Tienda</th><?php endif;?><th>Precio</th><th>Stock</th><th>Estado</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($top_products as $tp): 
+                        $stock_cls = $tp->stock == 0 ? 'cancelled' : ($tp->stock < 5 ? 'pending' : 'active');
+                        $stock_lbl = $tp->stock == 0 ? 'Sin Stock' : ($tp->stock < 5 ? 'Stock Bajo' : 'OK');
+                    ?>
+                    <tr>
+                        <td><strong><?php echo esc_html($tp->product_name); ?></strong></td>
+                        <td><?php echo esc_html($tp->category); ?></td>
+                        <?php if($is_admin):?><td><?php echo esc_html($tp->store_name); ?></td><?php endif;?>
+                        <td><?php echo $this->fmt($tp->price); ?></td>
+                        <td><?php echo $tp->stock; ?></td>
+                        <td><span class="petsgo-badge <?php echo $stock_cls; ?>"><?php echo $stock_lbl; ?></span></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php else: ?>
+            <!-- PLAN LOCK: Basic vendors cannot see analytics -->
+            <div class="pg-analytics-lock">
+                <h3>📊 Analíticas Avanzadas</h3>
+                <p>Los gráficos, riders destacados, ranking de tiendas y métricas avanzadas están disponibles con el plan <strong>Pro</strong> o <strong>Enterprise</strong>.</p>
+                <p style="color:#aaa;font-size:12px;margin-bottom:16px;">Tu plan actual: <strong><?php echo ucfirst($vendor_plan); ?></strong></p>
+                <a href="<?php echo admin_url('admin.php?page=petsgo-plans'); ?>">⬆️ Mejorar Plan</a>
+            </div>
+            <?php endif; ?>
+
+            <!-- Recent Orders (always visible) -->
+            <div class="pg-section">
+                <h3>🕐 Últimos Pedidos</h3>
+                <?php if (empty($recent_orders)): ?>
+                    <p style="color:#999;text-align:center;padding:20px;">No hay pedidos aún.</p>
+                <?php else: ?>
+                <table class="petsgo-table">
+                    <thead><tr><th>#</th><th>Cliente</th><?php if($is_admin):?><th>Tienda</th><?php endif;?><th>Total</th><th>Comisión</th><th>Estado</th><th>Fecha</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($recent_orders as $o): ?>
+                    <tr>
+                        <td><?php echo $o->id; ?></td>
+                        <td><?php echo esc_html($o->customer_name ?? 'N/A'); ?></td>
+                        <?php if($is_admin):?><td><?php echo esc_html($o->store_name ?? 'N/A'); ?></td><?php endif;?>
+                        <td><?php echo $this->fmt($o->total_amount); ?></td>
+                        <td><?php echo $this->fmt($o->petsgo_commission); ?></td>
+                        <td><span class="petsgo-badge <?php echo esc_attr($o->status); ?>"><?php echo ucfirst(str_replace('_',' ',$o->status)); ?></span></td>
+                        <td><?php echo esc_html($o->created_at); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+            </div>
+
+        <?php endif; /* end admin/vendor block */ ?>
+        </div><!-- #pg-dashboard-content -->
+
+        <?php if ($has_analytics && !$is_rider): ?>
+        <script>
+        (function(){
+            var D=<?php echo json_encode($chart_data); ?>;
+            var colors=['#00A8E8','#FFC400','#28a745','#dc3545','#6f42c1','#fd7e14','#17a2b8','#e83e8c'];
+            var statusColors={'delivered':'#28a745','pending':'#FFC400','in_transit':'#00A8E8','cancelled':'#dc3545','payment_pending':'#fd7e14','preparing':'#6f42c1','ready':'#17a2b8'};
+            // Status donut
+            if(D.status_labels.length){
+                new Chart(document.getElementById('pgChartStatus'),{
+                    type:'doughnut',
+                    data:{labels:D.status_labels.map(function(s){return s.replace(/_/g,' ').replace(/^\w/,function(c){return c.toUpperCase();})}),datasets:[{data:D.status_values,backgroundColor:D.status_labels.map(function(s){return statusColors[s]||'#aaa';}),borderWidth:2,borderColor:'#fff'}]},
+                    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{padding:12,font:{size:12,family:'Poppins'}}}}}
+                });
+            }
+            // Revenue bar
+            if(D.monthly_labels.length){
+                new Chart(document.getElementById('pgChartRevenue'),{
+                    type:'bar',
+                    data:{labels:D.monthly_labels,datasets:[{label:'Ingresos',data:D.monthly_revenue,backgroundColor:'rgba(0,168,232,0.7)',borderRadius:8,borderSkipped:false}]},
+                    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{callback:function(v){return'$'+Number(v).toLocaleString('es-CL')}}},x:{grid:{display:false}}}}
+                });
+            }
+            // Categories
+            if(D.cat_labels.length){
+                new Chart(document.getElementById('pgChartCategories'),{
+                    type:'pie',
+                    data:{labels:D.cat_labels,datasets:[{data:D.cat_values,backgroundColor:colors.slice(0,D.cat_labels.length),borderWidth:2,borderColor:'#fff'}]},
+                    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{padding:12,font:{size:12,family:'Poppins'}}}}}
+                });
+            }
+            // Orders line
+            if(D.monthly_labels.length){
+                new Chart(document.getElementById('pgChartOrders'),{
+                    type:'line',
+                    data:{labels:D.monthly_labels,datasets:[{label:'Pedidos',data:D.monthly_orders,borderColor:'#FFC400',backgroundColor:'rgba(255,196,0,0.1)',fill:true,tension:0.4,pointRadius:5,pointBackgroundColor:'#FFC400'}]},
+                    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}},x:{grid:{display:false}}}}
+                });
+            }
+        })();
+
+        function pgExportPDF(){
+            var el=document.getElementById('pg-dashboard-content');
+            var btns=el.querySelectorAll('.no-print');btns.forEach(function(b){b.style.display='none';});
+            html2canvas(el,{scale:2,useCORS:true,logging:false}).then(function(canvas){
+                btns.forEach(function(b){b.style.display='';});
+                var pdf=new jspdf.jsPDF({orientation:'p',unit:'mm',format:'a4'});
+                var w=pdf.internal.pageSize.getWidth();
+                var h=(canvas.height*w)/canvas.width;
+                var pageH=pdf.internal.pageSize.getHeight();
+                var y=0;
+                while(y<h){
+                    if(y>0)pdf.addPage();
+                    pdf.addImage(canvas.toDataURL('image/jpeg',0.95),'JPEG',0,-y,w,h);
+                    y+=pageH;
+                }
+                pdf.save('PetsGo_Dashboard_'+new Date().toISOString().slice(0,10)+'.pdf');
+            });
         }
-        $sql .= " ORDER BY o.created_at DESC LIMIT $limit";
-        $orders = $wpdb->get_results($sql);
-        if (!$orders) { echo '<p>No hay pedidos aún.</p>'; return; }
-        ?>
-        <table class="petsgo-table">
-            <thead><tr><th>#</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Comisión</th><th>Estado</th><th>Fecha</th></tr></thead>
-            <tbody>
-            <?php foreach ($orders as $o): ?>
-            <tr>
-                <td><?php echo $o->id; ?></td>
-                <td><?php echo esc_html($o->customer_name ?? 'N/A'); ?></td>
-                <td><?php echo esc_html($o->store_name ?? 'N/A'); ?></td>
-                <td><?php echo $this->fmt($o->total_amount); ?></td>
-                <td><?php echo $this->fmt($o->petsgo_commission); ?></td>
-                <td><span class="petsgo-badge <?php echo esc_attr($o->status); ?>"><?php echo ucfirst(str_replace('_',' ',$o->status)); ?></span></td>
-                <td><?php echo esc_html($o->created_at); ?></td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
+        function pgExportImage(){
+            var el=document.getElementById('pg-dashboard-content');
+            var btns=el.querySelectorAll('.no-print');btns.forEach(function(b){b.style.display='none';});
+            html2canvas(el,{scale:2,useCORS:true,logging:false}).then(function(canvas){
+                btns.forEach(function(b){b.style.display='';});
+                var link=document.createElement('a');
+                link.download='PetsGo_Dashboard_'+new Date().toISOString().slice(0,10)+'.png';
+                link.href=canvas.toDataURL('image/png');
+                link.click();
+            });
+        }
+        </script>
+        <?php endif; ?>
         <?php
     }
 
