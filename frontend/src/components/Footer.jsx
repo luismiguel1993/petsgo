@@ -21,16 +21,16 @@ const Footer = () => {
             </p>
             {/* Social Icons */}
             <div className="flex gap-3">
-              <a href="#" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
+              <a href="https://www.facebook.com/petsgo.cl" target="_blank" rel="noopener noreferrer" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
                 <Facebook size={20} />
               </a>
-              <a href="#" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
+              <a href="https://www.instagram.com/petsgo.cl" target="_blank" rel="noopener noreferrer" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
                 <Instagram size={20} />
               </a>
-              <a href="#" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
+              <a href="https://www.linkedin.com/company/petsgo-cl" target="_blank" rel="noopener noreferrer" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
                 <Linkedin size={20} />
               </a>
-              <a href="#" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
+              <a href="https://x.com/petsgo_cl" target="_blank" rel="noopener noreferrer" className="w-11 h-11 bg-white/10 rounded-lg flex items-center justify-center hover:bg-[#00A8E8] transition-all hover:scale-110">
                 <Twitter size={20} />
               </a>
             </div>
@@ -58,9 +58,9 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/tiendas" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Ofertas
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -72,24 +72,24 @@ const Footer = () => {
             </h4>
             <ul className="space-y-4">
               <li>
-                <a href="#" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Centro de Ayuda
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Política de Envíos
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Términos y Condiciones
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Privacidad
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -106,7 +106,7 @@ const Footer = () => {
               </li>
               <li className="flex items-center gap-3 text-gray-400">
                 <Phone size={18} className="text-[#00A8E8] shrink-0" /> 
-                <span>+56 9 1234 5678</span>
+                <span>+56 2 2345 6789</span>
               </li>
               <li className="flex items-center gap-3 text-gray-400">
                 <MapPin size={18} className="text-[#00A8E8] shrink-0" /> 
@@ -116,7 +116,7 @@ const Footer = () => {
             
             {/* CTA Button */}
             <a 
-              href="https://wa.me/56912345678" 
+              href="https://wa.me/56223456789" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 mt-6 px-6 py-3 bg-[#00A8E8] text-white font-semibold rounded-lg hover:bg-[#FFC400] hover:text-gray-900 transition-all no-underline"
@@ -135,9 +135,9 @@ const Footer = () => {
               © {new Date().getFullYear()} PetsGo Marketplace. Todos los derechos reservados.
             </p>
             <div className="flex items-center gap-6 text-sm">
-              <a href="#" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</a>
+              <Link to="/planes" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</Link>
               <span className="text-gray-600">|</span>
-              <a href="#" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</a>
+              <Link to="/planes" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</Link>
             </div>
           </div>
         </div>

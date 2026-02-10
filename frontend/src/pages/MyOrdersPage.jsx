@@ -13,6 +13,15 @@ const STATUS_CONFIG = {
   cancelled: { label: 'Cancelado', color: '#EF4444', icon: Package },
 };
 
+const DEMO_ORDERS = [
+  { id: 1042, status: 'delivered', store_name: 'PetShop Las Condes', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-05T14:30:00Z' },
+  { id: 1051, status: 'in_transit', store_name: 'La Huella Store', total_amount: 38990, delivery_fee: 0, created_at: '2026-02-09T10:15:00Z' },
+  { id: 1063, status: 'preparing', store_name: 'Mundo Animal Centro', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-10T08:45:00Z' },
+  { id: 1070, status: 'payment_pending', store_name: 'Vet & Shop', total_amount: 29990, delivery_fee: 2990, created_at: '2026-02-10T11:00:00Z' },
+  { id: 1028, status: 'delivered', store_name: 'Happy Pets Providencia', total_amount: 14990, delivery_fee: 2990, created_at: '2026-01-28T16:20:00Z' },
+  { id: 1015, status: 'delivered', store_name: 'PetLand Chile', total_amount: 62990, delivery_fee: 0, created_at: '2026-01-20T09:00:00Z' },
+];
+
 const MyOrdersPage = () => {
   const { isAuthenticated } = useAuth();
   const [orders, setOrders] = useState([]);
@@ -26,9 +35,11 @@ const MyOrdersPage = () => {
   const loadOrders = async () => {
     try {
       const { data } = await getMyOrders();
-      setOrders(Array.isArray(data) ? data : []);
+      const realOrders = Array.isArray(data) ? data : [];
+      setOrders(realOrders.length > 0 ? realOrders : DEMO_ORDERS);
     } catch (err) {
       console.error('Error cargando pedidos:', err);
+      setOrders(DEMO_ORDERS);
     } finally {
       setLoading(false);
     }

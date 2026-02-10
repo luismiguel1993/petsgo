@@ -27,20 +27,23 @@ const HomePage = () => {
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + heroImages.length) % heroImages.length);
 
   const featuredProducts = [
-    { id: 1, name: 'Royal Canin Medium Adult 15kg', brand: 'Royal Canin', price: 52990, originalPrice: 59990, image: 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.8 },
-    { id: 2, name: 'Pro Plan Gato Adulto Pollo 7.5kg', brand: 'Pro Plan', price: 38990, originalPrice: 42990, image: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.7 },
-    { id: 3, name: 'Hills Science Diet Puppy 12kg', brand: 'Hills', price: 48990, originalPrice: null, image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.9 },
-    { id: 4, name: 'Whiskas Adulto Pollo 10kg', brand: 'Whiskas', price: 12990, originalPrice: 15990, image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.5 },
-    { id: 5, name: 'Eukanuba Large Breed Adult', brand: 'Eukanuba', price: 62990, originalPrice: 69990, image: 'https://images.unsplash.com/photo-1623387641168-d9803ddd3f35?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.6 },
+    { id: 1, name: 'Royal Canin Medium Adult 15kg', brand: 'Royal Canin', price: 52990, originalPrice: 59990, image: 'https://images.unsplash.com/photo-1589924749359-6852750f50e8?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.8, description: 'Alimento seco completo para perros adultos de raza mediana (11-25 kg). Con nutrientes que fortalecen las defensas naturales.' },
+    { id: 2, name: 'Pro Plan Gato Adulto Pollo 7.5kg', brand: 'Pro Plan', price: 38990, originalPrice: 42990, image: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.7, description: 'Fórmula avanzada con pollo real como ingrediente principal. Rico en proteínas para gatos adultos activos.' },
+    { id: 3, name: 'Hills Science Diet Puppy 12kg', brand: 'Hills', price: 48990, originalPrice: null, image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.9, description: 'Nutrición clínicamente probada para cachorros en crecimiento. DHA de aceite de pescado para desarrollo cerebral.' },
+    { id: 4, name: 'Whiskas Adulto Pollo 10kg', brand: 'Whiskas', price: 12990, originalPrice: 15990, image: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.5, description: 'Alimento balanceado con sabor a pollo que a los gatos les encanta. Vitaminas y minerales esenciales.' },
+    { id: 5, name: 'Eukanuba Large Breed Adult 15kg', brand: 'Eukanuba', price: 62990, originalPrice: 69990, image: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.6, description: 'Formulado especialmente para razas grandes. Con glucosamina y condroitina para articulaciones saludables.' },
+    { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1567612529009-afe25413fe2f?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
+    { id: 7, name: 'Bravecto Perro 10-20kg', brand: 'Bravecto', price: 29990, originalPrice: 34990, image: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=400&auto=format&fit=crop&q=80', category: 'Farmacia', rating: 4.8, description: 'Antiparasitario oral contra pulgas y garrapatas. Protección de hasta 12 semanas con una sola dosis.' },
+    { id: 8, name: 'Cama Ortopédica Premium L', brand: 'PetsGo Select', price: 45990, originalPrice: 54990, image: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.7, description: 'Cama ortopédica con espuma viscoelástica. Funda lavable antialérgica. Ideal para perros grandes.' },
   ];
 
   const categories = [
-    { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '#' },
-    { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '#' },
-    { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '#' },
-    { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '#' },
-    { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '#' },
-    { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '#' },
+    { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/tiendas' },
+    { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '/tiendas' },
+    { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '/tiendas' },
+    { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/tiendas' },
+    { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/tiendas' },
+    { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/tiendas' },
   ];
 
   const formatPrice = (price) => {
@@ -128,10 +131,10 @@ const HomePage = () => {
               </p>
 
               <div className="hero-btns flex gap-4 justify-center lg:justify-start">
-                <button className="bg-[#FFC400] text-gray-900 font-bold rounded-xl hover:bg-yellow-400 transition-all shadow-lg hover:shadow-xl text-base uppercase tracking-wide inline-flex items-center justify-center gap-2.5 hover:-translate-y-1 hover:scale-105 active:scale-95 duration-300" style={{ padding: '14px 32px' }}>
+                <Link to="/tiendas" className="bg-[#FFC400] text-gray-900 font-bold rounded-xl hover:bg-yellow-400 transition-all shadow-lg hover:shadow-xl text-base uppercase tracking-wide inline-flex items-center justify-center gap-2.5 hover:-translate-y-1 hover:scale-105 active:scale-95 duration-300 no-underline" style={{ padding: '14px 32px' }}>
                   COMPRAR AHORA
                   <ArrowRight size={20} />
-                </button>
+                </Link>
                 <Link
                   to="/tiendas"
                   className="bg-white/15 backdrop-blur-sm text-white font-bold rounded-xl hover:bg-white/25 transition-all no-underline text-base uppercase tracking-wide border-2 border-white/40 inline-flex items-center justify-center hover:-translate-y-1 hover:scale-105 active:scale-95 duration-300" style={{ padding: '14px 32px' }}
@@ -262,16 +265,16 @@ const HomePage = () => {
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {categories.map((cat) => (
-              <a 
+                <Link 
                 key={cat.name} 
-                href={cat.link} 
+                to={cat.link}
                 className="group flex flex-col items-center justify-center p-6 bg-white hover:bg-cyan-50 rounded-3xl transition-all no-underline border border-gray-100 hover:border-cyan-200 hover:shadow-xl"
               >
                 <span className="text-5xl mb-4 group-hover:scale-110 transition-transform">{cat.emoji}</span>
                 <p className="font-bold text-gray-800 group-hover:text-[#00A8E8] text-center mb-1">{cat.name}</p>
                 <p className="text-xs text-gray-400 text-center uppercase tracking-wider">{cat.count}</p>
                 <ChevronRight size={16} className="text-gray-300 group-hover:text-[#00A8E8] mt-2 transition-colors" />
-              </a>
+              </Link>
             ))}
           </div>
         </section>
@@ -308,9 +311,9 @@ const HomePage = () => {
             <p className="font-bold text-gray-400 uppercase tracking-widest text-xs italic mb-3">
               Sugerido para tu mascota 🦴
             </p>
-            <a href="#" className="flex items-center gap-2 text-[#00A8E8] font-bold hover:gap-4 transition-all no-underline uppercase text-sm tracking-wide">
+            <Link to="/tiendas" className="flex items-center gap-2 text-[#00A8E8] font-bold hover:gap-4 transition-all no-underline uppercase text-sm tracking-wide">
               Ver todas <ArrowRight size={18} />
-            </a>
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
@@ -424,9 +427,9 @@ const HomePage = () => {
                 </strong>
               </p>
             </div>
-            <button className="px-10 py-4 bg-white text-[#00A8E8] font-black rounded-xl hover:bg-[#FFC400] hover:text-gray-900 transition-all shadow-lg text-lg uppercase tracking-wide hover:scale-105 active:scale-95 relative z-10">
+            <Link to="/tiendas" className="px-10 py-4 bg-white text-[#00A8E8] font-black rounded-xl hover:bg-[#FFC400] hover:text-gray-900 transition-all shadow-lg text-lg uppercase tracking-wide hover:scale-105 active:scale-95 relative z-10 no-underline inline-block">
               COMPRAR AHORA
-            </button>
+            </Link>
             <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
           </div>
         </section>
@@ -557,16 +560,18 @@ const HomePage = () => {
 
           {(() => {
             const allStores = [
-              { id: 1, name: 'PetShop Centro', products: '120 productos', rating: 4.9, emoji: '🏪' },
-              { id: 2, name: 'La Huella Store', products: '85 productos', rating: 4.8, emoji: '🐾' },
-              { id: 3, name: 'Mundo Animal', products: '95 productos', rating: 4.7, emoji: '🦴' },
-              { id: 4, name: 'Vet & Shop', products: '110 productos', rating: 4.9, emoji: '⚕️' },
-              { id: 5, name: 'Happy Pets', products: '78 productos', rating: 4.6, emoji: '🐶' },
-              { id: 6, name: 'Patitas Felices', products: '65 productos', rating: 4.5, emoji: '🐱' },
-              { id: 7, name: 'Animal House', products: '140 productos', rating: 4.8, emoji: '🏠' },
-              { id: 8, name: 'PetLand Chile', products: '200 productos', rating: 4.9, emoji: '🌟' },
-              { id: 9, name: 'Dr. Mascota', products: '55 productos', rating: 4.7, emoji: '💊' },
-              { id: 10, name: 'Zoo Market', products: '92 productos', rating: 4.6, emoji: '🛒' },
+              { id: 1, name: 'PetShop Las Condes', products: '120 productos', rating: 4.9, emoji: '🏪', img: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=80&auto=format&fit=crop&q=80' },
+              { id: 2, name: 'La Huella Store', products: '85 productos', rating: 4.8, emoji: '🐾', img: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?w=80&auto=format&fit=crop&q=80' },
+              { id: 3, name: 'Mundo Animal Centro', products: '95 productos', rating: 4.7, emoji: '🦴', img: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=80&auto=format&fit=crop&q=80' },
+              { id: 4, name: 'Vet & Shop', products: '110 productos', rating: 4.9, emoji: '⚕️', img: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=80&auto=format&fit=crop&q=80' },
+              { id: 5, name: 'Happy Pets Provi', products: '78 productos', rating: 4.6, emoji: '🐶', img: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=80&auto=format&fit=crop&q=80' },
+              { id: 6, name: 'Patitas Felices', products: '65 productos', rating: 4.5, emoji: '🐱', img: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=80&auto=format&fit=crop&q=80' },
+              { id: 7, name: 'Animal House', products: '140 productos', rating: 4.8, emoji: '🏠', img: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=80&auto=format&fit=crop&q=80' },
+              { id: 8, name: 'PetLand Chile', products: '200 productos', rating: 4.9, emoji: '🌟', img: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=80&auto=format&fit=crop&q=80' },
+              { id: 9, name: 'Dr. Mascota', products: '55 productos', rating: 4.7, emoji: '💊', img: 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?w=80&auto=format&fit=crop&q=80' },
+              { id: 10, name: 'Zoo Market RM', products: '92 productos', rating: 4.6, emoji: '🛒', img: 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?w=80&auto=format&fit=crop&q=80' },
+              { id: 11, name: 'Peluditos Store', products: '73 productos', rating: 4.5, emoji: '🐕', img: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=80&auto=format&fit=crop&q=80' },
+              { id: 12, name: 'MascotaExpress', products: '168 productos', rating: 4.8, emoji: '🚀', img: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=80&auto=format&fit=crop&q=80' },
             ];
             // Duplicar para efecto infinito
             const doubled = [...allStores, ...allStores];
@@ -575,7 +580,9 @@ const HomePage = () => {
                 <div className="stores-track">
                   {doubled.map((store, i) => (
                     <Link key={`${store.id}-${i}`} to="/tiendas" className="store-card">
-                      <div className="store-icon">{store.emoji}</div>
+                      <div className="store-icon" style={store.img ? { background: '#fff', padding: '4px' } : {}}>
+                        {store.img ? <img src={store.img} alt={store.name} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '16px' }} /> : store.emoji}
+                      </div>
                       <div className="store-name">{store.name}</div>
                       <div className="store-products">{store.products}</div>
                       <div className="store-rating">
@@ -641,14 +648,14 @@ const HomePage = () => {
 
           {(() => {
             const brands = [
-              { name: 'Royal Canin', color: '#E2001A', bg: '#FFF5F5' },
-              { name: "Hill's", color: '#003DA5', bg: '#F0F4FF' },
-              { name: 'Pro Plan', color: '#E31837', bg: '#FFF5F7' },
-              { name: 'Bravecto', color: '#FF6B00', bg: '#FFF7F0' },
-              { name: 'Eukanuba', color: '#1B3C71', bg: '#F0F3F9' },
-              { name: 'Pedigree', color: '#FFD100', bg: '#FFFCF0' },
-              { name: 'Whiskas', color: '#6B2D8B', bg: '#F8F0FF' },
-              { name: 'Purina', color: '#E31837', bg: '#FFF5F7' },
+              { name: 'Royal Canin', color: '#E2001A', bg: '#FFF5F5', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Royal_Canin_logo.svg/200px-Royal_Canin_logo.svg.png' },
+              { name: "Hill's", color: '#003DA5', bg: '#F0F4FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Hill%27s_Pet_Nutrition_logo.svg/200px-Hill%27s_Pet_Nutrition_logo.svg.png' },
+              { name: 'Pro Plan', color: '#E31837', bg: '#FFF5F7', logo: null },
+              { name: 'Bravecto', color: '#FF6B00', bg: '#FFF7F0', logo: null },
+              { name: 'Eukanuba', color: '#1B3C71', bg: '#F0F3F9', logo: null },
+              { name: 'Pedigree', color: '#FFD100', bg: '#FFFCF0', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Pedigree_logo.svg/200px-Pedigree_logo.svg.png' },
+              { name: 'Whiskas', color: '#6B2D8B', bg: '#F8F0FF', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Whiskas_logo.svg/200px-Whiskas_logo.svg.png' },
+              { name: 'Purina', color: '#E31837', bg: '#FFF5F7', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/Purina_logo.svg/200px-Purina_logo.svg.png' },
             ];
             const doubled = [...brands, ...brands];
             return (
@@ -657,9 +664,13 @@ const HomePage = () => {
                   <div key={`${brand.name}-${i}`} className="brand-item" title={brand.name}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: brand.bg, borderRadius: '16px', padding: '16px 32px', minWidth: '180px' }}
                   >
+                    {brand.logo ? (
+                      <img src={brand.logo} alt={brand.name} style={{ height: '36px', maxWidth: '130px', objectFit: 'contain' }} onError={(e) => { e.target.style.display='none'; e.target.nextSibling.style.display='block'; }} />
+                    ) : null}
                     <span style={{
                       fontSize: '22px', fontWeight: 900, color: brand.color,
                       whiteSpace: 'nowrap', letterSpacing: '-0.5px', fontFamily: 'Poppins, sans-serif',
+                      display: brand.logo ? 'none' : 'block',
                     }}>
                       {brand.name}
                     </span>

@@ -354,14 +354,48 @@ const BotChatOverlay = () => {
 
   const handleSend = () => {
     if (!inputValue.trim()) return;
+    const userMsg = inputValue.toLowerCase();
     setMessages((prev) => [...prev, { id: Date.now(), type: 'user', text: inputValue }]);
     setInputValue('');
+
+    // Respuestas inteligentes basadas en keywords
+    let botResponse = '';
+    if (userMsg.includes('alimento') || userMsg.includes('comida') || userMsg.includes('comer')) {
+      botResponse = '¡Tenemos excelentes opciones! Te recomiendo Royal Canin o Pro Plan según la raza y edad de tu mascota. Ambos tienen 20% de descuento esta semana 🦴';
+    } else if (userMsg.includes('perro') || userMsg.includes('cachorro')) {
+      botResponse = '🐕 Para perros tenemos alimento seco y húmedo, snacks dentales, collares LED, camas ortopédicas y antiparasitarios. ¿Qué necesita tu peludo?';
+    } else if (userMsg.includes('gato') || userMsg.includes('gatito') || userMsg.includes('felino')) {
+      botResponse = '🐱 Para gatos recomendamos Pro Plan o Whiskas. También tenemos areneros, rascadores y juguetes interactivos. ¿Qué buscas?';
+    } else if (userMsg.includes('envío') || userMsg.includes('envio') || userMsg.includes('despacho') || userMsg.includes('delivery')) {
+      botResponse = '🚚 ¡Envío gratis desde $39.990! Despacho express en pocas horas dentro de Santiago RM. Tu primer pedido tiene delivery gratuito 🎉';
+    } else if (userMsg.includes('precio') || userMsg.includes('descuento') || userMsg.includes('oferta') || userMsg.includes('barato')) {
+      botResponse = '💰 ¡Tenemos ofertas increíbles! Usa el código BIENVENIDO15 para 15% de descuento en tu primera compra. ¿Te muestro los productos en oferta?';
+    } else if (userMsg.includes('tienda') || userMsg.includes('store')) {
+      botResponse = '🏪 Contamos con +8 tiendas verificadas en la RM: PetShop Las Condes, La Huella Store, Vet & Shop y más. ¿Quieres que te recomiende una cerca de ti?';
+    } else if (userMsg.includes('pago') || userMsg.includes('tarjeta') || userMsg.includes('transferencia')) {
+      botResponse = '💳 Aceptamos tarjetas de débito/crédito, transferencia bancaria y pago contra entrega. ¡Todas las transacciones son 100% seguras! 🔒';
+    } else if (userMsg.includes('hola') || userMsg.includes('buenas') || userMsg.includes('hey')) {
+      botResponse = '¡Hola! 👋 Bienvenido a PetsGo. Puedo ayudarte a encontrar el mejor alimento, accesorios o resolver dudas sobre envíos. ¿Qué necesitas?';
+    } else if (userMsg.includes('gracias') || userMsg.includes('thanks')) {
+      botResponse = '¡De nada! 🐾 Estoy aquí cuando me necesites. ¡Que tu mascota disfrute sus productos! 💛';
+    } else if (userMsg.includes('horario') || userMsg.includes('hora') || userMsg.includes('abierto')) {
+      botResponse = '🕐 Nuestras tiendas despachan de lunes a sábado 9:00-20:00. Los pedidos online se procesan 24/7. ¡Siempre estamos disponibles!';
+    } else {
+      const generalResponses = [
+        'Tengo excelentes opciones de alimento premium con 20% de descuento. ¿Te gustaría verlas? 🦴',
+        '¿Sabías que tu primera compra tiene envío gratis? Usa el código BIENVENIDO15 para 15% extra 🎉',
+        'Te recomiendo visitar nuestra sección de tiendas para encontrar la más cercana a ti 🏪',
+        '¿Tu mascota es perro o gato? Así puedo darte recomendaciones más precisas 🐾',
+        'Nuestras marcas top son Royal Canin, Pro Plan, Hills y Bravecto. ¿Cuál te interesa? ⭐',
+      ];
+      botResponse = generalResponses[Math.floor(Math.random() * generalResponses.length)];
+    }
+
     setTimeout(() => {
       setMessages((prev) => [...prev, {
-        id: Date.now() + 1, type: 'bot',
-        text: 'Tengo excelentes opciones de alimento premium con 20% de descuento. ¿Te gustaría verlas? 🦴',
+        id: Date.now() + 1, type: 'bot', text: botResponse,
       }]);
-    }, 1000);
+    }, 800 + Math.random() * 700);
   };
 
   return (

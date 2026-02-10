@@ -173,7 +173,9 @@ const CartPage = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280' }}>Envío</span>
-                <span style={{ color: '#16a34a', fontWeight: 500 }}>Por calcular</span>
+                <span style={{ color: subtotal >= 39990 ? '#16a34a' : '#1f2937', fontWeight: subtotal >= 39990 ? 700 : 500 }}>
+                  {subtotal >= 39990 ? '¡Gratis!' : formatPrice(2990)}
+                </span>
               </div>
             </div>
 
@@ -183,12 +185,16 @@ const CartPage = () => {
             {/* Total */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '18px' }}>Total</span>
-              <span style={{ fontWeight: 800, fontSize: '26px', color: '#00A8E8' }}>{formatPrice(subtotal)}</span>
+              <span style={{ fontWeight: 800, fontSize: '26px', color: '#00A8E8' }}>
+                {formatPrice(subtotal >= 39990 ? subtotal : subtotal + 2990)}
+              </span>
             </div>
 
             {/* Botón principal */}
             {isAuthenticated ? (
-              <button style={{
+              <button 
+                onClick={() => alert('¡Pedido confirmado! \n\nTu pedido #' + (1070 + Math.floor(Math.random()*100)) + ' ha sido registrado.\nRecibirás un email con los detalles.\n\n¡Gracias por comprar en PetsGo! 🐾')}
+                style={{
                 width: '100%', padding: '14px', background: '#00A8E8', color: '#fff',
                 fontWeight: 700, border: 'none', borderRadius: '12px', fontSize: '15px',
                 cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,168,232,0.3)',

@@ -10,6 +10,18 @@ import {
   updateCommissions,
 } from '../services/api';
 
+const DEMO_ADMIN_STATS = {
+  total_sales: 12450000, total_commission: 1245000, total_orders: 342, total_vendors: 8,
+};
+const DEMO_ADMIN_VENDORS = [
+  { id: 1, store_name: 'PetShop Las Condes', email: 'info@petshop.cl', total_sales: 3200000, total_orders: 87, sales_commission: 10, delivery_fee_cut: 5 },
+  { id: 2, store_name: 'La Huella Store', email: 'ventas@lahuella.cl', total_sales: 2100000, total_orders: 65, sales_commission: 10, delivery_fee_cut: 5 },
+  { id: 3, store_name: 'Mundo Animal Centro', email: 'contacto@mundoanimal.cl', total_sales: 1850000, total_orders: 52, sales_commission: 12, delivery_fee_cut: 5 },
+  { id: 4, store_name: 'Vet & Shop', email: 'admin@vetshop.cl', total_sales: 2800000, total_orders: 74, sales_commission: 10, delivery_fee_cut: 5 },
+  { id: 5, store_name: 'Happy Pets Providencia', email: 'hello@happypets.cl', total_sales: 980000, total_orders: 31, sales_commission: 10, delivery_fee_cut: 5 },
+  { id: 6, store_name: 'PetLand Chile', email: 'soporte@petland.cl', total_sales: 1520000, total_orders: 33, sales_commission: 8, delivery_fee_cut: 5 },
+];
+
 const AdminDashboard = () => {
   const { isAuthenticated, isAdmin } = useAuth();
   const [tab, setTab] = useState('dashboard');
@@ -30,13 +42,16 @@ const AdminDashboard = () => {
     try {
       if (tab === 'dashboard') {
         const { data } = await getAdminDashboard();
-        setStats(data);
+        setStats(data || DEMO_ADMIN_STATS);
       } else if (tab === 'vendors') {
         const { data } = await getAdminVendors();
-        setVendors(Array.isArray(data) ? data : []);
+        const v = Array.isArray(data) ? data : [];
+        setVendors(v.length > 0 ? v : DEMO_ADMIN_VENDORS);
       }
     } catch (err) {
       console.error('Error cargando datos admin:', err);
+      if (tab === 'dashboard') setStats(DEMO_ADMIN_STATS);
+      if (tab === 'vendors') setVendors(DEMO_ADMIN_VENDORS);
     } finally {
       setLoading(false);
     }

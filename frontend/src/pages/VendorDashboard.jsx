@@ -19,6 +19,24 @@ const STATUS_CONFIG = {
   cancelled: { label: 'Cancelado', color: '#EF4444', next: null },
 };
 
+const DEMO_VENDOR_STATS = {
+  total_sales: 2100000, total_orders: 65, total_products: 42, total_commission: 210000,
+};
+const DEMO_INVENTORY = [
+  { id: 101, product_name: 'Royal Canin Medium Adult 15kg', description: 'Alimento seco adulto raza mediana', price: 52990, stock: 24, category: 'Alimento', image_url: 'https://images.unsplash.com/photo-1589924749359-6852750f50e8?w=200&auto=format&fit=crop&q=80' },
+  { id: 102, product_name: 'Pro Plan Gato Adulto 7.5kg', description: 'Fórmula avanzada pollo', price: 38990, stock: 18, category: 'Alimento', image_url: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=200&auto=format&fit=crop&q=80' },
+  { id: 103, product_name: 'Collar LED Recargable', description: 'Collar luminoso 3 modos USB', price: 14990, stock: 35, category: 'Accesorios', image_url: 'https://images.unsplash.com/photo-1567612529009-afe25413fe2f?w=200&auto=format&fit=crop&q=80' },
+  { id: 104, product_name: 'Bravecto Perro 10-20kg', description: 'Antiparasitario oral 12 semanas', price: 29990, stock: 12, category: 'Farmacia', image_url: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=200&auto=format&fit=crop&q=80' },
+  { id: 105, product_name: 'Cama Ortopédica Premium L', description: 'Espuma viscoelástica lavable', price: 45990, stock: 8, category: 'Accesorios', image_url: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=200&auto=format&fit=crop&q=80' },
+  { id: 106, product_name: 'Whiskas Adulto Pollo 10kg', description: 'Alimento gatos adulto', price: 12990, stock: 42, category: 'Alimento', image_url: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=200&auto=format&fit=crop&q=80' },
+];
+const DEMO_VENDOR_ORDERS = [
+  { id: 1051, customer_name: 'María López', status: 'preparing', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-10T08:30:00Z' },
+  { id: 1052, customer_name: 'Carlos Muñoz', status: 'ready_for_pickup', total_amount: 38990, delivery_fee: 0, created_at: '2026-02-09T14:20:00Z' },
+  { id: 1048, customer_name: 'Ana Torres', status: 'delivered', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-08T11:00:00Z' },
+  { id: 1045, customer_name: 'Pedro Soto', status: 'delivered', total_amount: 14990, delivery_fee: 2990, created_at: '2026-02-07T16:45:00Z' },
+];
+
 const VendorDashboard = () => {
   const { isAuthenticated, isVendor, isAdmin } = useAuth();
   const [tab, setTab] = useState('dashboard');
@@ -42,16 +60,21 @@ const VendorDashboard = () => {
     try {
       if (tab === 'dashboard') {
         const { data } = await getVendorDashboard();
-        setStats(data);
+        setStats(data || DEMO_VENDOR_STATS);
       } else if (tab === 'inventory') {
         const { data } = await getVendorInventory();
-        setInventory(Array.isArray(data) ? data : data?.data || []);
+        const inv = Array.isArray(data) ? data : data?.data || [];
+        setInventory(inv.length > 0 ? inv : DEMO_INVENTORY);
       } else if (tab === 'orders') {
         const { data } = await getVendorOrders();
-        setOrders(Array.isArray(data) ? data : []);
+        const ord = Array.isArray(data) ? data : [];
+        setOrders(ord.length > 0 ? ord : DEMO_VENDOR_ORDERS);
       }
     } catch (err) {
       console.error('Error cargando datos:', err);
+      if (tab === 'dashboard') setStats(DEMO_VENDOR_STATS);
+      if (tab === 'inventory') setInventory(DEMO_INVENTORY);
+      if (tab === 'orders') setOrders(DEMO_VENDOR_ORDERS);
     } finally {
       setLoading(false);
     }

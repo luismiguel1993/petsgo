@@ -4,10 +4,14 @@ import { Store, MapPin, Star, Clock } from 'lucide-react';
 import { getVendors } from '../services/api';
 
 const DEMO_VENDORS = [
-  { id: 1, store_name: 'PetShop Las Condes', address: 'Av. Las Condes 1234', rating: 4.8, time: '15-25 min', img: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=600' },
-  { id: 2, store_name: 'Mundo Animal Centro', address: 'Calle Morandé 567', rating: 4.5, time: '20-30 min', img: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?auto=format&fit=crop&q=80&w=600' },
-  { id: 3, store_name: 'La Huella Store', address: 'Av. Providencia 890', rating: 4.9, time: '10-20 min', img: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&q=80&w=600' },
-  { id: 4, store_name: 'Patitas Chile', address: 'Calle Merced 910', rating: 4.7, time: '30-45 min', img: 'https://images.unsplash.com/photo-1585584114963-503344a119b0?auto=format&fit=crop&q=80&w=600' },
+  { id: 1, store_name: 'PetShop Las Condes', address: 'Av. Las Condes 1234, Las Condes', rating: 4.8, time: '15-25 min', img: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=600' },
+  { id: 2, store_name: 'Mundo Animal Centro', address: 'Calle Morandé 567, Santiago Centro', rating: 4.5, time: '20-30 min', img: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?auto=format&fit=crop&q=80&w=600' },
+  { id: 3, store_name: 'La Huella Store', address: 'Av. Providencia 890, Providencia', rating: 4.9, time: '10-20 min', img: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&q=80&w=600' },
+  { id: 4, store_name: 'Patitas Chile', address: 'Calle Merced 910, Santiago Centro', rating: 4.7, time: '30-45 min', img: 'https://images.unsplash.com/photo-1585584114963-503344a119b0?auto=format&fit=crop&q=80&w=600' },
+  { id: 5, store_name: 'Happy Pets Providencia', address: 'Av. Irarrázaval 2030, Ñuñoa', rating: 4.6, time: '20-35 min', img: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=600' },
+  { id: 6, store_name: 'Vet & Shop', address: 'Av. Vitacura 4520, Vitacura', rating: 4.9, time: '15-25 min', img: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=600' },
+  { id: 7, store_name: 'PetLand Chile', address: 'Av. Apoquindo 6400, Las Condes', rating: 4.8, time: '25-40 min', img: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&q=80&w=600' },
+  { id: 8, store_name: 'MascotaExpress', address: 'Av. Matta 1250, San Joaquín', rating: 4.4, time: '30-50 min', img: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&q=80&w=600' },
 ];
 
 const VendorsPage = () => {

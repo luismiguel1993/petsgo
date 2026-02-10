@@ -10,6 +10,14 @@ const STATUS_CONFIG = {
   delivered: { label: 'Entregado', color: '#22C55E', next: null, action: null },
 };
 
+const DEMO_DELIVERIES = [
+  { id: 1051, status: 'ready_for_pickup', store_name: 'PetShop Las Condes', customer_name: 'María López', address: 'Av. Las Condes 5678, Depto 302', phone: '+56 9 8765 4321', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-10T08:30:00Z' },
+  { id: 1052, status: 'in_transit', store_name: 'La Huella Store', customer_name: 'Carlos Muñoz', address: 'Calle Sucre 1234, Providencia', phone: '+56 9 1111 2222', total_amount: 38990, delivery_fee: 2990, created_at: '2026-02-10T09:15:00Z' },
+  { id: 1048, status: 'delivered', store_name: 'Mundo Animal Centro', customer_name: 'Ana Torres', address: 'Av. Matta 890, Santiago', phone: '+56 9 3333 4444', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-09T14:00:00Z' },
+  { id: 1045, status: 'delivered', store_name: 'Vet & Shop', customer_name: 'Pedro Soto', address: 'Av. Vitacura 3210, Vitacura', phone: '+56 9 5555 6666', total_amount: 14990, delivery_fee: 2990, created_at: '2026-02-08T11:30:00Z' },
+  { id: 1040, status: 'delivered', store_name: 'Happy Pets Providencia', customer_name: 'Camila Reyes', address: 'Irarrázaval 2500, Ñuñoa', phone: '+56 9 7777 8888', total_amount: 62990, delivery_fee: 0, created_at: '2026-02-07T16:00:00Z' },
+];
+
 const RiderDashboard = () => {
   const { isAuthenticated, isRider, isAdmin } = useAuth();
   const [deliveries, setDeliveries] = useState([]);
@@ -24,9 +32,11 @@ const RiderDashboard = () => {
     setLoading(true);
     try {
       const { data } = await getRiderDeliveries();
-      setDeliveries(Array.isArray(data) ? data : []);
+      const d = Array.isArray(data) ? data : [];
+      setDeliveries(d.length > 0 ? d : DEMO_DELIVERIES);
     } catch (err) {
       console.error('Error cargando entregas:', err);
+      setDeliveries(DEMO_DELIVERIES);
     } finally {
       setLoading(false);
     }

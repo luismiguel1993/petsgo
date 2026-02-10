@@ -136,7 +136,7 @@ const VendorDetailPage = () => {
               background: 'rgba(255,255,255,0.2)', borderRadius: '10px', padding: '8px 14px', flexShrink: 0,
             }}>
               <Star size={16} fill="#FFC400" color="#FFC400" />
-              <span style={{ fontWeight: 700, fontSize: '16px' }}>4.8</span>
+              <span style={{ fontWeight: 700, fontSize: '16px' }}>{vendor.rating || '4.8'}</span>
             </div>
           </div>
         </div>
