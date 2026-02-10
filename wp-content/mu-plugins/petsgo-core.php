@@ -33,8 +33,332 @@ class PetsGo_Core {
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
-        // Hook de activación para crear tablas se debe ejecutar manualmente o al activar un plugin normal
-        // En mu-plugins, corre directo. Verifica existencia de tablas aquí o usa un script de instalación.
+        add_action('admin_menu', [$this, 'register_admin_menus']);
+        add_action('admin_enqueue_scripts', [$this, 'admin_styles']);
+    }
+
+    /* ===================================================
+       MENÚS DE ADMINISTRACIÓN
+    =================================================== */
+    public function register_admin_menus() {
+        // Menú principal PetsGo
+        add_menu_page(
+            'PetsGo Marketplace',
+            'PetsGo',
+            'manage_options',
+            'petsgo-dashboard',
+            [$this, 'admin_page_dashboard'],
+            'dashicons-store',
+            3
+        );
+
+        add_submenu_page('petsgo-dashboard', 'Dashboard', 'Dashboard', 'manage_options', 'petsgo-dashboard', [$this, 'admin_page_dashboard']);
+        add_submenu_page('petsgo-dashboard', 'Productos', 'Productos', 'manage_options', 'petsgo-products', [$this, 'admin_page_products']);
+        add_submenu_page('petsgo-dashboard', 'Tiendas / Vendors', 'Tiendas', 'manage_options', 'petsgo-vendors', [$this, 'admin_page_vendors']);
+        add_submenu_page('petsgo-dashboard', 'Pedidos', 'Pedidos', 'manage_options', 'petsgo-orders', [$this, 'admin_page_orders']);
+        add_submenu_page('petsgo-dashboard', 'Planes', 'Planes', 'manage_options', 'petsgo-plans', [$this, 'admin_page_plans']);
+    }
+
+    public function admin_styles($hook) {
+        if (strpos($hook, 'petsgo') === false) return;
+        echo '<style>
+            .petsgo-wrap { max-width: 1200px; }
+            .petsgo-wrap h1 { color: #00A8E8; }
+            .petsgo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 20px 0; }
+            .petsgo-card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; }
+            .petsgo-card h2 { font-size: 32px; margin: 0; color: #00A8E8; }
+            .petsgo-card p { color: #666; margin: 8px 0 0; }
+            .petsgo-table { border-collapse: collapse; width: 100%; background: #fff; }
+            .petsgo-table th { background: #00A8E8; color: #fff; padding: 10px 14px; text-align: left; }
+            .petsgo-table td { padding: 10px 14px; border-bottom: 1px solid #eee; }
+            .petsgo-table tr:hover td { background: #f0faff; }
+            .petsgo-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+            .petsgo-badge.active, .petsgo-badge.delivered { background: #d4edda; color: #155724; }
+            .petsgo-badge.pending { background: #fff3cd; color: #856404; }
+            .petsgo-badge.processing, .petsgo-badge.in_transit { background: #cce5ff; color: #004085; }
+            .petsgo-badge.cancelled { background: #f8d7da; color: #721c24; }
+            .petsgo-badge.inactive { background: #e2e3e5; color: #383d41; }
+        </style>';
+    }
+
+    /* --- DASHBOARD --- */
+    public function admin_page_dashboard() {
+        global $wpdb;
+        $products  = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory");
+        $vendors   = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors");
+        $orders    = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders");
+        $revenue   = $wpdb->get_var("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'");
+        $commissions = $wpdb->get_var("SELECT COALESCE(SUM(petsgo_commission),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'");
+        $users     = $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🐾 PetsGo Marketplace — Dashboard</h1>
+            <div class="petsgo-cards">
+                <div class="petsgo-card"><h2><?php echo $products; ?></h2><p>Productos</p></div>
+                <div class="petsgo-card"><h2><?php echo $vendors; ?></h2><p>Tiendas</p></div>
+                <div class="petsgo-card"><h2><?php echo $orders; ?></h2><p>Pedidos</p></div>
+                <div class="petsgo-card"><h2><?php echo $users; ?></h2><p>Usuarios</p></div>
+                <div class="petsgo-card"><h2>$<?php echo number_format($revenue, 0, ',', '.'); ?></h2><p>Ventas Totales</p></div>
+                <div class="petsgo-card"><h2>$<?php echo number_format($commissions, 0, ',', '.'); ?></h2><p>Comisiones PetsGo</p></div>
+            </div>
+            <h3>Últimos Pedidos</h3>
+            <?php
+            $recent = $wpdb->get_results("SELECT o.*, v.store_name, u.display_name AS customer_name FROM {$wpdb->prefix}petsgo_orders o 
+                LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+                LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID
+                ORDER BY o.created_at DESC LIMIT 10");
+            if ($recent): ?>
+            <table class="petsgo-table">
+                <thead><tr><th>#</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Comisión</th><th>Estado</th><th>Fecha</th></tr></thead>
+                <tbody>
+                <?php foreach ($recent as $o): ?>
+                <tr>
+                    <td><?php echo $o->id; ?></td>
+                    <td><?php echo esc_html($o->customer_name ?? 'N/A'); ?></td>
+                    <td><?php echo esc_html($o->store_name ?? 'N/A'); ?></td>
+                    <td>$<?php echo number_format($o->total_amount, 0, ',', '.'); ?></td>
+                    <td>$<?php echo number_format($o->petsgo_commission, 0, ',', '.'); ?></td>
+                    <td><span class="petsgo-badge <?php echo esc_attr($o->status); ?>"><?php echo esc_html(ucfirst($o->status)); ?></span></td>
+                    <td><?php echo esc_html($o->created_at); ?></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            <?php else: echo '<p>No hay pedidos aún.</p>'; endif; ?>
+        </div>
+        <?php
+    }
+
+    /* --- PRODUCTOS --- */
+    public function admin_page_products() {
+        global $wpdb;
+        
+        // Manejar acciones (eliminar, editar)
+        if (isset($_POST['petsgo_add_product']) && wp_verify_nonce($_POST['_wpnonce'], 'petsgo_product')) {
+            $wpdb->insert("{$wpdb->prefix}petsgo_inventory", [
+                'vendor_id'    => intval($_POST['vendor_id']),
+                'product_name' => sanitize_text_field($_POST['product_name']),
+                'price'        => floatval($_POST['price']),
+                'stock'        => intval($_POST['stock']),
+                'category'     => sanitize_text_field($_POST['category']),
+            ]);
+            echo '<div class="notice notice-success"><p>Producto agregado correctamente.</p></div>';
+        }
+        if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['product_id'])) {
+            $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => intval($_GET['product_id'])]);
+            echo '<div class="notice notice-warning"><p>Producto eliminado.</p></div>';
+        }
+
+        $products = $wpdb->get_results("SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id = v.id ORDER BY i.id DESC");
+        $vendors = $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name");
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🛒 Productos (<?php echo count($products); ?>)</h1>
+            
+            <details style="margin:16px 0; background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px;">
+                <summary style="cursor:pointer; font-weight:600; font-size:14px;">➕ Agregar Nuevo Producto</summary>
+                <form method="post" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+                    <?php wp_nonce_field('petsgo_product'); ?>
+                    <label>Nombre: <input type="text" name="product_name" required style="width:100%;"></label>
+                    <label>Precio: <input type="number" name="price" step="0.01" required style="width:100%;"></label>
+                    <label>Stock: <input type="number" name="stock" required style="width:100%;"></label>
+                    <label>Categoría: 
+                        <select name="category" style="width:100%;">
+                            <option>Alimento</option><option>Juguetes</option><option>Salud</option>
+                            <option>Accesorios</option><option>Higiene</option><option>Ropa</option>
+                        </select>
+                    </label>
+                    <label>Tienda:
+                        <select name="vendor_id" style="width:100%;">
+                            <?php foreach ($vendors as $v): ?>
+                            <option value="<?php echo $v->id; ?>"><?php echo esc_html($v->store_name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                    <div><button type="submit" name="petsgo_add_product" class="button button-primary" style="margin-top:20px;">Guardar Producto</button></div>
+                </form>
+            </details>
+            
+            <table class="petsgo-table">
+                <thead><tr><th>ID</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><th>Tienda</th><th>Acciones</th></tr></thead>
+                <tbody>
+                <?php foreach ($products as $p): ?>
+                <tr>
+                    <td><?php echo $p->id; ?></td>
+                    <td><strong><?php echo esc_html($p->product_name); ?></strong></td>
+                    <td>$<?php echo number_format($p->price, 0, ',', '.'); ?></td>
+                    <td><?php echo $p->stock; ?></td>
+                    <td><?php echo esc_html($p->category); ?></td>
+                    <td><?php echo esc_html($p->store_name ?? '—'); ?></td>
+                    <td><a href="<?php echo admin_url('admin.php?page=petsgo-products&action=delete&product_id=' . $p->id); ?>" onclick="return confirm('¿Eliminar este producto?')" style="color:#dc3545;">Eliminar</a></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    /* --- TIENDAS / VENDORS --- */
+    public function admin_page_vendors() {
+        global $wpdb;
+        
+        if (isset($_POST['petsgo_add_vendor']) && wp_verify_nonce($_POST['_wpnonce'], 'petsgo_vendor')) {
+            $wpdb->insert("{$wpdb->prefix}petsgo_vendors", [
+                'store_name'       => sanitize_text_field($_POST['store_name']),
+                'owner_name'       => sanitize_text_field($_POST['owner_name']),
+                'email'            => sanitize_email($_POST['email']),
+                'phone'            => sanitize_text_field($_POST['phone']),
+                'address'          => sanitize_text_field($_POST['address']),
+                'city'             => sanitize_text_field($_POST['city']),
+                'sales_commission' => floatval($_POST['commission']),
+                'status'           => 'active',
+            ]);
+            echo '<div class="notice notice-success"><p>Tienda registrada correctamente.</p></div>';
+        }
+
+        $vendors = $wpdb->get_results("SELECT v.*, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id = v.id) AS total_products, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id = v.id) AS total_orders FROM {$wpdb->prefix}petsgo_vendors v ORDER BY v.id DESC");
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🏪 Tiendas / Vendors (<?php echo count($vendors); ?>)</h1>
+            
+            <details style="margin:16px 0; background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px;">
+                <summary style="cursor:pointer; font-weight:600; font-size:14px;">➕ Registrar Nueva Tienda</summary>
+                <form method="post" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+                    <?php wp_nonce_field('petsgo_vendor'); ?>
+                    <label>Nombre tienda: <input type="text" name="store_name" required style="width:100%;"></label>
+                    <label>Propietario: <input type="text" name="owner_name" required style="width:100%;"></label>
+                    <label>Email: <input type="email" name="email" required style="width:100%;"></label>
+                    <label>Teléfono: <input type="text" name="phone" style="width:100%;"></label>
+                    <label>Dirección: <input type="text" name="address" style="width:100%;"></label>
+                    <label>Ciudad: <input type="text" name="city" style="width:100%;"></label>
+                    <label>Comisión (%): <input type="number" name="commission" value="8" step="0.1" style="width:100%;"></label>
+                    <div><button type="submit" name="petsgo_add_vendor" class="button button-primary" style="margin-top:20px;">Registrar Tienda</button></div>
+                </form>
+            </details>
+
+            <table class="petsgo-table">
+                <thead><tr><th>ID</th><th>Tienda</th><th>Propietario</th><th>Ciudad</th><th>Comisión</th><th>Productos</th><th>Pedidos</th><th>Estado</th></tr></thead>
+                <tbody>
+                <?php foreach ($vendors as $v): ?>
+                <tr>
+                    <td><?php echo $v->id; ?></td>
+                    <td><strong><?php echo esc_html($v->store_name); ?></strong></td>
+                    <td><?php echo esc_html($v->owner_name); ?></td>
+                    <td><?php echo esc_html($v->city); ?></td>
+                    <td><?php echo $v->sales_commission; ?>%</td>
+                    <td><?php echo $v->total_products; ?></td>
+                    <td><?php echo $v->total_orders; ?></td>
+                    <td><span class="petsgo-badge <?php echo esc_attr($v->status); ?>"><?php echo ucfirst($v->status); ?></span></td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    /* --- PEDIDOS --- */
+    public function admin_page_orders() {
+        global $wpdb;
+        
+        // Cambiar estado
+        if (isset($_POST['petsgo_update_status']) && wp_verify_nonce($_POST['_wpnonce'], 'petsgo_order_status')) {
+            $wpdb->update(
+                "{$wpdb->prefix}petsgo_orders",
+                ['status' => sanitize_text_field($_POST['new_status'])],
+                ['id' => intval($_POST['order_id'])]
+            );
+            echo '<div class="notice notice-success"><p>Estado del pedido actualizado.</p></div>';
+        }
+
+        $orders = $wpdb->get_results("SELECT o.*, v.store_name, u.display_name AS customer_name FROM {$wpdb->prefix}petsgo_orders o 
+            LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+            LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID
+            ORDER BY o.created_at DESC");
+        $statuses = ['pending', 'processing', 'in_transit', 'delivered', 'cancelled'];
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📦 Pedidos (<?php echo count($orders); ?>)</h1>
+            <table class="petsgo-table">
+                <thead><tr><th>#</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Comisión</th><th>Delivery</th><th>Estado</th><th>Fecha</th><th>Cambiar Estado</th></tr></thead>
+                <tbody>
+                <?php foreach ($orders as $o): ?>
+                <tr>
+                    <td><?php echo $o->id; ?></td>
+                    <td><?php echo esc_html($o->customer_name ?? 'N/A'); ?></td>
+                    <td><?php echo esc_html($o->store_name ?? 'N/A'); ?></td>
+                    <td>$<?php echo number_format($o->total_amount, 0, ',', '.'); ?></td>
+                    <td>$<?php echo number_format($o->petsgo_commission, 0, ',', '.'); ?></td>
+                    <td>$<?php echo number_format($o->delivery_fee, 0, ',', '.'); ?></td>
+                    <td><span class="petsgo-badge <?php echo esc_attr($o->status); ?>"><?php echo ucfirst(str_replace('_',' ',$o->status)); ?></span></td>
+                    <td><?php echo esc_html($o->created_at); ?></td>
+                    <td>
+                        <form method="post" style="display:flex;gap:4px;">
+                            <?php wp_nonce_field('petsgo_order_status'); ?>
+                            <input type="hidden" name="order_id" value="<?php echo $o->id; ?>">
+                            <select name="new_status" style="font-size:12px;">
+                                <?php foreach ($statuses as $s): ?>
+                                <option value="<?php echo $s; ?>" <?php selected($o->status, $s); ?>><?php echo ucfirst(str_replace('_',' ',$s)); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" name="petsgo_update_status" class="button button-small">✓</button>
+                        </form>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php
+    }
+
+    /* --- PLANES --- */
+    public function admin_page_plans() {
+        global $wpdb;
+        
+        if (isset($_POST['petsgo_add_plan']) && wp_verify_nonce($_POST['_wpnonce'], 'petsgo_plan')) {
+            $wpdb->insert("{$wpdb->prefix}petsgo_subscriptions", [
+                'plan_name'     => sanitize_text_field($_POST['plan_name']),
+                'monthly_price' => floatval($_POST['monthly_price']),
+                'features'      => sanitize_textarea_field($_POST['features']),
+            ]);
+            echo '<div class="notice notice-success"><p>Plan agregado correctamente.</p></div>';
+        }
+
+        $plans = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions ORDER BY monthly_price ASC");
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📋 Planes de Suscripción (<?php echo count($plans); ?>)</h1>
+            
+            <details style="margin:16px 0; background:#fff; border:1px solid #ddd; border-radius:8px; padding:16px;">
+                <summary style="cursor:pointer; font-weight:600; font-size:14px;">➕ Agregar Nuevo Plan</summary>
+                <form method="post" style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;">
+                    <?php wp_nonce_field('petsgo_plan'); ?>
+                    <label>Nombre del plan: <input type="text" name="plan_name" required style="width:100%;"></label>
+                    <label>Precio mensual: <input type="number" name="monthly_price" step="1" required style="width:100%;"></label>
+                    <label style="grid-column:1/-1;">Características (una por línea): <textarea name="features" rows="4" style="width:100%;"></textarea></label>
+                    <div><button type="submit" name="petsgo_add_plan" class="button button-primary">Guardar Plan</button></div>
+                </form>
+            </details>
+
+            <div class="petsgo-cards">
+                <?php foreach ($plans as $plan): ?>
+                <div class="petsgo-card" style="text-align:left;">
+                    <h2 style="font-size:20px; margin-bottom:8px;"><?php echo esc_html($plan->plan_name); ?></h2>
+                    <p style="font-size:24px; color:#00A8E8; font-weight:700;">$<?php echo number_format($plan->monthly_price, 0, ',', '.'); ?><span style="font-size:14px; color:#999;">/mes</span></p>
+                    <?php if (!empty($plan->features)): ?>
+                    <ul style="margin:10px 0; padding-left:18px;">
+                        <?php foreach (explode("\n", $plan->features) as $f): if (trim($f)): ?>
+                        <li><?php echo esc_html(trim($f)); ?></li>
+                        <?php endif; endforeach; ?>
+                    </ul>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
     }
 
     /**
