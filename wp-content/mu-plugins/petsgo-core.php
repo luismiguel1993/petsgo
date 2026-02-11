@@ -3599,7 +3599,8 @@ Dashboard con analíticas"></textarea>
         $d = $this->pg_defaults();
         $v = function($key) use ($s, $d) { return esc_attr($s[$key] ?? $d[$key] ?? ''); };
         $logo_id  = intval($s['logo_id'] ?? 0);
-        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : $this->get_email_logo_url();
+        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+        $logo_preview = $logo_url ?: content_url('uploads/petsgo-assets/logo-petsgo.png');
         ?>
         <div class="wrap petsgo-wrap">
             <h1>⚙️ Configuración PetsGo</h1>
@@ -3644,11 +3645,7 @@ Dashboard con analíticas"></textarea>
                         <label>Logo principal</label>
                         <div style="display:flex;gap:12px;align-items:center;">
                             <div id="ps-logo-preview" style="width:160px;height:80px;border:2px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;cursor:pointer;" onclick="pgSelectLogo()">
-                                <?php if ($logo_url): ?>
-                                    <img src="<?php echo esc_url($logo_url); ?>" style="max-width:100%;max-height:100%;object-fit:contain;">
-                                <?php else: ?>
-                                    <span style="color:#aaa;font-size:12px;">Click para subir</span>
-                                <?php endif; ?>
+                                <img src="<?php echo esc_url($logo_preview); ?>" style="max-width:100%;max-height:100%;object-fit:contain;">
                             </div>
                             <input type="hidden" id="ps-logo-id" value="<?php echo $logo_id; ?>">
                             <div>
@@ -3764,7 +3761,8 @@ Dashboard con analíticas"></textarea>
             };
             window.pgRemoveLogo = function(){
                 $('#ps-logo-id').val('');
-                $('#ps-logo-preview').html('<span style="color:#aaa;font-size:12px;">Click para subir</span>');
+                var defaultLogo = '<?php echo esc_url(content_url('uploads/petsgo-assets/logo-petsgo.png')); ?>';
+                $('#ps-logo-preview').html('<img src="'+defaultLogo+'" style="max-width:100%;max-height:100%;object-fit:contain;">');
             };
 
             // Save
