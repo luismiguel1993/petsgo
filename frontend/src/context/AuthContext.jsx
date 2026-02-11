@@ -12,6 +12,14 @@ export const AuthProvider = ({ children }) => {
   // Cargar usuario desde localStorage al iniciar
   useEffect(() => {
     const stored = localStorage.getItem('petsgo_user');
+    const token = localStorage.getItem('petsgo_token');
+    // Purge stale tokens from old auth system
+    if (token && !token.startsWith('petsgo_')) {
+      localStorage.removeItem('petsgo_token');
+      localStorage.removeItem('petsgo_user');
+      setLoading(false);
+      return;
+    }
     if (stored) {
       try {
         setUser(JSON.parse(stored));

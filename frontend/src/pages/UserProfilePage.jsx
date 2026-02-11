@@ -69,9 +69,16 @@ const UserProfilePage = () => {
         avatar_url: d.avatarUrl ?? '',
       });
       setPets(Array.isArray(d.pets) ? d.pets : []);
-    } catch { setMsg({ type: 'error', text: 'Error cargando datos' }); }
+    } catch (err) {
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setMsg({ type: 'error', text: 'Tu sesión ha expirado. Por favor inicia sesión nuevamente.' });
+        setTimeout(() => navigate('/login'), 2000);
+      } else {
+        setMsg({ type: 'error', text: 'Error cargando datos. Intenta recargar la página.' });
+      }
+    }
     finally { setLoading(false); }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
