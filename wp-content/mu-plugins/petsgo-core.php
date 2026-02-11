@@ -78,6 +78,70 @@ class PetsGo_Core {
     }
 
     // ============================================================
+    // STOCK ALERT — Envía email cuando stock < 5 o == 0
+    // ============================================================
+    private function check_stock_alert($product_id) {
+        global $wpdb;
+        $pfx = $wpdb->prefix;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT i.product_name, i.stock, i.vendor_id, v.store_name, v.email AS vendor_email
+             FROM {$pfx}petsgo_inventory i
+             JOIN {$pfx}petsgo_vendors v ON i.vendor_id = v.id
+             WHERE i.id = %d", $product_id
+        ));
+        if (!$row || !$row->vendor_email) return;
+        $stock = (int) $row->stock;
+        if ($stock > 4) return; // Only alert when stock < 5
+
+        $bcc = 'contacto@petsgo.cl';
+        $to  = $row->vendor_email;
+
+        if ($stock === 0) {
+            $subject = '🚨 ¡Sin Stock! — ' . $row->product_name;
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, true);
+        } else {
+            $subject = '⚠️ Stock Bajo — ' . $row->product_name;
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, false);
+        }
+
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: PetsGo <no-reply@petsgo.cl>',
+            'Bcc: ' . $bcc,
+        ];
+
+        wp_mail($to, $subject, $body, $headers);
+        $this->audit('stock_alert', 'product', $product_id, 'Stock: ' . $stock . ' — Email a ' . $to);
+    }
+
+    private function stock_email_html($store_name, $product_name, $stock, $is_zero) {
+        $color   = $is_zero ? '#dc3545' : '#FFC400';
+        $icon    = $is_zero ? '🚨' : '⚠️';
+        $title   = $is_zero ? '¡Producto Sin Stock!' : 'Stock Bajo';
+        $message = $is_zero
+            ? 'El siguiente producto se ha quedado <strong>sin stock (0 unidades)</strong>. Los clientes no podrán comprarlo hasta que repongas inventario.'
+            : 'El siguiente producto tiene <strong>stock bajo (' . $stock . ' unidades)</strong>. Te recomendamos reponer inventario pronto.';
+
+        return '
+        <div style="font-family:Poppins,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8f9fa;padding:30px;">
+            <div style="background:#fff;border-radius:12px;padding:30px;border:1px solid #e9ecef;">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <span style="font-size:48px;">' . $icon . '</span>
+                    <h1 style="color:' . $color . ';font-size:22px;margin:10px 0 0;">' . esc_html($title) . '</h1>
+                </div>
+                <p style="color:#555;font-size:14px;line-height:1.6;">' . $message . '</p>
+                <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+                    <tr style="background:#f0f0f0;"><td style="padding:10px 14px;font-weight:600;color:#333;width:120px;">Tienda</td><td style="padding:10px 14px;color:#555;">' . esc_html($store_name) . '</td></tr>
+                    <tr><td style="padding:10px 14px;font-weight:600;color:#333;border-top:1px solid #eee;">Producto</td><td style="padding:10px 14px;color:#555;border-top:1px solid #eee;">' . esc_html($product_name) . '</td></tr>
+                    <tr style="background:#f0f0f0;"><td style="padding:10px 14px;font-weight:600;color:#333;">Stock Actual</td><td style="padding:10px 14px;font-weight:700;color:' . $color . ';font-size:18px;">' . $stock . ' unidades</td></tr>
+                </table>
+                <p style="color:#888;font-size:12px;margin-top:20px;text-align:center;">Este correo fue enviado automáticamente por <strong>PetsGo</strong>. Ingresa al panel de administración para actualizar tu inventario.</p>
+            </div>
+            <p style="text-align:center;color:#aaa;font-size:11px;margin-top:16px;">© ' . date('Y') . ' PetsGo · contacto@petsgo.cl</p>
+        </div>';
+    }
+
+    // ============================================================
     // HELPERS: Rol y Vendor del usuario actual
     // ============================================================
     private function is_admin() {
@@ -1962,8 +2026,18 @@ Dashboard con analíticas"></textarea>
             $data['discount_end']   = $de ? date('Y-m-d H:i:s', strtotime($de)) : null;
         }
 
-        if($id){$wpdb->update("{$wpdb->prefix}petsgo_inventory",$data,['id'=>$id]);$this->audit($id?'product_update':'product_create','product',$id,$name);wp_send_json_success(['message'=>'Producto actualizado','id'=>$id]);}
-        else{$wpdb->insert("{$wpdb->prefix}petsgo_inventory",$data);$nid=$wpdb->insert_id;$this->audit('product_create','product',$nid,$name);wp_send_json_success(['message'=>'Producto creado','id'=>$nid]);}
+        if($id){
+            $wpdb->update("{$wpdb->prefix}petsgo_inventory",$data,['id'=>$id]);
+            $this->audit('product_update','product',$id,$name);
+            $this->check_stock_alert($id);
+            wp_send_json_success(['message'=>'Producto actualizado','id'=>$id]);
+        } else {
+            $wpdb->insert("{$wpdb->prefix}petsgo_inventory",$data);
+            $nid=$wpdb->insert_id;
+            $this->audit('product_create','product',$nid,$name);
+            $this->check_stock_alert($nid);
+            wp_send_json_success(['message'=>'Producto creado','id'=>$nid]);
+        }
     }
 
     public function petsgo_delete_product() {
@@ -3000,6 +3074,21 @@ Dashboard con analíticas"></textarea>
         $wpdb->insert("{$wpdb->prefix}petsgo_orders",['customer_id'=>$uid,'vendor_id'=>$p['vendor_id'],'total_amount'=>$total,'petsgo_commission'=>$comm,'delivery_fee'=>$del,'status'=>'pending'],['%d','%d','%f','%f','%f','%s']);
         $order_id = $wpdb->insert_id;
         $this->audit('order_create', 'order', $order_id, 'Total: $'.number_format($total,0,',','.'));
+
+        // Descontar stock y verificar alertas
+        if (!empty($p['items']) && is_array($p['items'])) {
+            foreach ($p['items'] as $item) {
+                $pid = intval($item['product_id'] ?? 0);
+                $qty = intval($item['quantity'] ?? 1);
+                if ($pid > 0 && $qty > 0) {
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE {$wpdb->prefix}petsgo_inventory SET stock = GREATEST(stock - %d, 0) WHERE id = %d",
+                        $qty, $pid
+                    ));
+                    $this->check_stock_alert($pid);
+                }
+            }
+        }
 
         // Auto-generate invoice
         $this->auto_generate_invoice($order_id);
