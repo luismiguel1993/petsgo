@@ -107,7 +107,7 @@ const LoginPage = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  minLength={isRegister ? 8 : 1}
+                  minLength={1}
                   style={{
                     width: '100%', padding: '12px 16px', paddingRight: '48px', background: '#f9fafb',
                     borderRadius: '12px', border: '1.5px solid #e5e7eb', fontSize: '14px',

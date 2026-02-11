@@ -585,13 +585,13 @@ class PetsGo_Core {
         .petsgo-table th.pg-sortable.asc::after{content:"▲";opacity:1}
         .petsgo-table th.pg-sortable.desc::after{content:"▼";opacity:1}
         /* ── Pagination ── */
-        .pg-pagination{display:flex;align-items:center;gap:8px;margin:16px 0;flex-wrap:wrap;font-size:13px}
-        .pg-pagination button{padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;transition:.15s}
-        .pg-pagination button:hover:not(:disabled){background:#00A8E8;color:#fff;border-color:#00A8E8}
-        .pg-pagination button.active{background:#00A8E8;color:#fff;border-color:#00A8E8;font-weight:700}
-        .pg-pagination button:disabled{opacity:.4;cursor:not-allowed}
-        .pg-pagination .pg-page-info{color:#666}
-        .pg-pagination select{padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:13px}
+        .pg-pagination{display:flex;align-items:center;gap:8px;margin:18px 0;flex-wrap:wrap;font-size:13px;padding:12px 16px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px}
+        .pg-pagination button{padding:7px 14px;border:1px solid #d1d5db;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;transition:.2s;font-weight:500}
+        .pg-pagination button:hover:not(:disabled){background:#00A8E8;color:#fff;border-color:#00A8E8;box-shadow:0 2px 8px rgba(0,168,232,.25)}
+        .pg-pagination button.active{background:#00A8E8;color:#fff;border-color:#00A8E8;font-weight:700;box-shadow:0 2px 8px rgba(0,168,232,.25)}
+        .pg-pagination button:disabled{opacity:.35;cursor:not-allowed}
+        .pg-pagination .pg-page-info{color:#4b5563;font-weight:600;margin-right:auto}
+        .pg-pagination select{padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;cursor:pointer;font-weight:500}
         /* ── Global Responsive ── */
         @media(max-width:900px){.petsgo-form-grid{grid-template-columns:1fr}.petsgo-cards{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:600px){
@@ -695,14 +695,16 @@ class PetsGo_Core {
                 if(!slice.length){rows='<tr><td colspan="'+cfg.columns.length+'" style="text-align:center;padding:30px;color:#999;">'+(cfg.emptyMsg||'Sin resultados.')+'</td></tr>';}
                 else{ $.each(slice,function(i,item){rows+=cfg.renderRow(item,start+i);}); }
                 $body.html(rows);
-                // pagination
-                if(total<=perPage){$pgWrap.html('');return;}
-                var ph='<span class="pg-page-info">Mostrando '+(start+1)+'–'+Math.min(start+perPage,total)+' de '+total+'</span> ';
-                ph+='<button class="pg-prev" '+(page<=1?'disabled':'')+'>← Ant</button> ';
-                var maxBtns=7,half=Math.floor(maxBtns/2),startP=Math.max(1,page-half),endP=Math.min(pages,startP+maxBtns-1);
-                if(endP-startP<maxBtns-1)startP=Math.max(1,endP-maxBtns+1);
-                for(var p=startP;p<=endP;p++){ph+='<button class="pg-go'+(p===page?' active':'')+'" data-p="'+p+'">'+p+'</button> ';}
-                ph+='<button class="pg-next" '+(page>=pages?'disabled':'')+'>Sig →</button> ';
+                // pagination — always visible
+                if(!total){$pgWrap.html('');return;}
+                var ph='<span class="pg-page-info">Mostrando '+(start+1)+'–'+Math.min(start+perPage,total)+' de '+total+' registros</span> ';
+                if(pages>1){
+                    ph+='<button class="pg-prev" '+(page<=1?'disabled':'')+'>← Ant</button> ';
+                    var maxBtns=7,half=Math.floor(maxBtns/2),startP=Math.max(1,page-half),endP=Math.min(pages,startP+maxBtns-1);
+                    if(endP-startP<maxBtns-1)startP=Math.max(1,endP-maxBtns+1);
+                    for(var p=startP;p<=endP;p++){ph+='<button class="pg-go'+(p===page?' active':'')+'" data-p="'+p+'">'+p+'</button> ';}
+                    ph+='<button class="pg-next" '+(page>=pages?'disabled':'')+'>Sig →</button> ';
+                }
                 ph+='<select class="pg-per-page">';
                 [10,25,50,100].forEach(function(n){ph+='<option value="'+n+'"'+(n===perPage?' selected':'')+'>'+n+'/pág</option>';});
                 ph+='</select>';
