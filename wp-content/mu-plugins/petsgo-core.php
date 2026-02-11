@@ -163,7 +163,7 @@ class PetsGo_Core {
         wp_add_inline_script('petsgo-admin-js', $js);
     }
 
-    private function print_admin_css() {
+    public function print_admin_css() {
         echo '<style>
         .petsgo-wrap{max-width:1200px}.petsgo-wrap h1{color:#00A8E8}
         .petsgo-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin:20px 0}
@@ -284,7 +284,7 @@ class PetsGo_Core {
         </style>';
     }
 
-    private function print_admin_js() {
+    public function print_admin_js() {
         ?>
         <script>
         var PG = {
