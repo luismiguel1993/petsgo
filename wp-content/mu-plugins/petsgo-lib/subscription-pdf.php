@@ -45,7 +45,7 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->qr_token       = $qr_token;
 
         $this->AliasNbPages();
-        $this->SetAutoPageBreak(true, 35);
+        $this->SetAutoPageBreak(false);
         $this->AddPage();
         $this->SetMargins(15, 15, 15);
 
@@ -74,7 +74,7 @@ class PetsGo_Subscription_PDF extends FPDF {
     // HEADER: Fondo celeste con logo PetsGo blanco centrado
     // ========================
     function Header() {
-        $hdrH = 40;
+        $hdrH = 30;
 
         // Fondo celeste PetsGo
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
@@ -83,50 +83,48 @@ class PetsGo_Subscription_PDF extends FPDF {
         // Logo PetsGo blanco centrado
         $logo = $this->findWhiteLogo();
         if ($logo) {
-            $logoH = 22;
+            $logoH = 16;
             $imgSize = @getimagesize($logo);
             if ($imgSize && $imgSize[1] > 0) {
                 $ratio = $imgSize[0] / $imgSize[1];
                 $logoW = $logoH * $ratio;
             } else {
-                $logoW = 60;
+                $logoW = 50;
             }
             $logoX = (210 - $logoW) / 2;
             $logoY = ($hdrH - $logoH) / 2;
             $this->Image($logo, $logoX, $logoY, $logoW, $logoH);
         } else {
-            $this->SetXY(0, 10);
-            $this->SetFont('Arial', 'B', 24);
+            $this->SetXY(0, 6);
+            $this->SetFont('Arial', 'B', 20);
             $this->SetTextColor(255, 255, 255);
-            $this->Cell(210, 15, 'PetsGo', 0, 0, 'C');
+            $this->Cell(210, 12, 'PetsGo', 0, 0, 'C');
         }
 
         // Franja amarilla
         $this->SetFillColor($this->secondary[0], $this->secondary[1], $this->secondary[2]);
-        $this->Rect(0, $hdrH, 210, 2, 'F');
+        $this->Rect(0, $hdrH, 210, 1.5, 'F');
 
-        $this->SetY($hdrH + 6);
+        $this->SetY($hdrH + 4);
     }
 
     // ========================
     // FOOTER: Pie de pagina estandar
     // ========================
     function Footer() {
-        $this->SetY(-28);
+        $this->SetY(-18);
 
         // Linea azul
         $this->SetDrawColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->Line(15, $this->GetY(), 195, $this->GetY());
-        $this->Ln(2);
+        $this->Ln(1.5);
 
-        $this->SetFont('Arial', '', 7);
+        $this->SetFont('Arial', '', 6.5);
         $this->SetTextColor(150, 150, 150);
         $this->Cell(0, 3, $this->utf8('PetsGo Marketplace - www.petsgo.cl - contacto@petsgo.cl'), 0, 1, 'C');
-        $this->Cell(0, 3, $this->utf8('Documento de suscripcion generado electronicamente.'), 0, 1, 'C');
-        $this->Cell(0, 3, $this->utf8('Santiago, Chile'), 0, 1, 'C');
+        $this->Cell(0, 3, $this->utf8('Documento de suscripcion generado electronicamente - Santiago, Chile'), 0, 1, 'C');
 
-        // Pagina
-        $this->SetFont('Arial', '', 7);
+        $this->SetFont('Arial', '', 6.5);
         $this->SetTextColor(160, 160, 160);
         $this->Cell(0, 3, $this->utf8('Pagina ') . $this->PageNo() . '/{nb}', 0, 0, 'R');
     }
@@ -135,43 +133,42 @@ class PetsGo_Subscription_PDF extends FPDF {
     // TITULO BOLETA
     // ========================
     private function buildTitle() {
-        $this->SetFont('Arial', 'B', 16);
+        $this->SetFont('Arial', 'B', 14);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 10, $this->utf8('BOLETA DE SUSCRIPCION'), 0, 1, 'C');
-        $this->Ln(2);
+        $this->Cell(0, 7, $this->utf8('BOLETA DE SUSCRIPCION'), 0, 1, 'C');
+        $this->Ln(1);
 
         // Recuadro con numero y fecha
         $this->SetFillColor(240, 250, 255);
         $this->SetDrawColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $bx = 55; $by = $this->GetY(); $bw = 100;
-        $this->Rect($bx, $by, $bw, 16, 'DF');
+        $this->Rect($bx, $by, $bw, 13, 'DF');
 
-        $this->SetXY($bx + 3, $by + 2);
-        $this->SetFont('Arial', 'B', 10);
+        $this->SetXY($bx + 3, $by + 1.5);
+        $this->SetFont('Arial', 'B', 9);
         $this->SetTextColor($this->primary[0], $this->primary[1], $this->primary[2]);
-        $this->Cell($bw - 6, 6, $this->utf8('No. ') . $this->invoice_number, 0, 2, 'C');
-        $this->SetFont('Arial', '', 9);
+        $this->Cell($bw - 6, 5, $this->utf8('No. ') . $this->invoice_number, 0, 2, 'C');
+        $this->SetFont('Arial', '', 8);
         $this->SetTextColor(100, 100, 100);
-        $this->Cell($bw - 6, 5, $this->utf8('Fecha: ') . $this->date, 0, 2, 'C');
+        $this->Cell($bw - 6, 4, $this->utf8('Fecha: ') . $this->date, 0, 2, 'C');
 
-        $this->SetY($by + 22);
+        $this->SetY($by + 16);
     }
 
     // ========================
     // DATOS DE LA TIENDA (CLIENTE)
     // ========================
     private function buildVendorInfo() {
-        $this->SetFont('Arial', 'B', 11);
+        $this->SetFont('Arial', 'B', 10);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 7, $this->utf8('Datos del Cliente'), 0, 1, 'L');
+        $this->Cell(0, 6, $this->utf8('Datos del Cliente'), 0, 1, 'L');
 
         $this->SetFillColor(248, 249, 250);
         $this->SetDrawColor(220, 220, 220);
         $y = $this->GetY();
-        $this->Rect(15, $y, 180, 28, 'DF');
+        $this->Rect(15, $y, 180, 20, 'DF');
 
-        $this->SetXY(18, $y + 3);
-        $this->SetFont('Arial', '', 9);
+        $this->SetFont('Arial', '', 8);
         $this->SetTextColor(60, 60, 60);
 
         $fields = [
@@ -184,39 +181,39 @@ class PetsGo_Subscription_PDF extends FPDF {
         $col = 0;
         foreach ($fields as $label => $val) {
             $xPos = 18 + ($col % 2) * 90;
-            $yPos = $y + 3 + floor($col / 2) * 10;
+            $yPos = $y + 2 + floor($col / 2) * 8;
             $this->SetXY($xPos, $yPos);
-            $this->SetFont('Arial', 'B', 9);
-            $this->Cell(25, 5, $label . ':', 0, 0);
-            $this->SetFont('Arial', '', 9);
-            $this->Cell(65, 5, $this->utf8($val), 0, 0);
+            $this->SetFont('Arial', 'B', 8);
+            $this->Cell(22, 4, $label . ':', 0, 0);
+            $this->SetFont('Arial', '', 8);
+            $this->Cell(65, 4, $this->utf8($val), 0, 0);
             $col++;
         }
 
-        $this->SetY($y + 34);
+        $this->SetY($y + 23);
     }
 
     // ========================
     // DETALLE DEL PLAN
     // ========================
     private function buildPlanDetail() {
-        $this->SetFont('Arial', 'B', 11);
+        $this->SetFont('Arial', 'B', 10);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 7, $this->utf8('Detalle del Plan Contratado'), 0, 1, 'L');
+        $this->Cell(0, 6, $this->utf8('Detalle del Plan Contratado'), 0, 1, 'L');
 
-        // Tabla de detalle — encabezado
-        $this->SetFont('Arial', 'B', 9);
+        // Tabla de detalle - encabezado
+        $this->SetFont('Arial', 'B', 8);
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->SetTextColor(255, 255, 255);
 
-        $this->Cell(60, 7, $this->utf8('Concepto'), 1, 0, 'L', true);
-        $this->Cell(25, 7, $this->utf8('Periodo'), 1, 0, 'C', true);
-        $this->Cell(25, 7, $this->utf8('Precio/Mes'), 1, 0, 'R', true);
-        $this->Cell(20, 7, $this->utf8('Meses'), 1, 0, 'C', true);
-        $this->Cell(25, 7, $this->utf8('Dcto.'), 1, 0, 'R', true);
-        $this->Cell(25, 7, 'Total', 1, 1, 'R', true);
+        $this->Cell(60, 6, $this->utf8('Concepto'), 1, 0, 'L', true);
+        $this->Cell(25, 6, $this->utf8('Periodo'), 1, 0, 'C', true);
+        $this->Cell(25, 6, $this->utf8('Precio/Mes'), 1, 0, 'R', true);
+        $this->Cell(20, 6, $this->utf8('Meses'), 1, 0, 'C', true);
+        $this->Cell(25, 6, $this->utf8('Dcto.'), 1, 0, 'R', true);
+        $this->Cell(25, 6, 'Total', 1, 1, 'R', true);
 
-        $this->SetFont('Arial', '', 9);
+        $this->SetFont('Arial', '', 8);
         $this->SetTextColor(50, 50, 50);
         $this->SetFillColor(255, 255, 255);
 
@@ -226,60 +223,57 @@ class PetsGo_Subscription_PDF extends FPDF {
         $billing_months= intval($this->plan_data->billing_months ?? 1);
         $free_months   = intval($this->plan_data->free_months ?? 0);
 
-        // Calculate totals
         $total_months  = max(1, $billing_months);
         $charged_months= max(1, $total_months - $free_months);
-        $subtotal      = $monthly_price * $total_months;
         $discount      = $monthly_price * $free_months;
         $total         = $monthly_price * $charged_months;
 
-        // Row
-        $this->Cell(60, 7, $this->utf8('Plan ' . $plan_name . ' - PetsGo'), 1, 0, 'L');
-        $this->Cell(25, 7, $this->utf8($period), 1, 0, 'C');
-        $this->Cell(25, 7, '$' . number_format($monthly_price, 0, ',', '.'), 1, 0, 'R');
-        $this->Cell(20, 7, $total_months, 1, 0, 'C');
+        $this->Cell(60, 6, $this->utf8('Plan ' . $plan_name . ' - PetsGo'), 1, 0, 'L');
+        $this->Cell(25, 6, $this->utf8($period), 1, 0, 'C');
+        $this->Cell(25, 6, '$' . number_format($monthly_price, 0, ',', '.'), 1, 0, 'R');
+        $this->Cell(20, 6, $total_months, 1, 0, 'C');
 
         if ($discount > 0) {
-            $this->SetTextColor(220, 53, 69); // red for discount
-            $this->Cell(25, 7, '-$' . number_format($discount, 0, ',', '.'), 1, 0, 'R');
+            $this->SetTextColor(220, 53, 69);
+            $this->Cell(25, 6, '-$' . number_format($discount, 0, ',', '.'), 1, 0, 'R');
             $this->SetTextColor(50, 50, 50);
         } else {
-            $this->Cell(25, 7, '-', 1, 0, 'C');
+            $this->Cell(25, 6, '-', 1, 0, 'C');
         }
 
-        $this->SetFont('Arial', 'B', 9);
-        $this->Cell(25, 7, '$' . number_format($total, 0, ',', '.'), 1, 1, 'R');
+        $this->SetFont('Arial', 'B', 8);
+        $this->Cell(25, 6, '$' . number_format($total, 0, ',', '.'), 1, 1, 'R');
 
         // Free months message
         if ($free_months > 0) {
-            $this->Ln(2);
-            $this->SetFont('Arial', 'B', 9);
-            $this->SetTextColor(40, 167, 69); // green
+            $this->Ln(1);
+            $this->SetFont('Arial', 'B', 8);
+            $this->SetTextColor(40, 167, 69);
             $this->SetX(18);
             $msg = $free_months == 1
                 ? 'Beneficio anual: 1 mes de gracia incluido. Paga ' . $charged_months . ' de ' . $total_months . ' meses.'
                 : 'Beneficio anual: ' . $free_months . ' meses de gracia incluidos. Paga ' . $charged_months . ' de ' . $total_months . ' meses.';
-            $this->Cell(0, 5, $this->utf8($msg), 0, 1);
+            $this->Cell(0, 4, $this->utf8($msg), 0, 1);
         }
 
         // Features del plan
         $features = $this->plan_data->features ?? [];
         if (!empty($features)) {
-            $this->Ln(4);
-            $this->SetFont('Arial', 'B', 9);
+            $this->Ln(2);
+            $this->SetFont('Arial', 'B', 8);
             $this->SetTextColor($this->primary[0], $this->primary[1], $this->primary[2]);
-            $this->Cell(0, 6, $this->utf8('Caracteristicas incluidas en el Plan ' . $plan_name . ':'), 0, 1);
+            $this->Cell(0, 5, $this->utf8('Caracteristicas incluidas en el Plan ' . $plan_name . ':'), 0, 1);
 
-            $this->SetFont('Arial', '', 9);
+            $this->SetFont('Arial', '', 8);
             $this->SetTextColor(80, 80, 80);
             foreach ($features as $feat) {
                 $this->SetX(20);
-                $this->Cell(5, 5, chr(149), 0, 0); // bullet
-                $this->Cell(0, 5, $this->utf8(' ' . $feat), 0, 1);
+                $this->Cell(4, 4, chr(149), 0, 0);
+                $this->Cell(0, 4, $this->utf8(' ' . $feat), 0, 1);
             }
         }
 
-        $this->Ln(4);
+        $this->Ln(2);
     }
 
     // ========================
@@ -298,60 +292,54 @@ class PetsGo_Subscription_PDF extends FPDF {
         $neto           = round($total_cobrar / 1.19);
         $iva            = $total_cobrar - $neto;
 
-        $this->SetFont('Arial', 'B', 11);
+        $this->SetFont('Arial', 'B', 10);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 7, $this->utf8('Resumen de Pago'), 0, 1, 'L');
+        $this->Cell(0, 6, $this->utf8('Resumen de Pago'), 0, 1, 'L');
 
-        $x = 100;
-
-        $this->SetFont('Arial', '', 9);
+        $x = 105;
+        $this->SetFont('Arial', '', 8);
         $this->SetTextColor(80, 80, 80);
 
-        // Subtotal (months x price)
         $this->SetX($x);
-        $this->Cell(55, 6, $this->utf8($total_months . ' mes(es) x $' . number_format($monthly_price, 0, ',', '.') . ':'), 0, 0, 'R');
-        $this->Cell(35, 6, '$' . number_format($subtotal_bruto, 0, ',', '.'), 0, 1, 'R');
+        $this->Cell(55, 5, $this->utf8($total_months . ' mes(es) x $' . number_format($monthly_price, 0, ',', '.') . ':'), 0, 0, 'R');
+        $this->Cell(30, 5, '$' . number_format($subtotal_bruto, 0, ',', '.'), 0, 1, 'R');
 
-        // Discount line (if annual)
         if ($descuento > 0) {
             $this->SetX($x);
             $this->SetTextColor(220, 53, 69);
-            $this->Cell(55, 6, $this->utf8('Dcto. ' . $free_months . ' mes(es) gratis:'), 0, 0, 'R');
-            $this->Cell(35, 6, '-$' . number_format($descuento, 0, ',', '.'), 0, 1, 'R');
+            $this->Cell(55, 5, $this->utf8('Dcto. ' . $free_months . ' mes(es) gratis:'), 0, 0, 'R');
+            $this->Cell(30, 5, '-$' . number_format($descuento, 0, ',', '.'), 0, 1, 'R');
             $this->SetTextColor(80, 80, 80);
         }
 
-        // Neto
         $this->SetX($x);
-        $this->Cell(55, 6, 'Subtotal (Neto):', 0, 0, 'R');
-        $this->Cell(35, 6, '$' . number_format($neto, 0, ',', '.'), 0, 1, 'R');
+        $this->Cell(55, 5, 'Subtotal (Neto):', 0, 0, 'R');
+        $this->Cell(30, 5, '$' . number_format($neto, 0, ',', '.'), 0, 1, 'R');
 
-        // IVA
         $this->SetX($x);
-        $this->Cell(55, 6, 'IVA (19%):', 0, 0, 'R');
-        $this->Cell(35, 6, '$' . number_format($iva, 0, ',', '.'), 0, 1, 'R');
+        $this->Cell(55, 5, 'IVA (19%):', 0, 0, 'R');
+        $this->Cell(30, 5, '$' . number_format($iva, 0, ',', '.'), 0, 1, 'R');
 
-        // Total
         $this->SetX($x);
-        $this->SetFont('Arial', 'B', 13);
+        $this->SetFont('Arial', 'B', 11);
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->SetTextColor(255, 255, 255);
-        $this->Cell(55, 9, 'TOTAL:', 0, 0, 'R', true);
-        $this->Cell(35, 9, '$' . number_format($total_cobrar, 0, ',', '.'), 0, 1, 'R', true);
+        $this->Cell(55, 8, 'TOTAL:', 0, 0, 'R', true);
+        $this->Cell(30, 8, '$' . number_format($total_cobrar, 0, ',', '.'), 0, 1, 'R', true);
 
-        $this->Ln(8);
+        $this->Ln(4);
     }
 
     // ========================
     // TERMINOS Y CONDICIONES
     // ========================
     private function buildTerms() {
-        $this->SetFont('Arial', 'B', 9);
+        $this->SetFont('Arial', 'B', 8);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 6, $this->utf8('Terminos y Condiciones'), 0, 1);
+        $this->Cell(0, 5, $this->utf8('Terminos y Condiciones'), 0, 1);
 
-        $this->SetFont('Arial', '', 8);
-        $this->SetTextColor(120, 120, 120);
+        $this->SetFont('Arial', '', 7);
+        $this->SetTextColor(130, 130, 130);
 
         $terms = [
             'La suscripcion se renueva automaticamente al final de cada periodo de facturacion.',
@@ -363,9 +351,8 @@ class PetsGo_Subscription_PDF extends FPDF {
 
         foreach ($terms as $i => $term) {
             $this->SetX(18);
-            $this->Cell(5, 4, ($i + 1) . '.', 0, 0);
-            $this->MultiCell(170, 4, $this->utf8($term));
-            $this->Ln(1);
+            $this->Cell(4, 3.5, ($i + 1) . '.', 0, 0);
+            $this->Cell(165, 3.5, $this->utf8($term), 0, 1);
         }
     }
 
@@ -383,30 +370,30 @@ class PetsGo_Subscription_PDF extends FPDF {
 
         if (!file_exists($qr_file)) {
             if (!is_dir($qr_dir)) wp_mkdir_p($qr_dir);
-            SimpleQRCode::png($validation_url, $qr_file, 'L', 4, 1);
+            SimpleQRCode::png($validation_url, $qr_file, 'L', 3, 1);
         }
 
         $y = $this->GetY();
 
-        // QR box
+        // QR box - compact
         $this->SetDrawColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->SetFillColor(240, 250, 255);
-        $this->Rect(15, $y, 180, 42, 'DF');
+        $this->Rect(15, $y, 180, 26, 'DF');
 
         if (file_exists($qr_file) && filesize($qr_file) > 100) {
-            $this->Image($qr_file, 20, $y + 3, 36, 36);
+            $this->Image($qr_file, 18, $y + 2, 22, 22);
         }
 
-        $this->SetXY(60, $y + 4);
-        $this->SetFont('Arial', 'B', 10);
+        $this->SetXY(44, $y + 3);
+        $this->SetFont('Arial', 'B', 9);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(130, 5, $this->utf8('Verificacion de Suscripcion'), 0, 2);
+        $this->Cell(145, 4, $this->utf8('Verificacion de Suscripcion'), 0, 2);
 
-        $this->SetFont('Arial', '', 8);
+        $this->SetFont('Arial', '', 7);
         $this->SetTextColor(100, 100, 100);
-        $this->MultiCell(130, 4, $this->utf8("Escanee el codigo QR para verificar la autenticidad de esta boleta de suscripcion.\n\nToken: " . $this->qr_token . "\nBoleta: " . $this->invoice_number));
+        $this->MultiCell(145, 3.5, $this->utf8("Escanee el codigo QR para verificar la autenticidad de esta boleta.  Token: " . $this->qr_token . "  |  Boleta: " . $this->invoice_number));
 
-        $this->SetY($y + 46);
+        $this->SetY($y + 29);
     }
 
     // ========================
