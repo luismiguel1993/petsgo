@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Star, Crown, Store, Send, User, Mail, Phone, MapPin, Building2, MessageSquare, Sparkles } from 'lucide-react';
-import { getPlans } from '../services/api';
+import { getPlans, submitVendorLead } from '../services/api';
 
 const DEMO_PLANS = [
   { id: 1, plan_name: 'Básico', monthly_price: 29990, is_featured: 0, features_json: '{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}' },
@@ -35,6 +35,8 @@ const PlansPage = () => {
     storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '',
   });
   const [formSent, setFormSent] = useState(false);
+  const [formError, setFormError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -52,11 +54,20 @@ const PlansPage = () => {
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setFormSent(true);
-    setTimeout(() => setFormSent(false), 5000);
-    setFormData({ storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '' });
+    setFormError('');
+    setSubmitting(true);
+    try {
+      await submitVendorLead(formData);
+      setFormSent(true);
+      setTimeout(() => setFormSent(false), 8000);
+      setFormData({ storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '' });
+    } catch (err) {
+      setFormError(err.response?.data?.message || 'Error al enviar el formulario. Intenta nuevamente.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
@@ -411,20 +422,32 @@ const PlansPage = () => {
                   </div>
                 )}
 
+                {formError && (
+                  <div style={{
+                    background: '#fef2f2', color: '#dc2626', padding: '12px 16px',
+                    borderRadius: '10px', fontSize: '13px', fontWeight: 600, marginBottom: '8px',
+                    border: '1px solid #fecaca',
+                  }}>
+                    ❌ {formError}
+                  </div>
+                )}
+
                 <button
                   type="submit"
+                  disabled={submitting}
                   style={{
                     width: '100%', padding: '16px', borderRadius: '14px',
-                    background: 'linear-gradient(135deg, #00A8E8, #0077B6)',
+                    background: submitting ? '#94a3b8' : 'linear-gradient(135deg, #00A8E8, #0077B6)',
                     color: '#fff', fontSize: '15px', fontWeight: 700, border: 'none',
-                    cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    cursor: submitting ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center',
                     justifyContent: 'center', gap: '10px', transition: 'all 0.2s',
-                    boxShadow: '0 4px 16px rgba(0,168,232,0.25)',
+                    boxShadow: submitting ? 'none' : '0 4px 16px rgba(0,168,232,0.25)',
+                    opacity: submitting ? 0.7 : 1,
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,168,232,0.35)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,168,232,0.25)'; }}
+                  onMouseEnter={(e) => { if (!submitting) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,168,232,0.35)'; } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = submitting ? 'none' : '0 4px 16px rgba(0,168,232,0.25)'; }}
                 >
-                  <Send size={18} /> Enviar Solicitud
+                  <Send size={18} /> {submitting ? 'Enviando...' : 'Enviar Solicitud'}
                 </button>
               </form>
             )}

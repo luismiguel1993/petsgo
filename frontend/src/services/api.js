@@ -212,4 +212,12 @@ export const updateCommissions = (vendorId, salesCommission, deliveryFeeCut) =>
 export const getAdminVendors = () =>
   api.get('/admin/vendors');
 
+// ==========================================
+// VENDOR LEADS
+// ==========================================
+
+/** Enviar formulario de contacto (tienda interesada) */
+export const submitVendorLead = (data) =>
+  api.post('/vendor-lead', data);
+
 export default api;

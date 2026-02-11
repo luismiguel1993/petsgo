@@ -57,6 +57,8 @@ class PetsGo_Core {
             'petsgo_search_pets',
             'petsgo_save_pet',
             'petsgo_delete_pet',
+            'petsgo_search_leads',
+            'petsgo_update_lead',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -464,6 +466,9 @@ class PetsGo_Core {
 
         // Configuración — solo admin
         add_submenu_page('petsgo-dashboard', 'Configuración', '⚙️ Configuración', $cap_admin, 'petsgo-settings', [$this, 'page_settings']);
+
+        // Leads — solo admin
+        add_submenu_page('petsgo-dashboard', 'Leads', '📩 Leads', $cap_admin, 'petsgo-leads', [$this, 'page_leads']);
 
         // Preview Emails — hidden page (solo admin)
         add_submenu_page(null, 'Preview Emails', '', $cap_admin, 'petsgo-email-preview', [$this, 'page_email_preview']);
@@ -3926,6 +3931,137 @@ Dashboard con analíticas"></textarea>
       </p>';
                 $html = $this->email_wrap($inner, 'Boleta ' . $inv . ' por $' . number_format($grand, 0, ',', '.') . ' en Pets Happy Store');
                 break;
+
+            case 'customer_welcome':
+                $inner_cw = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>María</strong>! 🎉</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te damos la bienvenida a <strong>PetsGo</strong>, el marketplace pensado para quienes aman a sus mascotas.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">🐾 Con tu cuenta puedes:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>✅ Explorar cientos de productos para tu mascota</td></tr>
+            <tr><td>✅ Comprar de las mejores tiendas de Chile</td></tr>
+            <tr><td>✅ Recibir delivery en tu puerta</td></tr>
+            <tr><td>✅ Registrar a tus mascotas y llevar su perfil</td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">maria@demo.cl</span> porque creaste una cuenta en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_cw, '¡Bienvenida a PetsGo, María!');
+                break;
+
+            case 'rider_welcome':
+                $inner_rw = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>Carlos</strong>! 🚴</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. Estamos felices de tenerte a bordo.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Próximos pasos:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>1️⃣ Espera que el admin active tu cuenta</td></tr>
+            <tr><td>2️⃣ Recibirás un correo cuando estés habilitado</td></tr>
+            <tr><td>3️⃣ Podrás ver y aceptar entregas desde tu panel</td></tr>
+            <tr><td>4️⃣ Entrega con ❤️ y gana valoraciones positivas</td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:14px 20px;font-size:13px;color:#555;">
+          🚗 Vehículo registrado: <strong style="color:#333;">Moto 125cc</strong>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">carlos@demo.cl</span> porque te registraste como Rider en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_rw, '¡Bienvenido al equipo de Delivery, Carlos!');
+                break;
+
+            case 'vendor_welcome':
+                $inner_vw = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola equipo de <strong>Patitas Chile</strong>! 🏪</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Estamos encantados de darles la bienvenida a <strong>PetsGo</strong>. Su tienda ya está activa y lista para vender.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#e8f5e9;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#2e7d32;font-weight:700;">🎯 Su tienda incluye:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>✅ Panel de administración de productos</td></tr>
+            <tr><td>✅ Gestión de pedidos en tiempo real</td></tr>
+            <tr><td>✅ Dashboard con analíticas de ventas</td></tr>
+            <tr><td>✅ Configuración de boleta electrónica</td></tr>
+            <tr><td>✅ Delivery integrado con riders PetsGo</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:16px 20px;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:3px 0;font-weight:600;width:100px;">Plan:</td><td style="padding:3px 0;"><strong style="color:#00A8E8;">Pro</strong></td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">Tienda:</td><td style="padding:3px 0;">Patitas Chile</td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">Email:</td><td style="padding:3px 0;">patitas@demo.cl</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(admin_url('admin.php?page=petsgo-dashboard')) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir al Panel de Tienda</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">patitas@demo.cl</span> porque su tienda fue registrada en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_vw, '¡Bienvenida a PetsGo, Patitas Chile!');
+                break;
+
+            case 'lead_thankyou':
+                $inner_lt = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>Andrea Muñoz</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Gracias por tu interés en unirte a <strong>PetsGo</strong> con tu tienda <strong>Pet Paradise</strong>. Hemos recibido tu solicitud y nuestro equipo la revisará a la brevedad.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 10px;font-size:14px;color:#00A8E8;font-weight:700;">📋 Resumen de tu solicitud</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:4px 0;font-weight:600;width:120px;">Tienda:</td><td style="padding:4px 0;">Pet Paradise</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Contacto:</td><td style="padding:4px 0;">Andrea Muñoz</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Email:</td><td style="padding:4px 0;">andrea@petparadise.cl</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Teléfono:</td><td style="padding:4px 0;">+569 8765 4321</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Comuna:</td><td style="padding:4px 0;">Providencia</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Plan:</td><td style="padding:4px 0;">Pro</td></tr>
+          </table>
+          <p style="margin:12px 0 0;font-size:13px;color:#555;border-top:1px solid #e0f0f8;padding-top:12px;"><strong>Mensaje:</strong><br>Tenemos una tienda de mascotas con más de 200 productos y nos encantaría sumarnos a la plataforma.</p>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:16px 20px;">
+          <p style="margin:0;font-size:13px;color:#8a6d00;line-height:1.6;">
+            ⏱️ <strong>¿Qué sigue?</strong><br>
+            Un ejecutivo de PetsGo se contactará contigo en las próximas <strong>24-48 horas hábiles</strong> para coordinar la incorporación de tu tienda.
+          </p>
+        </td></tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">andrea@petparadise.cl</span> porque completaste el formulario de contacto en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_lt, 'Gracias por tu interés en PetsGo, Andrea');
+                break;
         }
         wp_send_json_success(['html' => $html]);
     }
@@ -3941,6 +4077,10 @@ Dashboard con analíticas"></textarea>
                 <button type="button" class="petsgo-btn petsgo-btn-primary ep-tab active" data-type="invoice">🧾 Boleta / Factura</button>
                 <button type="button" class="petsgo-btn petsgo-btn-warning ep-tab" data-type="stock_zero">🚫 Stock Agotado</button>
                 <button type="button" class="petsgo-btn petsgo-btn-warning ep-tab" data-type="stock_low">⚠️ Stock Bajo</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="customer_welcome" style="background:#e3f2fd;color:#1565c0;border-color:#90caf9;">👤 Bienvenida Cliente</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="rider_welcome" style="background:#fff8e1;color:#e65100;border-color:#ffe082;">🚴 Bienvenida Rider</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="vendor_welcome" style="background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7;">🏪 Bienvenida Tienda</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="lead_thankyou" style="background:#fce4ec;color:#c62828;border-color:#ef9a9a;">📩 Gracias Lead</button>
                 <span class="petsgo-loader" id="ep-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-settings'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">⚙️ Editar Configuración</a>
             </div>
@@ -3971,7 +4111,11 @@ Dashboard con analíticas"></textarea>
             var meta = {
                 invoice:    {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>, vendedor@tienda.cl',subject:'PetsGo — Tu Boleta BOL-MA-20260211-001',title:'Correo de boleta / factura'},
                 stock_zero: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'mundoanimal@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⚠️ PetsGo — Producto sin stock: Collar Antipulgas Premium',title:'Alerta stock agotado (0 uds)'},
-                stock_low:  {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⚠️ PetsGo — Stock bajo: Royal Canin Adulto 3kg (3 uds)',title:'Alerta stock bajo'}
+                stock_low:  {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⚠️ PetsGo — Stock bajo: Royal Canin Adulto 3kg (3 uds)',title:'Alerta stock bajo'},
+                customer_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'',subject:'¡Bienvenida a PetsGo! 🐾',title:'Bienvenida nuevo cliente'},
+                rider_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'carlos@demo.cl',bcc:'',subject:'¡Bienvenido al equipo Rider de PetsGo! 🚴',title:'Bienvenida nuevo rider'},
+                vendor_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'¡Bienvenida a PetsGo, Patitas Chile! 🏪',title:'Bienvenida nueva tienda'},
+                lead_thankyou: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'andrea@petparadise.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'Gracias por tu interés en PetsGo 🏪',title:'Gracias por tu interés (lead)'}
             };
             function loadPreview(type){
                 $('#ep-loader').addClass('active');
@@ -4039,6 +4183,8 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/admin/dashboard',['methods'=>'GET','callback'=>[$this,'api_admin_dashboard'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         // Invoice QR Validation (public)
         register_rest_route('petsgo/v1','/invoice/validate/(?P<token>[a-f0-9\-]+)',['methods'=>'GET','callback'=>[$this,'api_validate_invoice'],'permission_callback'=>'__return_true']);
+        // Vendor Lead (public)
+        register_rest_route('petsgo/v1','/vendor-lead',['methods'=>'POST','callback'=>[$this,'api_submit_vendor_lead'],'permission_callback'=>'__return_true']);
     }
 
     // --- API Productos ---
@@ -4167,6 +4313,36 @@ Dashboard con analíticas"></textarea>
         ], ['%d','%s','%s','%s','%s','%s','%s']);
 
         $this->audit('register', 'user', $uid, $display_name . ' (customer)');
+
+        // Welcome email
+        $welcome_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🎉</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te damos la bienvenida a <strong>PetsGo</strong>, el marketplace pensado para quienes aman a sus mascotas.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">🐾 Con tu cuenta puedes:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>✅ Explorar cientos de productos para tu mascota</td></tr>
+            <tr><td>✅ Comprar de las mejores tiendas de Chile</td></tr>
+            <tr><td>✅ Recibir delivery en tu puerta</td></tr>
+            <tr><td>✅ Registrar a tus mascotas y llevar su perfil</td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque creaste una cuenta en PetsGo.
+      </p>';
+        $welcome_html = $this->email_wrap($welcome_inner, '¡Bienvenido/a a PetsGo, ' . $first_name . '!');
+        $company = $this->pg_setting('company_name', 'PetsGo');
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+        @wp_mail($email, "¡Bienvenido/a a {$company}! 🐾", $welcome_html, $headers);
+
         return rest_ensure_response(['message' => 'Cuenta creada exitosamente', 'username' => $username]);
     }
 
@@ -4232,6 +4408,41 @@ Dashboard con analíticas"></textarea>
 
         if ($vehicle) update_user_meta($uid, 'petsgo_vehicle', $vehicle);
         $this->audit('register_rider', 'user', $uid, $display_name . ' (rider)');
+
+        // Welcome email — Rider
+        $rider_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🚴</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. Estamos felices de tenerte a bordo.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Próximos pasos:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>1️⃣ Espera que el admin active tu cuenta</td></tr>
+            <tr><td>2️⃣ Recibirás un correo cuando estés habilitado</td></tr>
+            <tr><td>3️⃣ Podrás ver y aceptar entregas desde tu panel</td></tr>
+            <tr><td>4️⃣ Entrega con ❤️ y gana valoraciones positivas</td></tr>
+          </table>
+        </td></tr>
+      </table>' . ($vehicle ? '
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:14px 20px;font-size:13px;color:#555;">
+          🚗 Vehículo registrado: <strong style="color:#333;">' . esc_html($vehicle) . '</strong>
+        </td></tr>
+      </table>' : '') . '
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque te registraste como Rider en PetsGo.
+      </p>';
+        $rider_html = $this->email_wrap($rider_inner, '¡Bienvenido al equipo de Delivery, ' . $first_name . '!');
+        $company = $this->pg_setting('company_name', 'PetsGo');
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+        @wp_mail($email, "¡Bienvenido al equipo Rider de {$company}! 🚴", $rider_html, $headers);
+
         return rest_ensure_response(['message' => 'Registro como Rider exitoso. Bienvenido a PetsGo.', 'username' => $username]);
     }
 
@@ -4555,6 +4766,248 @@ Dashboard con analíticas"></textarea>
             'issued_at' => $inv->created_at,
             'message' => 'Boleta válida y verificada por PetsGo.'
         ]);
+    }
+
+    // ============================================================
+    // VENDOR LEADS — formulario de contacto tiendas interesadas
+    // ============================================================
+    public function api_submit_vendor_lead($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+
+        $store_name   = sanitize_text_field($p['storeName'] ?? '');
+        $contact_name = sanitize_text_field($p['contactName'] ?? '');
+        $email        = sanitize_email($p['email'] ?? '');
+        $phone        = sanitize_text_field($p['phone'] ?? '');
+        $comuna       = sanitize_text_field($p['comuna'] ?? '');
+        $message      = sanitize_textarea_field($p['message'] ?? '');
+        $plan         = sanitize_text_field($p['plan'] ?? '');
+
+        $errors = [];
+        if (!$store_name) $errors[] = 'Nombre de tienda es obligatorio';
+        if (!$contact_name) $errors[] = 'Nombre de contacto es obligatorio';
+        if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
+        if (!$phone) $errors[] = 'Teléfono es obligatorio';
+
+        if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_leads", [
+            'store_name'   => $store_name,
+            'contact_name' => $contact_name,
+            'email'        => $email,
+            'phone'        => $phone,
+            'comuna'       => $comuna,
+            'message'      => $message,
+            'plan_name'    => $plan,
+            'status'       => 'nuevo',
+            'created_at'   => current_time('mysql'),
+            'updated_at'   => current_time('mysql'),
+        ]);
+
+        // Thank-you email
+        $lead_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($contact_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Gracias por tu interés en unirte a <strong>PetsGo</strong> con tu tienda <strong>' . esc_html($store_name) . '</strong>. Hemos recibido tu solicitud y nuestro equipo la revisará a la brevedad.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 10px;font-size:14px;color:#00A8E8;font-weight:700;">📋 Resumen de tu solicitud</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:4px 0;font-weight:600;width:120px;">Tienda:</td><td style="padding:4px 0;">' . esc_html($store_name) . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Contacto:</td><td style="padding:4px 0;">' . esc_html($contact_name) . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Email:</td><td style="padding:4px 0;">' . esc_html($email) . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Teléfono:</td><td style="padding:4px 0;">' . esc_html($phone) . '</td></tr>' .
+            ($comuna ? '<tr><td style="padding:4px 0;font-weight:600;">Comuna:</td><td style="padding:4px 0;">' . esc_html($comuna) . '</td></tr>' : '') .
+            ($plan ? '<tr><td style="padding:4px 0;font-weight:600;">Plan:</td><td style="padding:4px 0;">' . esc_html($plan) . '</td></tr>' : '') . '
+          </table>' .
+          ($message ? '<p style="margin:12px 0 0;font-size:13px;color:#555;border-top:1px solid #e0f0f8;padding-top:12px;"><strong>Mensaje:</strong><br>' . nl2br(esc_html($message)) . '</p>' : '') . '
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:16px 20px;">
+          <p style="margin:0;font-size:13px;color:#8a6d00;line-height:1.6;">
+            ⏱️ <strong>¿Qué sigue?</strong><br>
+            Un ejecutivo de PetsGo se contactará contigo en las próximas <strong>24-48 horas hábiles</strong> para coordinar la incorporación de tu tienda.
+          </p>
+        </td></tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque completaste el formulario de contacto en PetsGo.
+      </p>';
+        $lead_html = $this->email_wrap($lead_inner, 'Gracias por tu interés en PetsGo, ' . $contact_name);
+        $company   = $this->pg_setting('company_name', 'PetsGo');
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $bcc_email = $this->pg_setting('company_bcc_email', 'contacto@petsgo.cl');
+        $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>", "Bcc: {$bcc_email}"];
+        @wp_mail($email, "Gracias por tu interés en {$company} 🏪", $lead_html, $headers);
+
+        $this->audit('vendor_lead', 'lead', $wpdb->insert_id, $store_name . ' (' . $email . ')');
+
+        return rest_ensure_response(['message' => '¡Gracias! Hemos recibido tu información. Te contactaremos pronto.']);
+    }
+
+    // ============================================================
+    // LEADS ADMIN PAGE — Gestión de leads de tiendas
+    // ============================================================
+    public function page_leads() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📩 Leads de Tiendas</h1>
+            <p class="petsgo-info-bar">Tiendas interesadas que completaron el formulario de contacto en el frontend.</p>
+
+            <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+                <input type="text" id="leads-search" placeholder="🔍 Buscar por tienda, contacto, email..." class="petsgo-search" style="flex:1;min-width:220px;">
+                <select id="leads-status-filter" class="petsgo-select" style="min-width:160px;">
+                    <option value="">Todos los estados</option>
+                    <option value="nuevo">🆕 Nuevo</option>
+                    <option value="contactado">📞 Contactado</option>
+                    <option value="contratado">✅ Contratado</option>
+                    <option value="declinado">❌ Declinado</option>
+                </select>
+                <button type="button" class="petsgo-btn petsgo-btn-primary" onclick="searchLeads()">Buscar</button>
+                <span class="petsgo-loader" id="leads-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+            </div>
+
+            <div id="leads-grid"></div>
+        </div>
+
+        <!-- Modal notas -->
+        <div id="lead-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:99999;justify-content:center;align-items:center;">
+            <div style="background:#fff;border-radius:12px;padding:28px;width:95%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 40px rgba(0,0,0,0.15);">
+                <h3 style="margin:0 0 16px;color:#2F3A40;" id="lead-modal-title">Lead</h3>
+                <div id="lead-modal-body"></div>
+                <div style="margin-top:16px;display:flex;gap:10px;justify-content:flex-end;">
+                    <button type="button" class="petsgo-btn" onclick="document.getElementById('lead-modal').style.display='none'">Cerrar</button>
+                    <button type="button" class="petsgo-btn petsgo-btn-primary" id="lead-save-btn" onclick="saveLeadChanges()">💾 Guardar</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        jQuery(function($){
+            var currentLead = null;
+            window.searchLeads = function(){
+                $('#leads-loader').addClass('active');
+                PG.post('petsgo_search_leads', {
+                    search: $('#leads-search').val(),
+                    status: $('#leads-status-filter').val()
+                }, function(r) {
+                    $('#leads-loader').removeClass('active');
+                    if (!r.success) return;
+                    var rows = r.data.rows;
+                    if (!rows.length) {
+                        $('#leads-grid').html('<div class="petsgo-empty">No se encontraron leads.</div>');
+                        return;
+                    }
+                    var statusBadge = function(s) {
+                        var m = {nuevo:'background:#e3f2fd;color:#1976d2',contactado:'background:#fff3e0;color:#e65100',contratado:'background:#e8f5e9;color:#2e7d32',declinado:'background:#fce4ec;color:#c62828'};
+                        var icons = {nuevo:'🆕',contactado:'📞',contratado:'✅',declinado:'❌'};
+                        return '<span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;' + (m[s]||'') + '">' + (icons[s]||'') + ' ' + s.charAt(0).toUpperCase()+s.slice(1) + '</span>';
+                    };
+                    var html = '<table class="petsgo-table"><thead><tr><th>Tienda</th><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>';
+                    rows.forEach(function(l) {
+                        html += '<tr>';
+                        html += '<td><strong>' + PG.esc(l.store_name) + '</strong>' + (l.comuna ? '<br><small style="color:#888;">' + PG.esc(l.comuna) + '</small>' : '') + '</td>';
+                        html += '<td>' + PG.esc(l.contact_name) + '</td>';
+                        html += '<td><a href="mailto:' + PG.esc(l.email) + '">' + PG.esc(l.email) + '</a></td>';
+                        html += '<td>' + PG.esc(l.phone) + '</td>';
+                        html += '<td>' + PG.esc(l.plan_name||'—') + '</td>';
+                        html += '<td>' + statusBadge(l.status) + '</td>';
+                        html += '<td style="font-size:12px;color:#888;white-space:nowrap;">' + (l.created_at||'').substring(0,10) + '</td>';
+                        html += '<td><button class="petsgo-btn petsgo-btn-small" onclick=\'openLead(' + JSON.stringify(l).replace(/\'/g,"&#39;") + ')\'>✏️ Gestionar</button></td>';
+                        html += '</tr>';
+                    });
+                    html += '</tbody></table>';
+                    html += '<div class="petsgo-pagination-bar"><span>' + rows.length + ' lead(s) encontrado(s)</span></div>';
+                    $('#leads-grid').html(html);
+                });
+            };
+
+            window.openLead = function(lead) {
+                currentLead = lead;
+                $('#lead-modal-title').text('📩 ' + lead.store_name);
+                var b = '<div style="font-size:13px;color:#555;line-height:1.8;">';
+                b += '<strong>Contacto:</strong> ' + PG.esc(lead.contact_name) + '<br>';
+                b += '<strong>Email:</strong> ' + PG.esc(lead.email) + '<br>';
+                b += '<strong>Teléfono:</strong> ' + PG.esc(lead.phone) + '<br>';
+                if (lead.comuna) b += '<strong>Comuna:</strong> ' + PG.esc(lead.comuna) + '<br>';
+                if (lead.plan_name) b += '<strong>Plan:</strong> ' + PG.esc(lead.plan_name) + '<br>';
+                if (lead.message) b += '<strong>Mensaje:</strong><br><div style="background:#f8f9fa;padding:10px 14px;border-radius:8px;margin:4px 0 12px;white-space:pre-wrap;">' + PG.esc(lead.message) + '</div>';
+                b += '</div>';
+                b += '<div style="margin-top:14px;"><label style="font-weight:700;font-size:13px;color:#333;">Estado:</label><br>';
+                b += '<select id="lead-status-select" class="petsgo-select" style="width:100%;margin-top:6px;">';
+                ['nuevo','contactado','contratado','declinado'].forEach(function(s){
+                    b += '<option value="' + s + '"' + (lead.status===s?' selected':'') + '>' + s.charAt(0).toUpperCase()+s.slice(1) + '</option>';
+                });
+                b += '</select></div>';
+                b += '<div style="margin-top:14px;"><label style="font-weight:700;font-size:13px;color:#333;">Notas internas:</label><br>';
+                b += '<textarea id="lead-notes" class="petsgo-textarea" style="width:100%;min-height:80px;margin-top:6px;" placeholder="Notas del admin...">' + PG.esc(lead.admin_notes||'') + '</textarea></div>';
+                $('#lead-modal-body').html(b);
+                document.getElementById('lead-modal').style.display = 'flex';
+            };
+
+            window.saveLeadChanges = function() {
+                if (!currentLead) return;
+                PG.post('petsgo_update_lead', {
+                    lead_id: currentLead.id,
+                    status: $('#lead-status-select').val(),
+                    admin_notes: $('#lead-notes').val()
+                }, function(r) {
+                    if (r.success) {
+                        document.getElementById('lead-modal').style.display = 'none';
+                        PG.toast('Lead actualizado','success');
+                        searchLeads();
+                    } else {
+                        PG.toast(r.data||'Error','error');
+                    }
+                });
+            };
+
+            // Initial load
+            searchLeads();
+        });
+        </script>
+        <?php
+    }
+
+    public function petsgo_search_leads() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $search = sanitize_text_field($_POST['search'] ?? '');
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $sql = "SELECT * FROM {$wpdb->prefix}petsgo_leads WHERE 1=1";
+        $args = [];
+        if ($search) {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $sql .= " AND (store_name LIKE %s OR contact_name LIKE %s OR email LIKE %s)";
+            $args[] = $like; $args[] = $like; $args[] = $like;
+        }
+        if ($status) { $sql .= " AND status = %s"; $args[] = $status; }
+        $sql .= " ORDER BY created_at DESC LIMIT 200";
+        if ($args) $sql = $wpdb->prepare($sql, ...$args);
+        wp_send_json_success(['rows' => $wpdb->get_results($sql)]);
+    }
+
+    public function petsgo_update_lead() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id     = intval($_POST['lead_id'] ?? 0);
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $notes  = sanitize_textarea_field($_POST['admin_notes'] ?? '');
+        if (!$id || !in_array($status, ['nuevo','contactado','contratado','declinado'])) wp_send_json_error('Datos inválidos');
+        $wpdb->update("{$wpdb->prefix}petsgo_leads", [
+            'status' => $status,
+            'admin_notes' => $notes,
+            'updated_at' => current_time('mysql'),
+        ], ['id' => $id]);
+        $lead = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_leads WHERE id=%d", $id));
+        $this->audit('update_lead', 'lead', $id, ($lead->store_name ?? '') . ' → ' . $status);
+        wp_send_json_success(['message' => 'Lead actualizado']);
     }
 }
 
