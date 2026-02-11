@@ -2328,8 +2328,8 @@ class PetsGo_Core {
                             d.status==='rejected'?'<span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">❌ Rechazado</span>':
                             '<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">⏳ Pendiente</span>';
                         var vType=d.vehicle_type||'N/A';
-                        var vtIcon=vType==='moto'?'🏍️':vType==='auto'?'🚗':vType==='bicicleta'?'🚲':'🚶';
-                        h+='<tr><td>'+PG.esc(d.rider_name)+'</td><td>'+vtIcon+' '+PG.esc(vType)+'</td>';
+                        var vtIcon=vType==='moto'?'🏍️':vType==='auto'?'🚗':vType==='bicicleta'?'🚲':vType==='scooter'?'🛵':'🚶';
+                        h+='<tr><td>'+PG.esc(d.rider_name)+'<br><small style=\"color:#999;\">'+PG.esc(d.id_number||'')+'</small></td><td>'+vtIcon+' '+PG.esc(vType)+'</td>';
                         h+='<td>'+(docLabels[d.doc_type]||d.doc_type)+'</td>';
                         h+='<td><a href="'+d.file_url+'" target="_blank" style="color:#00A8E8;font-weight:600;">📎 '+PG.esc(d.file_name||'Ver')+'</a></td>';
                         h+='<td>'+stBadge+'</td><td>'+PG.fdate(d.uploaded_at)+'</td>';
@@ -2951,7 +2951,8 @@ Dashboard con analíticas"></textarea>
         }
 
         // Documents mode
-        $sql = "SELECT rd.*, u.display_name AS rider_name, up.vehicle_type
+        $sql = "SELECT rd.*, u.display_name AS rider_name, up.vehicle_type, up.id_type, up.id_number,
+                       (SELECT um.meta_value FROM {$wpdb->usermeta} um WHERE um.user_id = rd.rider_id AND um.meta_key = 'petsgo_rider_status') AS rider_status
                 FROM {$wpdb->prefix}petsgo_rider_documents rd
                 JOIN {$wpdb->users} u ON rd.rider_id = u.ID
                 LEFT JOIN {$wpdb->prefix}petsgo_user_profiles up ON rd.rider_id = up.user_id
@@ -2986,20 +2987,49 @@ Dashboard con analíticas"></textarea>
         if ($status === 'approved' && $doc) {
             $rider_id = $doc->rider_id;
             $vehicle_type = get_user_meta($rider_id, 'petsgo_vehicle', true);
-            $needs_license = in_array($vehicle_type, ['moto', 'auto']);
+            $needs_license = in_array($vehicle_type, ['moto', 'auto', 'scooter']);
 
             $approved = $wpdb->get_col($wpdb->prepare(
                 "SELECT doc_type FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d AND status='approved'",
                 $rider_id
             ));
 
-            $all_ok = true;
+            $all_ok = in_array('id_card', $approved);
             if ($needs_license && !in_array('license', $approved)) $all_ok = false;
             if ($needs_license && !in_array('vehicle_registration', $approved)) $all_ok = false;
 
-            if ($all_ok && count($approved) >= ($needs_license ? 2 : 0)) {
+            if ($all_ok) {
                 update_user_meta($rider_id, 'petsgo_rider_status', 'approved');
                 $this->audit('rider_approved', 'user', $rider_id, 'Todos los documentos aprobados');
+
+                // Send approval email
+                $rider_user = get_userdata($rider_id);
+                $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
+                $approve_inner = '
+                <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Felicidades <strong>' . esc_html($rider_name) . '</strong>! 🎉🚴</p>
+                <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Tu solicitud como Rider de PetsGo ha sido <strong style="color:#16a34a;">APROBADA</strong>. Ya puedes comenzar a recibir y realizar entregas.</p>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr><td align="center">
+                    <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#22C55E;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a mi Panel de Rider</a>
+                  </td></tr>
+                </table>';
+                $approve_html = $this->email_wrap($approve_inner, '¡Tu cuenta Rider fue aprobada!');
+                $company = $this->pg_setting('company_name', 'PetsGo');
+                $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+                $hdrs = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+                @wp_mail($rider_user->user_email, "¡Cuenta Rider aprobada! - {$company} 🎉", $approve_html, $hdrs);
+            }
+        }
+
+        // If rejected, send rejection email
+        if ($status === 'rejected' && $doc) {
+            $rider_id = $doc->rider_id;
+            $rider_user = get_userdata($rider_id);
+            $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
+            // Set back to pending_docs so rider can re-upload
+            $current_rs = get_user_meta($rider_id, 'petsgo_rider_status', true);
+            if ($current_rs === 'pending_review') {
+                update_user_meta($rider_id, 'petsgo_rider_status', 'pending_docs');
             }
         }
 
@@ -4942,6 +4972,8 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/auth/login',['methods'=>'POST','callback'=>[$this,'api_login'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/register',['methods'=>'POST','callback'=>[$this,'api_register'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/register-rider',['methods'=>'POST','callback'=>[$this,'api_register_rider'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/auth/verify-rider-email',['methods'=>'POST','callback'=>[$this,'api_verify_rider_email'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/auth/resend-rider-verification',['methods'=>'POST','callback'=>[$this,'api_resend_rider_verification'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/forgot-password',['methods'=>'POST','callback'=>[$this,'api_forgot_password'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/reset-password',['methods'=>'POST','callback'=>[$this,'api_reset_password'],'permission_callback'=>'__return_true']);
         // Profile (logged in)
@@ -5084,6 +5116,14 @@ Dashboard con analíticas"></textarea>
         }
         $role='customer';if(in_array('administrator',$user->roles))$role='admin';elseif(in_array('petsgo_vendor',$user->roles))$role='vendor';elseif(in_array('petsgo_rider',$user->roles))$role='rider';
 
+        // Block unverified riders — require email verification first
+        if ($role === 'rider') {
+            $rider_status = get_user_meta($user->ID, 'petsgo_rider_status', true) ?: 'pending_email';
+            if ($rider_status === 'rejected') {
+                return new WP_Error('rider_rejected', 'Tu solicitud como Rider ha sido rechazada. Contacta a contacto@petsgo.cl para más información.', ['status' => 403]);
+            }
+        }
+
         // Block inactive vendors from logging in
         if ($role === 'vendor') {
             global $wpdb;
@@ -5103,12 +5143,17 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$user->ID));
         $this->audit('login', 'login', $user->ID, $user->user_login . ' (' . $role . ')');
-        return rest_ensure_response(['token'=>$existing_token,'user'=>[
+        $resp = [
             'id'=>$user->ID,'username'=>$user->user_login,'displayName'=>$user->display_name,
             'email'=>$user->user_email,'role'=>$role,
             'firstName'=>$profile->first_name??'','lastName'=>$profile->last_name??'',
             'phone'=>$profile->phone??'','avatarUrl'=>$profile->avatar_url??'',
-        ]]);
+        ];
+        if ($role === 'rider') {
+            $resp['rider_status'] = get_user_meta($user->ID, 'petsgo_rider_status', true) ?: 'pending_email';
+            $resp['vehicle_type'] = get_user_meta($user->ID, 'petsgo_vehicle', true) ?: '';
+        }
+        return rest_ensure_response(['token'=>$existing_token,'user'=>$resp]);
     }
 
     public function api_register($request) {
@@ -5281,44 +5326,133 @@ Dashboard con analíticas"></textarea>
             update_user_meta($uid, 'petsgo_vehicle', $vehicle_type);
             $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", ['vehicle_type' => $vehicle_type], ['user_id' => $uid]);
         }
-        update_user_meta($uid, 'petsgo_rider_status', 'pending');
+        // Step 1: Set status to pending_email (must verify email before uploading docs)
+        update_user_meta($uid, 'petsgo_rider_status', 'pending_email');
+
+        // Generate email verification token
+        $verify_token = bin2hex(random_bytes(32));
+        update_user_meta($uid, 'petsgo_rider_verify_token', $verify_token);
+        update_user_meta($uid, 'petsgo_rider_verify_expiry', date('Y-m-d H:i:s', strtotime('+48 hours')));
+
         $this->audit('register_rider', 'user', $uid, $display_name . ' (rider)');
 
-        // Welcome email — Rider
+        // Verification email with code
+        $verify_code = strtoupper(substr($verify_token, 0, 6));
+        update_user_meta($uid, 'petsgo_rider_verify_code', $verify_code);
+
         $rider_inner = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🚴</p>
-      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. Estamos felices de tenerte a bordo.</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Gracias por registrarte como <strong>Rider en PetsGo</strong>. Para continuar con tu solicitud, verifica tu correo electr' . chr(243) . 'nico.</p>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
-        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:20px 24px;">
-          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Próximos pasos:</p>
+        <tr><td align="center" style="background-color:#fff8ed;border-radius:12px;padding:30px 24px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#555;">Tu c' . chr(243) . 'digo de verificaci' . chr(243) . 'n es:</p>
+          <p style="margin:0;font-size:36px;font-weight:900;letter-spacing:6px;color:#F59E0B;font-family:monospace;">' . $verify_code . '</p>
+          <p style="margin:12px 0 0;font-size:12px;color:#999;">V' . chr(225) . 'lido por 48 horas</p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0f9ff;border-left:4px solid #00A8E8;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📋 Pasos del registro:</p>
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
-            <tr><td>1️⃣ Espera que el admin active tu cuenta</td></tr>
-            <tr><td>2️⃣ Recibirás un correo cuando estés habilitado</td></tr>
-            <tr><td>3️⃣ Podrás ver y aceptar entregas desde tu panel</td></tr>
-            <tr><td>4️⃣ Entrega con ❤️ y gana valoraciones positivas</td></tr>
+            <tr><td>✅ Paso 1: Datos b' . chr(225) . 'sicos registrados</td></tr>
+            <tr><td>👉 <strong>Paso 2: Verifica tu email e ingresa tus documentos</strong></td></tr>
+            <tr><td>⏳ Paso 3: Revisi' . chr(243) . 'n y aprobaci' . chr(243) . 'n del admin</td></tr>
           </table>
-        </td></tr>
-      </table>' . ($vehicle ? '
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
-        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:14px 20px;font-size:13px;color:#555;">
-          🚗 Vehículo registrado: <strong style="color:#333;">' . esc_html($vehicle) . '</strong>
-        </td></tr>
-      </table>' : '') . '
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-        <tr><td align="center">
-          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
         </td></tr>
       </table>
       <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
         Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque te registraste como Rider en PetsGo.
       </p>';
-        $rider_html = $this->email_wrap($rider_inner, '¡Bienvenido al equipo de Delivery, ' . $first_name . '!');
+        $rider_html = $this->email_wrap($rider_inner, 'Verifica tu email para continuar, ' . $first_name . ' 🚴');
         $company = $this->pg_setting('company_name', 'PetsGo');
         $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
         $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
-        @wp_mail($email, "¡Bienvenido al equipo Rider de {$company}! 🚴", $rider_html, $headers);
+        @wp_mail($email, "Verifica tu email - {$company} Rider 🚴", $rider_html, $headers);
 
-        return rest_ensure_response(['message' => 'Registro como Rider exitoso. Bienvenido a PetsGo.', 'username' => $username]);
+        return rest_ensure_response([
+            'message' => 'Registro exitoso. Revisa tu correo para verificar tu email y continuar con el proceso.',
+            'username' => $username,
+            'step' => 1,
+            'next_step' => 'verify_email',
+        ]);
+    }
+
+    /** Step 2a: Verify rider email with code */
+    public function api_verify_rider_email($request) {
+        $p = $request->get_json_params();
+        $email = sanitize_email($p['email'] ?? '');
+        $code  = strtoupper(sanitize_text_field($p['code'] ?? ''));
+
+        if (!$email || !$code) return new WP_Error('missing', 'Email y codigo son obligatorios', ['status' => 400]);
+
+        $user = get_user_by('email', $email);
+        if (!$user) return new WP_Error('not_found', 'Usuario no encontrado', ['status' => 404]);
+
+        $stored_code   = get_user_meta($user->ID, 'petsgo_rider_verify_code', true);
+        $stored_expiry = get_user_meta($user->ID, 'petsgo_rider_verify_expiry', true);
+        $current_status = get_user_meta($user->ID, 'petsgo_rider_status', true);
+
+        if ($current_status !== 'pending_email') {
+            return rest_ensure_response(['message' => 'Tu email ya fue verificado previamente.', 'already_verified' => true]);
+        }
+
+        if (!$stored_code || $stored_code !== $code) {
+            return new WP_Error('invalid_code', 'Codigo de verificacion invalido', ['status' => 400]);
+        }
+
+        if ($stored_expiry && strtotime($stored_expiry) < time()) {
+            return new WP_Error('expired', 'El codigo ha expirado. Solicita uno nuevo.', ['status' => 400]);
+        }
+
+        // Email verified -> advance to step 2 (upload docs)
+        update_user_meta($user->ID, 'petsgo_rider_status', 'pending_docs');
+        delete_user_meta($user->ID, 'petsgo_rider_verify_token');
+        delete_user_meta($user->ID, 'petsgo_rider_verify_code');
+        delete_user_meta($user->ID, 'petsgo_rider_verify_expiry');
+        $this->audit('rider_email_verified', 'user', $user->ID, $user->display_name);
+
+        return rest_ensure_response([
+            'message' => 'Email verificado exitosamente. Ahora puedes subir tus documentos.',
+            'step' => 2,
+            'next_step' => 'upload_documents',
+        ]);
+    }
+
+    /** Resend rider verification email */
+    public function api_resend_rider_verification($request) {
+        $p = $request->get_json_params();
+        $email = sanitize_email($p['email'] ?? '');
+        if (!$email) return new WP_Error('missing', 'Email es obligatorio', ['status' => 400]);
+
+        $user = get_user_by('email', $email);
+        if (!$user) return new WP_Error('not_found', 'Usuario no encontrado', ['status' => 404]);
+
+        $current_status = get_user_meta($user->ID, 'petsgo_rider_status', true);
+        if ($current_status !== 'pending_email') {
+            return rest_ensure_response(['message' => 'Tu email ya fue verificado.']);
+        }
+
+        $verify_code = strtoupper(substr(bin2hex(random_bytes(32)), 0, 6));
+        update_user_meta($user->ID, 'petsgo_rider_verify_code', $verify_code);
+        update_user_meta($user->ID, 'petsgo_rider_verify_expiry', date('Y-m-d H:i:s', strtotime('+48 hours')));
+
+        $first_name = get_user_meta($user->ID, 'first_name', true) ?: $user->display_name;
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🚴</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Aqui tienes tu nuevo codigo de verificacion:</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td align="center" style="background-color:#fff8ed;border-radius:12px;padding:30px 24px;">
+          <p style="margin:0;font-size:36px;font-weight:900;letter-spacing:6px;color:#F59E0B;font-family:monospace;">' . $verify_code . '</p>
+          <p style="margin:12px 0 0;font-size:12px;color:#999;">Valido por 48 horas</p>
+        </td></tr>
+      </table>';
+        $html = $this->email_wrap($inner, 'Nuevo codigo de verificacion');
+        $company = $this->pg_setting('company_name', 'PetsGo');
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+        @wp_mail($email, "Nuevo codigo de verificacion - {$company} 🚴", $html, $headers);
+
+        return rest_ensure_response(['message' => 'Se ha enviado un nuevo codigo de verificacion a tu email.']);
     }
 
     // --- Rider Documents API ---
@@ -5337,6 +5471,15 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $uid = get_current_user_id();
 
+        // Must have verified email first
+        $rider_status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending_email';
+        if ($rider_status === 'pending_email') {
+            return new WP_Error('email_not_verified', 'Debes verificar tu email antes de subir documentos', ['status' => 403]);
+        }
+        if ($rider_status === 'approved') {
+            return new WP_Error('already_approved', 'Tu cuenta ya esta aprobada', ['status' => 400]);
+        }
+
         if (empty($_FILES['document'])) {
             return new WP_Error('no_file', 'No se recibió ningún archivo', ['status' => 400]);
         }
@@ -5347,7 +5490,7 @@ Dashboard con analíticas"></textarea>
 
         // Save vehicle type if provided
         $vehicle_type = sanitize_text_field($_POST['vehicle_type'] ?? '');
-        if ($vehicle_type && in_array($vehicle_type, ['moto', 'auto', 'bicicleta'])) {
+        if ($vehicle_type && in_array($vehicle_type, ['moto', 'auto', 'bicicleta', 'scooter', 'a_pie'])) {
             update_user_meta($uid, 'petsgo_vehicle', $vehicle_type);
             $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", ['vehicle_type' => $vehicle_type], ['user_id' => $uid]);
         }
@@ -5381,32 +5524,71 @@ Dashboard con analíticas"></textarea>
         ], ['%d', '%s', '%s', '%s', '%s']);
 
         $this->audit('rider_doc_upload', 'rider_document', $wpdb->insert_id, "Tipo: {$doc_type}");
+
+        // Check if all required docs uploaded -> advance to pending_review
+        $current_rs = get_user_meta($uid, 'petsgo_rider_status', true);
+        if ($current_rs === 'pending_docs') {
+            $vtype = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
+            $needs_motor = in_array($vtype, ['moto', 'auto', 'scooter']);
+            $uploaded_types = $wpdb->get_col($wpdb->prepare(
+                "SELECT DISTINCT doc_type FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
+            ));
+            $has_id = in_array('id_card', $uploaded_types);
+            $has_license = in_array('license', $uploaded_types);
+            $has_registration = in_array('vehicle_registration', $uploaded_types);
+
+            $all_uploaded = $has_id;
+            if ($needs_motor) {
+                $all_uploaded = $has_id && $has_license && $has_registration;
+            }
+            if ($all_uploaded) {
+                update_user_meta($uid, 'petsgo_rider_status', 'pending_review');
+                $this->audit('rider_docs_complete', 'user', $uid, 'Todos los documentos subidos, pendiente de revision');
+            }
+        }
+
         return rest_ensure_response(['message' => 'Documento subido exitosamente', 'id' => $wpdb->insert_id]);
     }
 
     public function api_get_rider_status() {
         $uid = get_current_user_id();
         global $wpdb;
-        $status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending';
+        $status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending_email';
         $vehicle = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
+        $email_verified = !in_array($status, ['pending_email']);
         $docs = $wpdb->get_results($wpdb->prepare(
-            "SELECT doc_type, status FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
+            "SELECT doc_type, status, admin_notes FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
         ));
         $pending_docs = array_filter($docs, fn($d) => $d->status === 'pending');
         $rejected_docs = array_filter($docs, fn($d) => $d->status === 'rejected');
+
+        // Required docs check
+        $needs_motor = in_array($vehicle, ['moto', 'auto', 'scooter']);
+        $required = ['id_card'];
+        if ($needs_motor) { $required[] = 'license'; $required[] = 'vehicle_registration'; }
+        $uploaded_types = array_map(fn($d) => $d->doc_type, $docs);
+        $missing_docs = array_values(array_diff($required, $uploaded_types));
 
         // Get rider average rating
         $avg = $wpdb->get_var($wpdb->prepare(
             "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
         ));
 
+        // Profile data for document matching
+        $profile = $wpdb->get_row($wpdb->prepare("SELECT id_type, id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+
         return rest_ensure_response([
-            'rider_status'   => $status,
-            'vehicle_type'   => $vehicle,
-            'documents'      => $docs,
-            'pending_count'  => count($pending_docs),
-            'rejected_count' => count(array_values($rejected_docs)),
-            'average_rating' => $avg ? round(floatval($avg), 1) : null,
+            'rider_status'    => $status,
+            'email_verified'  => $email_verified,
+            'vehicle_type'    => $vehicle,
+            'documents'       => $docs,
+            'required_docs'   => $required,
+            'missing_docs'    => $missing_docs,
+            'pending_count'   => count($pending_docs),
+            'rejected_count'  => count(array_values($rejected_docs)),
+            'average_rating'  => $avg ? round(floatval($avg), 1) : null,
+            'id_type'         => $profile->id_type ?? '',
+            'id_number'       => $profile->id_number ?? '',
         ]);
     }
 

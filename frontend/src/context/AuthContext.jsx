@@ -53,6 +53,8 @@ export const AuthProvider = ({ children }) => {
       phone: u.phone || '',
       avatarUrl: u.avatarUrl || '',
       role: u.role,
+      rider_status: u.rider_status || null,
+      vehicle_type: u.vehicle_type || null,
     };
     localStorage.setItem('petsgo_token', data.token);
     localStorage.setItem('petsgo_user', JSON.stringify(userData));

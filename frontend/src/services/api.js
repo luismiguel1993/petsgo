@@ -92,6 +92,14 @@ export const register = (data) =>
 export const registerRider = (data) =>
   api.post('/auth/register-rider', data);
 
+/** Verificar email de rider */
+export const verifyRiderEmail = (email, code) =>
+  api.post('/auth/verify-rider-email', { email, code });
+
+/** Reenviar codigo de verificacion rider */
+export const resendRiderVerification = (email) =>
+  api.post('/auth/resend-rider-verification', { email });
+
 /** Solicitar reset de contraseña */
 export const forgotPassword = (email) =>
   api.post('/auth/forgot-password', { email });

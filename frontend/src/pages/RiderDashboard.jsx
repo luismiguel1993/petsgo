@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Truck, Package, MapPin, CheckCircle2, Navigation, Upload, Star } from 'lucide-react';
+import { Truck, Package, MapPin, CheckCircle2, Navigation, Upload, Star, Shield, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument, getRiderRatings } from '../services/api';
+import {
+  getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
+  getRiderRatings, getRiderStatus,
+} from '../services/api';
 
 const STATUS_CONFIG = {
   ready_for_pickup: { label: 'Recoger', color: '#8B5CF6', next: 'in_transit', action: 'Iniciar Entrega' },
@@ -11,36 +14,40 @@ const STATUS_CONFIG = {
 };
 
 const DOC_TYPES = {
-  license: { label: 'Licencia de Conducir', icon: '🪪', required_for: ['moto', 'auto'] },
-  vehicle_registration: { label: 'Padrón del Vehículo', icon: '📄', required_for: ['moto', 'auto'] },
-  id_card: { label: 'Documento de Identidad', icon: '🆔', required_for: ['moto', 'auto', 'bicicleta'] },
+  id_card:              { label: 'Documento de Identidad', icon: '🆔', description: 'Foto legible de tu documento (ambas caras)' },
+  license:              { label: 'Licencia de Conducir', icon: '🪪', description: 'Foto de licencia vigente' },
+  vehicle_registration: { label: 'Padrón del Vehículo', icon: '📄', description: 'Padrón o inscripción vehicular' },
 };
 
-const VEHICLE_TYPES = [
-  { value: 'bicicleta', label: '🚲 Bicicleta', needsDocs: false },
-  { value: 'moto', label: '🏍️ Moto', needsDocs: true },
-  { value: 'auto', label: '🚗 Auto', needsDocs: true },
-];
+const VEHICLE_LABELS = {
+  bicicleta: '🚲 Bicicleta',
+  scooter: '🛵 Scooter',
+  moto: '🏍️ Moto',
+  auto: '🚗 Auto',
+  a_pie: '🚶 A pie',
+};
 
 const DEMO_DELIVERIES = [
   { id: 1051, status: 'ready_for_pickup', store_name: 'PetShop Las Condes', customer_name: 'María López', address: 'Av. Las Condes 5678, Depto 302', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-10T08:30:00Z' },
   { id: 1052, status: 'in_transit', store_name: 'La Huella Store', customer_name: 'Carlos Muñoz', address: 'Calle Sucre 1234, Providencia', total_amount: 38990, delivery_fee: 2990, created_at: '2026-02-10T09:15:00Z' },
   { id: 1048, status: 'delivered', store_name: 'Mundo Animal Centro', customer_name: 'Ana Torres', address: 'Av. Matta 890, Santiago', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-09T14:00:00Z' },
-  { id: 1045, status: 'delivered', store_name: 'Vet & Shop', customer_name: 'Pedro Soto', address: 'Av. Vitacura 3210, Vitacura', total_amount: 14990, delivery_fee: 2990, created_at: '2026-02-08T11:30:00Z' },
-  { id: 1040, status: 'delivered', store_name: 'Happy Pets Providencia', customer_name: 'Camila Reyes', address: 'Irarrázaval 2500, Ñuñoa', total_amount: 62990, delivery_fee: 0, created_at: '2026-02-07T16:00:00Z' },
 ];
 
 const RiderDashboard = () => {
-  const { isAuthenticated, isRider, isAdmin } = useAuth();
+  const { isAuthenticated, isRider, isAdmin, user } = useAuth();
   const [tab, setTab] = useState('deliveries');
   const [deliveries, setDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('active');
 
+  // Status state
+  const [riderStatus, setRiderStatus] = useState(user?.rider_status || 'pending_email');
+  const [vehicleType, setVehicleType] = useState(user?.vehicle_type || '');
+  const [requiredDocs, setRequiredDocs] = useState(['id_card']);
+  const [missingDocs, setMissingDocs] = useState([]);
+
   // Docs state
   const [documents, setDocuments] = useState([]);
-  const [vehicleType, setVehicleType] = useState('');
-  const [riderStatus, setRiderStatus] = useState('pending');
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const fileInputRef = useRef(null);
@@ -50,11 +57,37 @@ const RiderDashboard = () => {
   const [ratings, setRatings] = useState([]);
   const [avgRating, setAvgRating] = useState(null);
 
+  // Profile data for matching
+  const [idType, setIdType] = useState('');
+  const [idNumber, setIdNumber] = useState('');
+
   useEffect(() => {
-    if (tab === 'deliveries') loadDeliveries();
+    loadStatus();
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'deliveries' && riderStatus === 'approved') loadDeliveries();
     else if (tab === 'documents') loadDocuments();
-    else if (tab === 'ratings') loadRatings();
-  }, [tab]);
+    else if (tab === 'ratings' && riderStatus === 'approved') loadRatings();
+  }, [tab, riderStatus]);
+
+  const loadStatus = async () => {
+    try {
+      const { data } = await getRiderStatus();
+      setRiderStatus(data.rider_status || 'pending_email');
+      setVehicleType(data.vehicle_type || '');
+      setRequiredDocs(data.required_docs || ['id_card']);
+      setMissingDocs(data.missing_docs || []);
+      setDocuments(data.documents || []);
+      setAvgRating(data.average_rating);
+      setIdType(data.id_type || '');
+      setIdNumber(data.id_number || '');
+      // Auto-switch to documents tab if pending_docs
+      if (data.rider_status === 'pending_docs') setTab('documents');
+    } catch {
+      // keep defaults from user context
+    }
+  };
 
   const loadDeliveries = async () => {
     setLoading(true);
@@ -72,8 +105,8 @@ const RiderDashboard = () => {
     try {
       const { data } = await getRiderDocuments();
       setDocuments(data?.documents || []);
-      setVehicleType(data?.vehicle_type || '');
-      setRiderStatus(data?.rider_status || 'pending');
+      setVehicleType(data?.vehicle_type || vehicleType);
+      setRiderStatus(data?.rider_status || riderStatus);
     } catch {
       // keep defaults
     } finally { setLoading(false); }
@@ -114,6 +147,8 @@ const RiderDashboard = () => {
       setUploadMsg('✅ Documento subido exitosamente');
       fileInputRef.current.value = '';
       setSelectedDocType('');
+      // Reload status to see if advanced to pending_review
+      await loadStatus();
       loadDocuments();
     } catch (err) {
       setUploadMsg('❌ ' + (err.response?.data?.message || 'Error al subir documento'));
@@ -124,7 +159,7 @@ const RiderDashboard = () => {
   const completedDeliveries = deliveries.filter((d) => d.status === 'delivered');
   const displayedDeliveries = filter === 'active' ? activeDeliveries : completedDeliveries;
 
-  const needsMotorDocs = ['moto', 'auto'].includes(vehicleType);
+  const needsMotorDocs = ['moto', 'auto', 'scooter'].includes(vehicleType);
   const getDocStatus = (docType) => {
     const doc = documents.find(d => d.doc_type === docType);
     return doc ? doc.status : 'missing';
@@ -138,16 +173,100 @@ const RiderDashboard = () => {
     boxShadow: tab === t ? '0 4px 12px rgba(249,115,22,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
   });
 
+
+  // ============= STATUS BANNERS =============
+  const StatusBanner = () => {
+    const configs = {
+      pending_email: {
+        bg: '#FEF3C7', border: '#FCD34D', icon: '📧', color: '#92400E',
+        title: 'Verifica tu correo electrónico',
+        desc: 'Revisa tu bandeja de entrada y usa el código de verificación para continuar.',
+      },
+      pending_docs: {
+        bg: '#FFF7ED', border: '#FDBA74', icon: '📋', color: '#9A3412',
+        title: 'Sube tus documentos',
+        desc: `Debes subir: ${requiredDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}`,
+      },
+      pending_review: {
+        bg: '#EFF6FF', border: '#93C5FD', icon: '⏳', color: '#1E40AF',
+        title: 'Documentos en revisión',
+        desc: 'El administrador está revisando tus documentos. Te notificaremos cuando sean aprobados.',
+      },
+      approved: {
+        bg: '#F0FDF4', border: '#86EFAC', icon: '✅', color: '#166534',
+        title: 'Cuenta aprobada',
+        desc: 'Puedes recibir y realizar entregas.',
+      },
+    };
+    const cfg = configs[riderStatus] || configs.pending_email;
+
+    return (
+      <div style={{
+        background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: '14px',
+        padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '14px',
+      }}>
+        <span style={{ fontSize: '32px' }}>{cfg.icon}</span>
+        <div style={{ flex: 1 }}>
+          <strong style={{ color: cfg.color, fontSize: '14px' }}>{cfg.title}</strong>
+          <p style={{ fontSize: '12px', color: cfg.color, margin: '2px 0 0', opacity: 0.8 }}>{cfg.desc}</p>
+        </div>
+        {riderStatus === 'pending_docs' && missingDocs.length > 0 && (
+          <span style={{ background: '#F97316', color: '#fff', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700 }}>
+            {missingDocs.length} pendiente{missingDocs.length > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // ============= STEP PROGRESS =============
+  const StepProgress = () => {
+    const steps = [
+      { key: 'pending_email', label: 'Registro', icon: '📝' },
+      { key: 'pending_docs', label: 'Email verificado', icon: '📧' },
+      { key: 'pending_review', label: 'Documentos', icon: '📋' },
+      { key: 'approved', label: 'Aprobado', icon: '✅' },
+    ];
+    const statusOrder = ['pending_email', 'pending_docs', 'pending_review', 'approved'];
+    const currentIdx = statusOrder.indexOf(riderStatus);
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: '20px', flexWrap: 'wrap' }}>
+        {steps.map((s, i) => (
+          <React.Fragment key={s.key}>
+            {i > 0 && <div style={{ width: '24px', height: '2px', background: i <= currentIdx ? '#F59E0B' : '#e5e7eb', flexShrink: 0 }} />}
+            <div style={{ textAlign: 'center', minWidth: '56px' }}>
+              <div style={{
+                width: '32px', height: '32px', borderRadius: '50%', margin: '0 auto 4px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
+                background: i <= currentIdx ? '#F59E0B' : '#f3f4f6',
+                color: i <= currentIdx ? '#fff' : '#9ca3af',
+                fontWeight: 900,
+                boxShadow: i === currentIdx ? '0 4px 12px rgba(245,158,11,0.3)' : 'none',
+              }}>
+                {i < currentIdx ? '✓' : s.icon}
+              </div>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: i <= currentIdx ? '#F59E0B' : '#9ca3af' }}>{s.label}</span>
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 16px' }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ width: 48, height: 48, background: '#F97316', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Truck size={24} color="#fff" />
         </div>
         <div>
           <h2 style={{ fontSize: 24, fontWeight: 900, color: '#2F3A40', margin: 0 }}>Panel de Rider</h2>
-          <p style={{ fontSize: 13, color: '#9ca3af', fontWeight: 500, margin: 0 }}>Gestiona entregas, documentos y valoraciones</p>
+          <p style={{ fontSize: 13, color: '#9ca3af', fontWeight: 500, margin: 0 }}>
+            {vehicleType && <span style={{ marginRight: 6 }}>{VEHICLE_LABELS[vehicleType] || vehicleType}</span>}
+            {idNumber && <span style={{ color: '#d1d5db' }}>· Doc: {idNumber}</span>}
+          </p>
         </div>
         {avgRating && (
           <div style={{ marginLeft: 'auto', background: '#FFF8E1', padding: '8px 16px', borderRadius: 12, textAlign: 'center' }}>
@@ -157,15 +276,22 @@ const RiderDashboard = () => {
         )}
       </div>
 
+      <StepProgress />
+      <StatusBanner />
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-        <button onClick={() => setTab('deliveries')} style={tabStyle('deliveries')}>📦 Entregas</button>
+        {riderStatus === 'approved' && (
+          <button onClick={() => setTab('deliveries')} style={tabStyle('deliveries')}>📦 Entregas</button>
+        )}
         <button onClick={() => setTab('documents')} style={tabStyle('documents')}>📋 Documentos</button>
-        <button onClick={() => setTab('ratings')} style={tabStyle('ratings')}>⭐ Valoraciones</button>
+        {riderStatus === 'approved' && (
+          <button onClick={() => setTab('ratings')} style={tabStyle('ratings')}>⭐ Valoraciones</button>
+        )}
       </div>
 
-      {/* ===== TAB: ENTREGAS ===== */}
-      {tab === 'deliveries' && (
+      {/* ===== TAB: ENTREGAS (only for approved riders) ===== */}
+      {tab === 'deliveries' && riderStatus === 'approved' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
             {[
@@ -237,125 +363,139 @@ const RiderDashboard = () => {
       {/* ===== TAB: DOCUMENTOS ===== */}
       {tab === 'documents' && (
         <>
-          {/* Vehicle type selection */}
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 20 }}>
-            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 16px' }}>🚗 Tipo de Vehículo</h3>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              {VEHICLE_TYPES.map(vt => (
-                <button key={vt.value} onClick={() => setVehicleType(vt.value)} style={{
-                  padding: '12px 24px', borderRadius: 12, fontSize: 14, fontWeight: 700,
-                  border: vehicleType === vt.value ? '2px solid #F97316' : '2px solid #e5e7eb',
-                  background: vehicleType === vt.value ? '#FFF7ED' : '#fff',
-                  color: vehicleType === vt.value ? '#F97316' : '#6b7280',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                }}>
-                  {vt.label}
-                </button>
-              ))}
-            </div>
-            {vehicleType && needsMotorDocs && (
-              <div style={{ marginTop: 12, padding: '10px 16px', background: '#FFF3E0', borderRadius: 10, fontSize: 13, color: '#e65100' }}>
-                ⚠️ Para vehículos motorizados debes subir tu <strong>licencia de conducir</strong> y el <strong>padrón del vehículo</strong>.
-              </div>
-            )}
-          </div>
-
-          {/* Rider status banner */}
-          <div style={{
-            background: riderStatus === 'approved' ? '#e8f5e9' : riderStatus === 'rejected' ? '#fce4ec' : '#fff3e0',
-            borderRadius: 12, padding: '14px 20px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12,
-            border: `1px solid ${riderStatus === 'approved' ? '#a5d6a7' : riderStatus === 'rejected' ? '#ef9a9a' : '#ffe0b2'}`,
-          }}>
-            <span style={{ fontSize: 28 }}>{riderStatus === 'approved' ? '✅' : riderStatus === 'rejected' ? '❌' : '⏳'}</span>
-            <div>
-              <strong style={{ color: riderStatus === 'approved' ? '#2e7d32' : riderStatus === 'rejected' ? '#c62828' : '#e65100' }}>
-                {riderStatus === 'approved' ? 'Cuenta Aprobada' : riderStatus === 'rejected' ? 'Documentos Rechazados' : 'Pendiente de Aprobación'}
-              </strong>
-              <p style={{ fontSize: 12, color: '#666', margin: '2px 0 0' }}>
-                {riderStatus === 'approved' ? 'Puedes recibir entregas.' : riderStatus === 'rejected' ? 'Revisa los documentos rechazados y vuelve a subirlos.' : 'El admin revisará tus documentos pronto.'}
+          {/* Block uploads until email verified */}
+          {riderStatus === 'pending_email' && (
+            <div style={{ background: '#FEF3C7', borderRadius: 16, padding: 32, textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
+              <h3 style={{ fontWeight: 800, color: '#92400E', margin: '0 0 8px' }}>Verifica tu email primero</h3>
+              <p style={{ fontSize: 14, color: '#A16207', margin: 0 }}>
+                Debes verificar tu correo electrónico antes de poder subir documentos.
+                Revisa tu bandeja de entrada.
               </p>
             </div>
-          </div>
+          )}
 
-          {/* Document cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {Object.entries(DOC_TYPES).map(([key, dt]) => {
-              if (dt.required_for && !dt.required_for.includes(vehicleType) && vehicleType) return null;
-              if (!vehicleType && key !== 'id_card') return null;
-
-              const docStatus = getDocStatus(key);
-              const doc = documents.find(d => d.doc_type === key);
-              const statusLabels = { approved: '✅ Aprobado', rejected: '❌ Rechazado', pending: '⏳ En revisión', missing: '📤 No subido' };
-              const statusBg = { approved: '#e8f5e9', rejected: '#fce4ec', pending: '#fff3e0', missing: '#f5f5f5' };
-              const statusColors = { approved: '#2e7d32', rejected: '#c62828', pending: '#e65100', missing: '#9ca3af' };
-
-              return (
-                <div key={key} style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', border: `1px solid ${docStatus === 'rejected' ? '#ef9a9a' : '#f0f0f0'}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ fontSize: 24 }}>{dt.icon}</span>
-                      <div>
-                        <h4 style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>{dt.label}</h4>
-                        {doc?.file_name && <span style={{ fontSize: 11, color: '#9ca3af' }}>{doc.file_name}</span>}
-                      </div>
-                    </div>
-                    <span style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: statusBg[docStatus], color: statusColors[docStatus] }}>
-                      {statusLabels[docStatus]}
-                    </span>
+          {/* Document upload section (available from pending_docs) */}
+          {['pending_docs', 'pending_review', 'approved'].includes(riderStatus) && (
+            <>
+              {/* Vehicle info */}
+              <div style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <h3 style={{ fontSize: 15, fontWeight: 800, color: '#2F3A40', margin: '0 0 4px' }}>Vehículo registrado</h3>
+                    <span style={{ fontSize: 20 }}>{VEHICLE_LABELS[vehicleType] || vehicleType || 'No definido'}</span>
                   </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Documento</span>
+                    <p style={{ fontWeight: 700, color: '#2F3A40', margin: '2px 0 0', fontSize: 14 }}>
+                      {idType?.toUpperCase()}: {idNumber || '—'}
+                    </p>
+                  </div>
+                </div>
+                {needsMotorDocs && (
+                  <div style={{ marginTop: 12, padding: '10px 16px', background: '#FFF3E0', borderRadius: 10, fontSize: 12, color: '#e65100', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Shield size={14} />
+                    Vehículo motorizado: se requiere <strong>licencia de conducir</strong> y <strong>padrón del vehículo</strong>.
+                    Los datos del documento deben coincidir con los registrados.
+                  </div>
+                )}
+              </div>
 
-                  {doc?.admin_notes && docStatus === 'rejected' && (
-                    <div style={{ background: '#fce4ec', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c62828', marginBottom: 12 }}>
-                      <strong>Motivo:</strong> {doc.admin_notes}
-                    </div>
-                  )}
+              {/* Document cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {requiredDocs.map((key) => {
+                  const dt = DOC_TYPES[key];
+                  if (!dt) return null;
+                  const docStatus = getDocStatus(key);
+                  const doc = documents.find(d => d.doc_type === key);
+                  const statusLabels = { approved: '✅ Aprobado', rejected: '❌ Rechazado', pending: '⏳ En revisión', missing: '📤 No subido' };
+                  const statusBg = { approved: '#e8f5e9', rejected: '#fce4ec', pending: '#fff3e0', missing: '#f5f5f5' };
+                  const statusColors = { approved: '#2e7d32', rejected: '#c62828', pending: '#e65100', missing: '#9ca3af' };
+                  const canUpload = riderStatus === 'pending_docs' || (riderStatus === 'pending_review' && docStatus === 'rejected');
 
-                  {(docStatus === 'missing' || docStatus === 'rejected') && (
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                      {selectedDocType === key ? (
-                        <>
-                          <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ flex: 1, fontSize: 13, minWidth: 150 }} />
-                          <button onClick={() => handleDocUpload(key)} disabled={uploading} style={{
-                            padding: '8px 20px', borderRadius: 10, background: '#F97316', color: '#fff',
-                            fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13,
-                            opacity: uploading ? 0.6 : 1,
-                          }}>
-                            {uploading ? '⏳ Subiendo...' : '📤 Subir'}
-                          </button>
-                          <button onClick={() => setSelectedDocType('')} style={{ padding: '8px 12px', borderRadius: 10, background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 13 }}>✕</button>
-                        </>
-                      ) : (
-                        <button onClick={() => setSelectedDocType(key)} style={{
-                          padding: '10px 20px', borderRadius: 10, background: '#FFF7ED', color: '#F97316',
-                          fontWeight: 700, border: '1px solid #F97316', cursor: 'pointer', fontSize: 13,
-                          display: 'flex', alignItems: 'center', gap: 6,
-                        }}>
-                          <Upload size={14} /> {docStatus === 'rejected' ? 'Subir nuevo' : 'Subir documento'}
-                        </button>
+                  return (
+                    <div key={key} style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', border: `1px solid ${docStatus === 'rejected' ? '#ef9a9a' : missingDocs.includes(key) ? '#FDBA74' : '#f0f0f0'}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 24 }}>{dt.icon}</span>
+                          <div>
+                            <h4 style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>{dt.label}</h4>
+                            <span style={{ fontSize: 11, color: '#9ca3af' }}>{dt.description}</span>
+                          </div>
+                        </div>
+                        <span style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: statusBg[docStatus], color: statusColors[docStatus] }}>
+                          {statusLabels[docStatus]}
+                        </span>
+                      </div>
+
+                      {doc?.admin_notes && docStatus === 'rejected' && (
+                        <div style={{ background: '#fce4ec', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c62828', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <AlertTriangle size={14} /> <strong>Motivo:</strong> {doc.admin_notes}
+                        </div>
+                      )}
+
+                      {/* Match warning for motorized docs */}
+                      {key === 'id_card' && idNumber && (docStatus === 'missing' || docStatus === 'rejected') && (
+                        <div style={{ background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#1E40AF', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <Shield size={14} /> El documento debe corresponder a <strong>{idType?.toUpperCase()}: {idNumber}</strong>
+                        </div>
+                      )}
+
+                      {canUpload && (docStatus === 'missing' || docStatus === 'rejected') && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {selectedDocType === key ? (
+                            <>
+                              <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ flex: 1, fontSize: 13, minWidth: 150 }} />
+                              <button onClick={() => handleDocUpload(key)} disabled={uploading} style={{
+                                padding: '8px 20px', borderRadius: 10, background: '#F97316', color: '#fff',
+                                fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13,
+                                opacity: uploading ? 0.6 : 1,
+                              }}>
+                                {uploading ? '⏳ Subiendo...' : '📤 Subir'}
+                              </button>
+                              <button onClick={() => setSelectedDocType('')} style={{ padding: '8px 12px', borderRadius: 10, background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 13 }}>✕</button>
+                            </>
+                          ) : (
+                            <button onClick={() => setSelectedDocType(key)} style={{
+                              padding: '10px 20px', borderRadius: 10, background: '#FFF7ED', color: '#F97316',
+                              fontWeight: 700, border: '1px solid #F97316', cursor: 'pointer', fontSize: 13,
+                              display: 'flex', alignItems: 'center', gap: 6,
+                            }}>
+                              <Upload size={14} /> {docStatus === 'rejected' ? 'Subir nuevo documento' : 'Subir documento'}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {doc?.file_url && docStatus !== 'rejected' && (
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#00A8E8', fontWeight: 600, textDecoration: 'none', marginTop: 8, display: 'inline-block' }}>
+                          📎 Ver documento subido
+                        </a>
                       )}
                     </div>
-                  )}
+                  );
+                })}
+              </div>
 
-                  {doc?.file_url && docStatus !== 'rejected' && (
-                    <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#00A8E8', fontWeight: 600, textDecoration: 'none', marginTop: 8, display: 'inline-block' }}>
-                      📎 Ver documento subido
-                    </a>
-                  )}
+              {uploadMsg && (
+                <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: uploadMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: uploadMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>
+                  {uploadMsg}
                 </div>
-              );
-            })}
-          </div>
+              )}
 
-          {uploadMsg && (
-            <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: uploadMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: uploadMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>
-              {uploadMsg}
-            </div>
+              {riderStatus === 'pending_docs' && missingDocs.length > 0 && (
+                <div style={{ marginTop: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 12, padding: '14px 18px', fontSize: 13, color: '#9A3412' }}>
+                  <strong>📋 Documentos pendientes:</strong> {missingDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}.
+                  <br />Sube todos los documentos requeridos para enviar tu solicitud a revisión.
+                </div>
+              )}
+            </>
           )}
         </>
       )}
 
       {/* ===== TAB: VALORACIONES ===== */}
-      {tab === 'ratings' && (
+      {tab === 'ratings' && riderStatus === 'approved' && (
         <>
           <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 48, fontWeight: 900, color: '#F59E0B' }}>⭐ {avgRating || '—'}</div>
