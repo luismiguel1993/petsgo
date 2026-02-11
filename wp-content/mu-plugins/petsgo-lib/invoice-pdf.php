@@ -96,60 +96,58 @@ class PetsGo_Invoice_PDF extends FPDF {
     // HEADER: Logo PetsGo (izq) + Logo Tienda (der)
     // ========================
     private function buildHeader() {
-        $y = $this->GetY();
+        // Fondo blanco para el header (logo color se ve bien)
+        $this->SetFillColor(255, 255, 255);
+        $this->Rect(0, 0, 210, 36, 'F');
 
-        // Fondo header
-        $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
-        $this->Rect(0, 0, 210, 38, 'F');
-
-        // Logo PetsGo (izquierda) — usar logo blanco sobre fondo azul
+        // Logo PetsGo color (izquierda) — mismo del frontend
         $petsgo_logo = $this->findLogo('petsgo');
         if ($petsgo_logo) {
-            $this->Image($petsgo_logo, 12, 4, 55, 0);
+            $this->Image($petsgo_logo, 15, 6, 50, 0);
         } else {
             $this->SetXY(15, 10);
             $this->SetFont('Arial', 'B', 22);
-            $this->SetTextColor(255, 255, 255);
+            $this->SetTextColor($this->primary[0], $this->primary[1], $this->primary[2]);
             $this->Cell(60, 10, 'PetsGo', 0, 0, 'L');
         }
 
         // Logo Tienda (derecha)
         $vendor_logo = $this->findVendorLogo();
         if ($vendor_logo) {
-            $this->Image($vendor_logo, 150, 5, 45, 0);
+            $this->Image($vendor_logo, 150, 6, 45, 0);
         } else {
-            $this->SetXY(130, 10);
+            $this->SetXY(100, 10);
             $this->SetFont('Arial', 'B', 14);
-            $this->SetTextColor(255, 255, 255);
-            $this->Cell(65, 10, $this->utf8($this->vendor_data->store_name ?? ''), 0, 0, 'R');
+            $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
+            $this->Cell(95, 10, $this->utf8($this->vendor_data->store_name ?? ''), 0, 0, 'R');
         }
 
-        // Línea decorativa amarilla
+        // Barra decorativa: azul PetsGo + franja amarilla
+        $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
+        $this->Rect(0, 36, 210, 3, 'F');
         $this->SetFillColor($this->secondary[0], $this->secondary[1], $this->secondary[2]);
-        $this->Rect(0, 38, 210, 2, 'F');
+        $this->Rect(0, 39, 210, 1.5, 'F');
 
         $this->SetY(45);
     }
 
     private function findLogo($type) {
-        // Buscar logo PetsGo blanco (para fondo azul del header)
+        // Buscar logo PetsGo color (celeste + amarillo, igual al frontend)
         $paths = [
-            ABSPATH . 'wp-content/uploads/petsgo-logo-blanco.png',
+            ABSPATH . 'wp-content/uploads/petsgo-logo-color.png',
             ABSPATH . 'wp-content/uploads/petsgo-logo.png',
         ];
         foreach ($paths as $p) {
             if (file_exists($p)) return $p;
         }
-        // Buscar en el directorio de diseño (blanco primero, luego color)
-        $design_dirs = [
-            ABSPATH . 'Petsgo_Diseño/PNG/Blanco/',
-            ABSPATH . 'Petsgo_Diseño/PNG/Color/',
-        ];
-        foreach ($design_dirs as $dir) {
-            if (is_dir($dir)) {
-                $files = glob($dir . '*.png');
-                if (!empty($files)) return $files[0];
-            }
+        // Buscar en el directorio de diseño Color
+        $design_dir = ABSPATH . 'Petsgo_Diseño/PNG/Color/';
+        if (is_dir($design_dir)) {
+            // Preferir "Logo y nombre" (mismo que usa el frontend)
+            $preferred = $design_dir . 'Logo y nombre-1@4x.png';
+            if (file_exists($preferred)) return $preferred;
+            $files = glob($design_dir . '*.png');
+            if (!empty($files)) return $files[0];
         }
         return null;
     }
