@@ -4768,12 +4768,13 @@ Dashboard con analíticas"></textarea>
     public function api_get_plans() {
         global $wpdb;$rows=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions ORDER BY monthly_price ASC");
         if(empty($rows)) return rest_ensure_response(['data'=>[]]);
+        $free_months = intval($this->pg_setting('plan_annual_free_months', 2));
         $plans=array_map(function($r){
             $features=json_decode($r->features_json,true);
             if(!is_array($features))$features=[];
             return['id'=>(int)$r->id,'plan_name'=>$r->plan_name,'monthly_price'=>(float)$r->monthly_price,'features'=>$features,'is_featured'=>(int)($r->is_featured??0)];
         },$rows);
-        return rest_ensure_response(['data'=>$plans]);
+        return rest_ensure_response(['data'=>$plans,'annual_free_months'=>$free_months]);
     }
     // --- API Auth ---
     /**

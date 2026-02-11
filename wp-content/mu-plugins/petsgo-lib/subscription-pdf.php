@@ -184,7 +184,7 @@ class PetsGo_Subscription_PDF extends FPDF {
         if ($start && $end) {
             $this->SetFont('Arial', '', 8);
             $this->SetTextColor(80, 80, 80);
-            $this->Cell(0, 5, $this->utf8('Vigencia: ' . $start . '  —  ' . $end), 0, 1, 'C');
+            $this->Cell(0, 5, $this->utf8('Vigencia: ' . $start . '  al  ' . $end), 0, 1, 'C');
             $this->Ln(1);
         }
     }

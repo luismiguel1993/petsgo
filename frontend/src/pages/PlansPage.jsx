@@ -31,6 +31,7 @@ const featuresToList = (json) => {
 const PlansPage = () => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [annualFreeMonths, setAnnualFreeMonths] = useState(2);
   const [formData, setFormData] = useState({
     storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '',
   });
@@ -42,7 +43,8 @@ const PlansPage = () => {
     const load = async () => {
       try {
         const { data } = await getPlans();
-        setPlans(data?.length > 0 ? data : DEMO_PLANS);
+        setPlans(data?.data?.length > 0 ? data.data : (data?.length > 0 ? data : DEMO_PLANS));
+        if (data?.annual_free_months !== undefined) setAnnualFreeMonths(data.annual_free_months);
       } catch {
         setPlans(DEMO_PLANS);
       } finally {
@@ -202,6 +204,20 @@ const PlansPage = () => {
                   <span style={{ fontSize: '36px', fontWeight: 900, color }}>{formatPrice(plan.monthly_price)}</span>
                   <span style={{ color: '#9ca3af', fontSize: '14px', fontWeight: 500 }}>/mes</span>
                 </div>
+
+                {annualFreeMonths > 0 && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, #e8f5e9, #c8e6c9)', borderRadius: 10,
+                    padding: '10px 16px', marginBottom: 20, textAlign: 'center',
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#2e7d32' }}>
+                      🎁 Plan Anual: {annualFreeMonths} {annualFreeMonths === 1 ? 'mes gratis' : 'meses gratis'}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#43a047', marginTop: 2 }}>
+                      Paga {12 - annualFreeMonths} de 12 meses ({formatPrice(plan.monthly_price * (12 - annualFreeMonths))}/año)
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: '20px', marginBottom: '28px' }}>
                   {features.map((feat, i) => (
