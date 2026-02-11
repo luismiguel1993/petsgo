@@ -19,12 +19,8 @@ const api = axios.create({
 // Interceptor: añadir token de autenticación si existe
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('petsgo_token');
-  const nonce = localStorage.getItem('petsgo_nonce');
   if (token) {
     config.headers['Authorization'] = `Bearer ${token}`;
-  }
-  if (nonce) {
-    config.headers['X-WP-Nonce'] = nonce;
   }
   return config;
 });

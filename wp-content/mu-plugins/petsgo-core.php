@@ -15,11 +15,11 @@ add_action('rest_api_init', function() {
     remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
     add_filter('rest_pre_serve_request', function($value) {
         $origin = get_http_origin();
-        $allowed = ['http://localhost:5177', 'http://localhost:5176', 'http://localhost:3000'];
+        $allowed = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5177', 'http://localhost:5176', 'http://localhost:3000'];
         if (in_array($origin, $allowed)) {
             header('Access-Control-Allow-Origin: ' . esc_url_raw($origin));
         } else {
-            header('Access-Control-Allow-Origin: http://localhost:5177');
+            header('Access-Control-Allow-Origin: http://localhost:5173');
         }
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
         header('Access-Control-Allow-Credentials: true');
@@ -37,6 +37,7 @@ class PetsGo_Core {
 
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
+        add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
         add_action('admin_menu', [$this, 'register_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
@@ -4225,19 +4226,44 @@ Dashboard con analíticas"></textarea>
         return rest_ensure_response(['data'=>$plans]);
     }
     // --- API Auth ---
+    /**
+     * Resolve API token → user ID (runs on every REST request)
+     */
+    public function resolve_api_token($user_id) {
+        if ($user_id) return $user_id; // Already authenticated
+        $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
+        if (!$auth && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        if (!preg_match('/^Bearer\s+(petsgo_[a-f0-9]{64})$/i', $auth, $m)) return $user_id;
+        $token = $m[1];
+        global $wpdb;
+        $uid = $wpdb->get_var($wpdb->prepare(
+            "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key='petsgo_api_token' AND meta_value=%s LIMIT 1",
+            $token
+        ));
+        if ($uid) {
+            wp_set_current_user($uid);
+            return (int) $uid;
+        }
+        return $user_id;
+    }
+
     public function api_login($request) {
         $p=$request->get_json_params();
         $user=wp_signon(['user_login'=>$p['username']??'','user_password'=>$p['password']??'','remember'=>true],false);
         if(is_wp_error($user)) return new WP_Error('auth_failed','Credenciales inválidas',['status'=>401]);
-        // Set current user so nonce generation works
         wp_set_current_user($user->ID);
-        $nonce = wp_create_nonce('wp_rest');
+        // Generate persistent API token
+        $existing_token = get_user_meta($user->ID, 'petsgo_api_token', true);
+        if (!$existing_token) {
+            $existing_token = 'petsgo_' . bin2hex(random_bytes(32));
+            update_user_meta($user->ID, 'petsgo_api_token', $existing_token);
+        }
         $role='customer';if(in_array('administrator',$user->roles))$role='admin';elseif(in_array('petsgo_vendor',$user->roles))$role='vendor';elseif(in_array('petsgo_rider',$user->roles))$role='rider';
         // Get profile data
         global $wpdb;
         $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$user->ID));
         $this->audit('login', 'login', $user->ID, $user->user_login . ' (' . $role . ')');
-        return rest_ensure_response(['token'=>'session_cookie','nonce'=>$nonce,'user'=>[
+        return rest_ensure_response(['token'=>$existing_token,'user'=>[
             'id'=>$user->ID,'username'=>$user->user_login,'displayName'=>$user->display_name,
             'email'=>$user->user_email,'role'=>$role,
             'firstName'=>$profile->first_name??'','lastName'=>$profile->last_name??'',

@@ -37,7 +37,6 @@ export const AuthProvider = ({ children }) => {
       role: u.role,
     };
     localStorage.setItem('petsgo_token', data.token);
-    if (data.nonce) localStorage.setItem('petsgo_nonce', data.nonce);
     localStorage.setItem('petsgo_user', JSON.stringify(userData));
     setUser(userData);
     return userData;

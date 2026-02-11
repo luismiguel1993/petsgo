@@ -200,32 +200,138 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                 <div className="relative">
                   <button
                     onClick={() => setUserMenuOpen(!userMenuOpen)}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#00A8E8] text-white rounded-full text-sm font-semibold hover:bg-[#0090c7] transition-colors"
-                    style={{ fontFamily: 'Poppins, sans-serif' }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 14px 6px 6px',
+                      background: 'linear-gradient(135deg, #00A8E8, #0090c7)', color: '#fff',
+                      borderRadius: '50px', fontSize: '13px', fontWeight: 700, border: 'none',
+                      cursor: 'pointer', fontFamily: 'Poppins, sans-serif', transition: 'all 0.2s',
+                      boxShadow: '0 2px 10px rgba(0,168,232,0.3)',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,168,232,0.45)'}
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = '0 2px 10px rgba(0,168,232,0.3)'}
                   >
-                    <User size={18} />
-                    <span className="hidden sm:inline">{user.displayName || 'Mi Cuenta'}</span>
-                    <ChevronDown size={16} />
+                    {/* Avatar circle */}
+                    <span style={{
+                      width: '32px', height: '32px', borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.25)', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 800,
+                      letterSpacing: '0.5px', flexShrink: 0,
+                    }}>
+                      {(user.displayName || 'U').charAt(0).toUpperCase()}
+                    </span>
+                    <span className="hidden sm:inline" style={{ maxWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user.displayName || 'Mi Cuenta'}
+                    </span>
+                    <ChevronDown size={14} style={{ opacity: 0.8, transition: 'transform 0.2s', transform: userMenuOpen ? 'rotate(180deg)' : 'rotate(0)' }} />
                   </button>
 
                   {userMenuOpen && (
-                    <div className="absolute right-0 top-12 bg-white rounded-xl shadow-xl border border-gray-100 py-2 w-52 z-50">
-                      <Link to="/perfil" onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-sm font-medium no-underline text-gray-700">
-                        <User size={16} />
-                        👤 Mi Perfil
-                      </Link>
-                      <Link to={getDashboardLink()} onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-sm font-medium no-underline text-gray-700">
-                        {isAdmin() ? <Shield size={16} /> : isVendor() ? <Store size={16} /> : isRider() ? <Truck size={16} /> : <Package size={16} />}
-                        {isAdmin() ? 'Panel Admin' : isVendor() ? 'Mi Tienda' : isRider() ? 'Mis Entregas' : 'Mis Pedidos'}
-                      </Link>
-                      <hr className="my-1 border-gray-100" />
-                      <button onClick={() => { logout(); setUserMenuOpen(false); }}
-                        className="flex items-center gap-3 px-4 py-3 hover:bg-red-50 text-sm font-medium text-red-500 w-full">
-                        <LogOut size={16} /> Cerrar Sesión
-                      </button>
-                    </div>
+                    <>
+                      {/* Backdrop to close menu */}
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setUserMenuOpen(false)} />
+                      <div style={{
+                        position: 'absolute', right: 0, top: '52px', background: '#fff',
+                        borderRadius: '16px', boxShadow: '0 16px 48px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.04)',
+                        width: '260px', zIndex: 50, overflow: 'hidden',
+                        fontFamily: 'Poppins, sans-serif',
+                        animation: 'dropdownSlide 0.2s ease-out',
+                      }}>
+                        <style>{`
+                          @keyframes dropdownSlide { from { opacity:0; transform: translateY(-8px) scale(0.97); } to { opacity:1; transform: translateY(0) scale(1); } }
+                        `}</style>
+
+                        {/* User info header */}
+                        <div style={{
+                          padding: '18px 18px 14px', background: 'linear-gradient(135deg, #f0f9ff, #fff)',
+                          borderBottom: '1px solid #f0f5fa',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                              width: '44px', height: '44px', borderRadius: '50%',
+                              background: 'linear-gradient(135deg, #00A8E8, #0077b6)', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center', color: '#fff',
+                              fontSize: '17px', fontWeight: 800, flexShrink: 0,
+                              boxShadow: '0 3px 10px rgba(0,168,232,0.3)',
+                            }}>
+                              {(user.displayName || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ overflow: 'hidden' }}>
+                              <div style={{ fontSize: '14px', fontWeight: 700, color: '#2F3A40', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {user.displayName || 'Usuario'}
+                              </div>
+                              <div style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                marginTop: '3px', padding: '2px 8px', borderRadius: '50px',
+                                fontSize: '11px', fontWeight: 700,
+                                background: isAdmin() ? '#fef3c7' : isVendor() ? '#dbeafe' : isRider() ? '#d1fae5' : '#f0f9ff',
+                                color: isAdmin() ? '#92400e' : isVendor() ? '#1e40af' : isRider() ? '#065f46' : '#0077b6',
+                              }}>
+                                {isAdmin() ? '🛡️ Admin' : isVendor() ? '🏪 Tienda' : isRider() ? '🚴 Rider' : '🐾 Cliente'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Menu items */}
+                        <div style={{ padding: '6px' }}>
+                          {[
+                            { to: '/perfil', icon: <User size={17} />, label: 'Mi Perfil', emoji: '👤', color: '#00A8E8' },
+                            {
+                              to: getDashboardLink(),
+                              icon: isAdmin() ? <Shield size={17} /> : isVendor() ? <Store size={17} /> : isRider() ? <Truck size={17} /> : <Package size={17} />,
+                              label: isAdmin() ? 'Panel Admin' : isVendor() ? 'Mi Tienda' : isRider() ? 'Mis Entregas' : 'Mis Pedidos',
+                              emoji: isAdmin() ? '⚙️' : isVendor() ? '🏪' : isRider() ? '🚚' : '📦',
+                              color: isAdmin() ? '#8B5CF6' : isVendor() ? '#F59E0B' : isRider() ? '#22C55E' : '#00A8E8',
+                            },
+                          ].map((item, idx) => (
+                            <Link key={idx} to={item.to} onClick={() => setUserMenuOpen(false)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '12px',
+                                padding: '11px 14px', borderRadius: '10px', textDecoration: 'none',
+                                color: '#374151', fontSize: '13px', fontWeight: 600,
+                                transition: 'all 0.15s', cursor: 'pointer',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#f0f9ff'; e.currentTarget.style.color = item.color; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; }}
+                            >
+                              <span style={{
+                                width: '34px', height: '34px', borderRadius: '10px',
+                                background: `${item.color}12`, display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', color: item.color, flexShrink: 0,
+                              }}>
+                                {item.icon}
+                              </span>
+                              {item.label}
+                            </Link>
+                          ))}
+                        </div>
+
+                        {/* Divider + logout */}
+                        <div style={{ borderTop: '1px solid #f3f4f6', padding: '6px' }}>
+                          <button
+                            onClick={() => { logout(); setUserMenuOpen(false); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '12px', width: '100%',
+                              padding: '11px 14px', border: 'none', borderRadius: '10px',
+                              background: 'transparent', cursor: 'pointer', fontSize: '13px',
+                              fontWeight: 600, color: '#ef4444', fontFamily: 'Poppins, sans-serif',
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <span style={{
+                              width: '34px', height: '34px', borderRadius: '10px',
+                              background: '#fef2f2', display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', flexShrink: 0,
+                            }}>
+                              <LogOut size={17} />
+                            </span>
+                            Cerrar Sesión
+                          </button>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
               ) : (
