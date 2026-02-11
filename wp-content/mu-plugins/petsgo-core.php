@@ -2803,19 +2803,17 @@ Dashboard con analíticas"></textarea>
         // QR token
         $qr_token = wp_generate_uuid4();
 
-        // HTML content for preview
-        $items_html = '<table style="width:100%;border-collapse:collapse;margin:12px 0;"><tr style="background:#00A8E8;color:#fff;"><th style="padding:8px;text-align:left;">Concepto</th><th style="padding:8px;text-align:right;">Monto</th></tr>';
-        $items_html .= '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;">Pedido #'.$order_id.'</td><td style="padding:8px;text-align:right;">$'.number_format($order->total_amount,0,',','.').'</td></tr>';
-        if ($order->delivery_fee > 0) {
-            $items_html .= '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;">Delivery</td><td style="padding:8px;text-align:right;">$'.number_format($order->delivery_fee,0,',','.').'</td></tr>';
-        }
+        // Obtener items reales del pedido
+        $order_items = $this->get_order_items($order_id);
         $grand = $order->total_amount + ($order->delivery_fee ?? 0);
         $neto = round($grand / 1.19);
         $iva = $grand - $neto;
-        $items_html .= '</table>';
-        $items_html .= '<p style="text-align:right;"><strong>Neto:</strong> $'.number_format($neto,0,',','.').
-            ' | <strong>IVA (19%):</strong> $'.number_format($iva,0,',','.').
-            ' | <strong>Total:</strong> $'.number_format($grand,0,',','.').'</p>';
+
+        // HTML items table para preview
+        $items_html = $this->build_items_html($order_items, $order, $order_id, $neto, $iva, $grand);
+
+        // PDF items array
+        $items = $this->build_items_array($order_items, $order);
 
         // Generate PDF
         require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
@@ -2839,10 +2837,6 @@ Dashboard con analíticas"></textarea>
             'customer_name' => $order->customer_name ?? 'N/A',
             'customer_email' => $order->customer_email ?? '',
         ];
-        $items = [['name' => 'Pedido #'.$order_id, 'qty' => 1, 'price' => $order->total_amount]];
-        if ($order->delivery_fee > 0) {
-            $items[] = ['name' => 'Delivery', 'qty' => 1, 'price' => $order->delivery_fee];
-        }
 
         $upload_dir = wp_upload_dir();
         $pdf_dir = $upload_dir['basedir'] . '/petsgo-invoices/';
@@ -2868,7 +2862,7 @@ Dashboard con analíticas"></textarea>
         $this->audit('invoice_generate', 'invoice', $inv_id, $inv_number . ' para pedido #' . $order_id);
 
         // Send email to customer + BCC store + contacto@petsgo.cl
-        $this->send_invoice_email($order, $inv_number, $pdf_path);
+        $this->send_invoice_email($order, $inv_number, $pdf_path, $order_items);
 
         wp_send_json_success(['message' => 'Boleta generada: ' . $inv_number, 'id' => $inv_id]);
     }
@@ -3099,6 +3093,66 @@ Dashboard con analíticas"></textarea>
     }
 
     // ============================================================
+    // HELPER: Obtener items de un pedido
+    // ============================================================
+    private function get_order_items($order_id) {
+        global $wpdb;
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT product_name, quantity, unit_price, subtotal FROM {$wpdb->prefix}petsgo_order_items WHERE order_id=%d ORDER BY id ASC",
+            $order_id
+        ));
+    }
+
+    /**
+     * Construye HTML de tabla de items para preview de boleta
+     */
+    private function build_items_html($order_items, $order, $order_id, $neto, $iva, $grand) {
+        $html = '<table style="width:100%;border-collapse:collapse;margin:12px 0;">';
+        $html .= '<tr style="background:#00A8E8;color:#fff;"><th style="padding:8px;text-align:left;">Producto</th><th style="padding:8px;text-align:center;">Cant.</th><th style="padding:8px;text-align:right;">P. Unit</th><th style="padding:8px;text-align:right;">Subtotal</th></tr>';
+
+        if (!empty($order_items)) {
+            foreach ($order_items as $item) {
+                $html .= '<tr style="border-bottom:1px solid #eee;">';
+                $html .= '<td style="padding:8px;">' . esc_html($item->product_name) . '</td>';
+                $html .= '<td style="padding:8px;text-align:center;">' . intval($item->quantity) . '</td>';
+                $html .= '<td style="padding:8px;text-align:right;">$' . number_format($item->unit_price, 0, ',', '.') . '</td>';
+                $html .= '<td style="padding:8px;text-align:right;">$' . number_format($item->subtotal, 0, ',', '.') . '</td>';
+                $html .= '</tr>';
+            }
+        } else {
+            // Fallback para pedidos antiguos sin items desglosados
+            $html .= '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;">Pedido #'.$order_id.'</td><td style="padding:8px;text-align:center;">1</td><td style="padding:8px;text-align:right;">$'.number_format($order->total_amount,0,',','.').'</td><td style="padding:8px;text-align:right;">$'.number_format($order->total_amount,0,',','.').'</td></tr>';
+        }
+
+        if ($order->delivery_fee > 0) {
+            $html .= '<tr style="border-bottom:1px solid #eee;background:#f8f9fa;"><td style="padding:8px;" colspan="3">Delivery</td><td style="padding:8px;text-align:right;">$'.number_format($order->delivery_fee,0,',','.').'</td></tr>';
+        }
+        $html .= '</table>';
+        $html .= '<p style="text-align:right;font-size:13px;"><strong>Neto:</strong> $'.number_format($neto,0,',','.').
+            ' | <strong>IVA (19%):</strong> $'.number_format($iva,0,',','.').
+            ' | <strong style="font-size:15px;color:#00A8E8;">Total: $'.number_format($grand,0,',','.').'</strong></p>';
+        return $html;
+    }
+
+    /**
+     * Construye array de items para el PDF
+     */
+    private function build_items_array($order_items, $order) {
+        $items = [];
+        if (!empty($order_items)) {
+            foreach ($order_items as $item) {
+                $items[] = ['name' => $item->product_name, 'qty' => intval($item->quantity), 'price' => floatval($item->unit_price)];
+            }
+        } else {
+            $items[] = ['name' => 'Compra en ' . ($order->store_name ?? 'Tienda'), 'qty' => 1, 'price' => floatval($order->total_amount)];
+        }
+        if ($order->delivery_fee > 0) {
+            $items[] = ['name' => 'Delivery', 'qty' => 1, 'price' => floatval($order->delivery_fee)];
+        }
+        return $items;
+    }
+
+    // ============================================================
     // AUTO-GENERATE INVOICE (called from api_create_order)
     // ============================================================
     private function auto_generate_invoice($order_id) {
@@ -3118,16 +3172,17 @@ Dashboard con analíticas"></textarea>
         $inv_number = 'PG-' . $today . '-' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
         $qr_token = wp_generate_uuid4();
 
+        // Obtener items reales del pedido
+        $order_items = $this->get_order_items($order_id);
         $grand = $order->total_amount + ($order->delivery_fee ?? 0);
         $neto = round($grand / 1.19);
         $iva = $grand - $neto;
 
-        $items_html = '<table style="width:100%;border-collapse:collapse;margin:12px 0;"><tr style="background:#00A8E8;color:#fff;"><th style="padding:8px;text-align:left;">Concepto</th><th style="padding:8px;text-align:right;">Monto</th></tr>';
-        $items_html .= '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;">Pedido #'.$order_id.'</td><td style="padding:8px;text-align:right;">$'.number_format($order->total_amount,0,',','.').'</td></tr>';
-        if ($order->delivery_fee > 0) $items_html .= '<tr style="border-bottom:1px solid #eee;"><td style="padding:8px;">Delivery</td><td style="padding:8px;text-align:right;">$'.number_format($order->delivery_fee,0,',','.').'</td></tr>';
-        $items_html .= '</table><p style="text-align:right;"><strong>Neto:</strong> $'.number_format($neto,0,',','.').
-            ' | <strong>IVA (19%):</strong> $'.number_format($iva,0,',','.').
-            ' | <strong>Total:</strong> $'.number_format($grand,0,',','.').'</p>';
+        // HTML items table para preview
+        $items_html = $this->build_items_html($order_items, $order, $order_id, $neto, $iva, $grand);
+
+        // PDF items array
+        $items = $this->build_items_array($order_items, $order);
 
         require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
         $pdf_gen = new PetsGo_Invoice_PDF();
@@ -3139,8 +3194,6 @@ Dashboard con analíticas"></textarea>
             'logo_url' => $order->invoice_logo_id ? wp_get_attachment_url($order->invoice_logo_id) : '',
         ];
         $invoice_data = ['invoice_number' => $inv_number, 'date' => date('d/m/Y H:i'), 'customer_name' => $order->customer_name ?? 'N/A', 'customer_email' => $order->customer_email ?? ''];
-        $items = [['name' => 'Pedido #'.$order_id, 'qty' => 1, 'price' => $order->total_amount]];
-        if ($order->delivery_fee > 0) $items[] = ['name' => 'Delivery', 'qty' => 1, 'price' => $order->delivery_fee];
 
         $upload_dir = wp_upload_dir();
         $pdf_path = $upload_dir['basedir'] . '/petsgo-invoices/' . $inv_number . '.pdf';
@@ -3153,42 +3206,92 @@ Dashboard con analíticas"></textarea>
         ]);
         $inv_id = $wpdb->insert_id;
         $this->audit('invoice_auto_generate', 'invoice', $inv_id, $inv_number . ' para pedido #' . $order_id);
-        $this->send_invoice_email($order, $inv_number, $pdf_path);
+        $this->send_invoice_email($order, $inv_number, $pdf_path, $order_items);
     }
 
     // ============================================================
     // EMAIL — Send invoice to customer + BCC
     // ============================================================
-    private function send_invoice_email($order, $inv_number, $pdf_path) {
+    private function send_invoice_email($order, $inv_number, $pdf_path, $order_items = []) {
         $to = $order->customer_email;
         if (!$to) return;
 
+        $grand = $order->total_amount + ($order->delivery_fee ?? 0);
         $subject  = 'PetsGo — Tu Boleta ' . $inv_number;
-        $pretext  = 'Boleta ' . $inv_number . ' por $' . number_format($order->total_amount, 0, ',', '.') . ' en ' . $order->store_name;
+        $pretext  = 'Boleta ' . $inv_number . ' por $' . number_format($grand, 0, ',', '.') . ' en ' . $order->store_name;
+
+        // Construir tabla de productos
+        $items_rows = '';
+        if (!empty($order_items)) {
+            foreach ($order_items as $item) {
+                $items_rows .= '
+        <tr>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($item->product_name) . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:center;">' . intval($item->quantity) . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:right;">$' . number_format($item->unit_price, 0, ',', '.') . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($item->subtotal, 0, ',', '.') . '</td>
+        </tr>';
+            }
+        } else {
+            $items_rows = '
+        <tr>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;">Compra en ' . esc_html($order->store_name) . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:center;">1</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:right;">$' . number_format($order->total_amount, 0, ',', '.') . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($order->total_amount, 0, ',', '.') . '</td>
+        </tr>';
+        }
+
+        // Delivery row
+        $delivery_row = '';
+        if ($order->delivery_fee > 0) {
+            $delivery_row = '
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;" colspan="3">🚚 Delivery</td>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($order->delivery_fee, 0, ',', '.') . '</td>
+        </tr>';
+        }
+
+        // Neto / IVA
+        $neto = round($grand / 1.19);
+        $iva = $grand - $neto;
 
         $inner = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($order->customer_name ?? 'Cliente') . '</strong>,</p>
       <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">Gracias por tu compra en <strong>' . esc_html($order->store_name) . '</strong>. Tu boleta ha sido generada exitosamente.</p>
 
+      <!-- Invoice header -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+        <tr>
+          <td style="font-size:13px;color:#555;">N&ordm; Boleta: <strong style="color:#333;">' . esc_html($inv_number) . '</strong></td>
+          <td style="font-size:13px;color:#555;text-align:right;">Tienda: <strong style="color:#333;">' . esc_html($order->store_name) . '</strong></td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;color:#555;">Fecha: ' . date('d/m/Y H:i') . ' hrs</td>
+          <td></td>
+        </tr>
+      </table>
+
+      <!-- Items table -->
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
-        <tr style="background-color:#f8f9fa;">
-          <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle de tu compra</td>
+        <tr style="background-color:#00A8E8;">
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;">Producto</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:center;width:60px;">Cant.</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:right;width:90px;">P. Unit</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:right;width:90px;">Subtotal</td>
+        </tr>' . $items_rows . $delivery_row . '
+      </table>
+
+      <!-- Totals -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:12px;">
+        <tr>
+          <td style="text-align:right;font-size:12px;color:#888;padding:3px 14px;">Neto: $' . number_format($neto, 0, ',', '.') . '</td>
         </tr>
         <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">N&ordm; Boleta</td>
-          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;font-weight:700;">' . esc_html($inv_number) . '</td>
+          <td style="text-align:right;font-size:12px;color:#888;padding:3px 14px;">IVA (19%): $' . number_format($iva, 0, ',', '.') . '</td>
         </tr>
         <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Total</td>
-          <td style="padding:12px 18px;font-size:16px;color:#00A8E8;border-top:1px solid #f0f0f0;font-weight:700;">$' . number_format($order->total_amount, 0, ',', '.') . '</td>
-        </tr>
-        <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Tienda</td>
-          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($order->store_name) . '</td>
-        </tr>
-        <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha</td>
-          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+          <td style="text-align:right;font-size:18px;font-weight:700;color:#00A8E8;padding:6px 14px;">Total: $' . number_format($grand, 0, ',', '.') . '</td>
         </tr>
       </table>
 
@@ -3487,30 +3590,69 @@ Dashboard con analíticas"></textarea>
             case 'invoice':
             default:
                 $inv = 'BOL-MA-20260211-001';
+                $demo_items = [
+                    ['name' => 'Royal Canin Adulto 3kg', 'qty' => 2, 'price' => 18990],
+                    ['name' => 'Collar Antipulgas Premium', 'qty' => 1, 'price' => 8990],
+                    ['name' => 'Juguete Mordedor Dental', 'qty' => 3, 'price' => 4990],
+                ];
+                $demo_subtotal = 0;
+                $items_rows = '';
+                foreach ($demo_items as $di) {
+                    $sub = $di['qty'] * $di['price'];
+                    $demo_subtotal += $sub;
+                    $items_rows .= '
+        <tr>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($di['name']) . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:center;">' . $di['qty'] . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:right;">$' . number_format($di['price'], 0, ',', '.') . '</td>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($sub, 0, ',', '.') . '</td>
+        </tr>';
+                }
+                $delivery = 3990;
+                $grand = $demo_subtotal + $delivery;
+                $neto = round($grand / 1.19);
+                $iva = $grand - $neto;
+
                 $inner = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>Maria Gonzalez</strong>,</p>
       <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">Gracias por tu compra en <strong>Pets Happy Store</strong>. Tu boleta ha sido generada exitosamente.</p>
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
-        <tr style="background-color:#f8f9fa;">
-          <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle de tu compra</td>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+        <tr>
+          <td style="font-size:13px;color:#555;">N&ordm; Boleta: <strong style="color:#333;">' . esc_html($inv) . '</strong></td>
+          <td style="font-size:13px;color:#555;text-align:right;">Tienda: <strong style="color:#333;">Pets Happy Store</strong></td>
         </tr>
         <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">N&ordm; Boleta</td>
-          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;font-weight:700;">' . esc_html($inv) . '</td>
-        </tr>
-        <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Total</td>
-          <td style="padding:12px 18px;font-size:16px;color:#00A8E8;border-top:1px solid #f0f0f0;font-weight:700;">$24.990</td>
-        </tr>
-        <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Tienda</td>
-          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;">Pets Happy Store</td>
-        </tr>
-        <tr>
-          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha</td>
-          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+          <td style="font-size:13px;color:#555;">Fecha: ' . date('d/m/Y H:i') . ' hrs</td>
+          <td></td>
         </tr>
       </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+        <tr style="background-color:#00A8E8;">
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;">Producto</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:center;width:60px;">Cant.</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:right;width:90px;">P. Unit</td>
+          <td style="padding:10px 14px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.5px;text-align:right;width:90px;">Subtotal</td>
+        </tr>' . $items_rows . '
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:10px 14px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;" colspan="3">🚚 Delivery</td>
+          <td style="padding:10px 14px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($delivery, 0, ',', '.') . '</td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:12px;">
+        <tr>
+          <td style="text-align:right;font-size:12px;color:#888;padding:3px 14px;">Neto: $' . number_format($neto, 0, ',', '.') . '</td>
+        </tr>
+        <tr>
+          <td style="text-align:right;font-size:12px;color:#888;padding:3px 14px;">IVA (19%): $' . number_format($iva, 0, ',', '.') . '</td>
+        </tr>
+        <tr>
+          <td style="text-align:right;font-size:18px;font-weight:700;color:#00A8E8;padding:6px 14px;">Total: $' . number_format($grand, 0, ',', '.') . '</td>
+        </tr>
+      </table>
+
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:24px;">
         <tr>
           <td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
@@ -3524,7 +3666,7 @@ Dashboard con analíticas"></textarea>
         Este mensaje es una notificaci&oacute;n autom&aacute;tica de compra de PetsGo.<br>
         Se envi&oacute; a <span style="color:#888;">maria@demo.cl</span> por ser el correo de tu cuenta.
       </p>';
-                $html = $this->email_wrap($inner, 'Boleta ' . $inv . ' por $24.990 en Pets Happy Store');
+                $html = $this->email_wrap($inner, 'Boleta ' . $inv . ' por $' . number_format($grand, 0, ',', '.') . ' en Pets Happy Store');
                 break;
         }
         wp_send_json_success(['html' => $html]);
@@ -3686,12 +3828,23 @@ Dashboard con analíticas"></textarea>
         $order_id = $wpdb->insert_id;
         $this->audit('order_create', 'order', $order_id, 'Total: $'.number_format($total,0,',','.'));
 
-        // Descontar stock y verificar alertas
+        // Guardar items del pedido + descontar stock
         if (!empty($p['items']) && is_array($p['items'])) {
             foreach ($p['items'] as $item) {
                 $pid = intval($item['product_id'] ?? 0);
                 $qty = intval($item['quantity'] ?? 1);
+                $unit_price = floatval($item['price'] ?? 0);
                 if ($pid > 0 && $qty > 0) {
+                    // Obtener nombre del producto
+                    $pname = $wpdb->get_var($wpdb->prepare("SELECT product_name FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $pid));
+                    // Guardar item
+                    $wpdb->insert("{$wpdb->prefix}petsgo_order_items", [
+                        'order_id' => $order_id, 'product_id' => $pid,
+                        'product_name' => $pname ?: ('Producto #'.$pid),
+                        'quantity' => $qty, 'unit_price' => $unit_price,
+                        'subtotal' => round($unit_price * $qty, 2),
+                    ], ['%d','%d','%s','%d','%f','%f']);
+                    // Descontar stock
                     $wpdb->query($wpdb->prepare(
                         "UPDATE {$wpdb->prefix}petsgo_inventory SET stock = GREATEST(stock - %d, 0) WHERE id = %d",
                         $qty, $pid

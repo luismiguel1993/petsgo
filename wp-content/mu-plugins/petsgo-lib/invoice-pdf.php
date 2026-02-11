@@ -22,7 +22,7 @@ class PetsGo_Invoice_PDF extends FPDF {
     private $secondary = [255, 196, 0];    // #FFC400
     private $dark      = [47, 58, 64];     // #2F3A40
 
-    public function __construct($order_data, $vendor_data, $customer_data, $invoice_number, $qr_token, $items = []) {
+    public function __construct($order_data = null, $vendor_data = null, $customer_data = null, $invoice_number = '', $qr_token = '', $items = []) {
         parent::__construct('P', 'mm', 'A4');
         $this->order_data     = $order_data;
         $this->vendor_data    = $vendor_data;
@@ -30,6 +30,35 @@ class PetsGo_Invoice_PDF extends FPDF {
         $this->invoice_number = $invoice_number;
         $this->qr_token       = $qr_token;
         $this->items          = $items;
+    }
+
+    /**
+     * Generate PDF from array-based data (used by petsgo-core invoice generators).
+     * @param array  $vendor_data   ['store_name','rut','address','phone','email','contact_phone','social_*','logo_url']
+     * @param array  $invoice_data  ['invoice_number','date','customer_name','customer_email']
+     * @param array  $items         [['name'=>...,'qty'=>...,'price'=>...], ...]
+     * @param float  $grand         Grand total (inc delivery)
+     * @param string $qr_url        Validation URL (unused here, QR built from token)
+     * @param string $qr_token      UUID token for QR verification
+     * @param string $pdf_path      Absolute path to write the PDF
+     */
+    public function generate($vendor_data, $invoice_data, $items, $grand, $qr_url, $qr_token, $pdf_path) {
+        $this->vendor_data    = (object) $vendor_data;
+        $this->order_data     = (object) [
+            'id'           => $invoice_data['order_id'] ?? '',
+            'total_amount' => $grand,
+            'delivery_fee' => $vendor_data['delivery_fee'] ?? 0,
+            'created_at'   => $invoice_data['date'] ?? date('d/m/Y H:i'),
+        ];
+        $this->customer_data  = (object) [
+            'display_name' => $invoice_data['customer_name'] ?? 'N/A',
+            'user_email'   => $invoice_data['customer_email'] ?? '',
+            'ID'           => $invoice_data['customer_id'] ?? '',
+        ];
+        $this->invoice_number = $invoice_data['invoice_number'] ?? '';
+        $this->qr_token       = $qr_token;
+        $this->items          = $items;
+        $this->save($pdf_path);
     }
 
     private function utf8($str) {
