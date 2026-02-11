@@ -86,7 +86,7 @@ class PetsGo_Core {
         global $wpdb;
         $pfx = $wpdb->prefix;
         $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT i.product_name, i.stock, i.vendor_id, v.store_name, v.email AS vendor_email
+            "SELECT i.product_name, i.stock, i.vendor_id, i.image_id, v.store_name, v.email AS vendor_email
              FROM {$pfx}petsgo_inventory i
              JOIN {$pfx}petsgo_vendors v ON i.vendor_id = v.id
              WHERE i.id = %d", $product_id
@@ -96,13 +96,14 @@ class PetsGo_Core {
         if ($stock > 4) return;
 
         $to  = $row->vendor_email;
+        $img = $row->image_id ? wp_get_attachment_image_url(intval($row->image_id), 'medium') : '';
 
         if ($stock === 0) {
             $subject = 'PetsGo — Alerta de Inventario: ' . $row->product_name . ' sin stock';
-            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, true, $to);
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, true, $to, $img);
         } else {
             $subject = 'PetsGo — Alerta de Inventario: Stock bajo en ' . $row->product_name;
-            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, false, $to);
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, false, $to, $img);
         }
 
         $headers = [
@@ -122,7 +123,7 @@ class PetsGo_Core {
      * Logo URL pública para correos
      */
     private function get_email_logo_url() {
-        return content_url('uploads/petsgo-assets/logo-petsgo.png');
+        return content_url('uploads/petsgo-assets/logo-petsgo-blanco.png');
     }
 
     /**
@@ -221,7 +222,7 @@ class PetsGo_Core {
 </html>';
     }
 
-    private function stock_email_html($store_name, $product_name, $stock, $is_zero, $vendor_email = '') {
+    private function stock_email_html($store_name, $product_name, $stock, $is_zero, $vendor_email = '', $product_image = '') {
         $accent  = $is_zero ? '#dc3545' : '#e67e00';
         $bg_bar  = $is_zero ? '#fdf0f0' : '#fff8ed';
         $title   = $is_zero ? 'Producto sin stock' : 'Stock bajo detectado';
@@ -236,6 +237,8 @@ class PetsGo_Core {
 
         $icon_stock = $is_zero ? '0' : $stock;
         $admin_url  = admin_url('admin.php?page=petsgo-products');
+        $placeholder_img = content_url('uploads/petsgo-assets/huella-petsgo.png');
+        $img_src = $product_image ? $product_image : $placeholder_img;
 
         $inner = '
       <!-- Alert banner -->
@@ -251,10 +254,15 @@ class PetsGo_Core {
       <p style="color:#333;font-size:15px;line-height:1.6;margin:24px 0 8px;">' . $greeting . ',</p>
       <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">' . $message . '</p>
 
-      <!-- Product detail card -->
+      <!-- Product image + detail card -->
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
         <tr style="background-color:#f8f9fa;">
           <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle del producto</td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding:16px 18px;border-top:1px solid #f0f0f0;text-align:center;">
+            <img src="' . esc_url($img_src) . '" alt="' . esc_attr($product_name) . '" width="180" style="max-width:180px;max-height:180px;height:auto;border-radius:8px;border:1px solid #e9ecef;object-fit:cover;">
+          </td>
         </tr>
         <tr>
           <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">Producto</td>
@@ -3467,12 +3475,14 @@ Dashboard con analíticas"></textarea>
         if (!$this->is_admin()) wp_send_json_error('Sin permisos');
         $type = sanitize_text_field($_POST['email_type'] ?? 'stock_zero');
 
+        $demo_img = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=300&h=300&fit=crop';
+
         switch ($type) {
             case 'stock_low':
-                $html = $this->stock_email_html('Patitas Chile', 'Royal Canin Adulto 3kg', 3, false, 'patitas@demo.cl');
+                $html = $this->stock_email_html('Patitas Chile', 'Royal Canin Adulto 3kg', 3, false, 'patitas@demo.cl', $demo_img);
                 break;
             case 'stock_zero':
-                $html = $this->stock_email_html('Mundo Animal', 'Collar Antipulgas Premium', 0, true, 'mundoanimal@demo.cl');
+                $html = $this->stock_email_html('Mundo Animal', 'Collar Antipulgas Premium', 0, true, 'mundoanimal@demo.cl', $demo_img);
                 break;
             case 'invoice':
             default:
