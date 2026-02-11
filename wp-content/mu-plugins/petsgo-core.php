@@ -91,54 +91,205 @@ class PetsGo_Core {
         ));
         if (!$row || !$row->vendor_email) return;
         $stock = (int) $row->stock;
-        if ($stock > 4) return; // Only alert when stock < 5
+        if ($stock > 4) return;
 
-        $bcc = 'contacto@petsgo.cl';
         $to  = $row->vendor_email;
 
         if ($stock === 0) {
-            $subject = '🚨 ¡Sin Stock! — ' . $row->product_name;
-            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, true);
+            $subject = 'PetsGo — Alerta de Inventario: ' . $row->product_name . ' sin stock';
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, true, $to);
         } else {
-            $subject = '⚠️ Stock Bajo — ' . $row->product_name;
-            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, false);
+            $subject = 'PetsGo — Alerta de Inventario: Stock bajo en ' . $row->product_name;
+            $body = $this->stock_email_html($row->store_name, $row->product_name, $stock, false, $to);
         }
 
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: PetsGo <no-reply@petsgo.cl>',
-            'Bcc: ' . $bcc,
+            'From: PetsGo Notificaciones <notificaciones@petsgo.cl>',
+            'Reply-To: PetsGo Soporte <contacto@petsgo.cl>',
+            'Bcc: contacto@petsgo.cl',
+            'List-Unsubscribe: <mailto:contacto@petsgo.cl?subject=Desuscribir%20alertas%20stock>',
+            'X-Mailer: PetsGo/1.0',
         ];
 
         wp_mail($to, $subject, $body, $headers);
         $this->audit('stock_alert', 'product', $product_id, 'Stock: ' . $stock . ' — Email a ' . $to);
     }
 
-    private function stock_email_html($store_name, $product_name, $stock, $is_zero) {
-        $color   = $is_zero ? '#dc3545' : '#FFC400';
-        $icon    = $is_zero ? '🚨' : '⚠️';
-        $title   = $is_zero ? '¡Producto Sin Stock!' : 'Stock Bajo';
-        $message = $is_zero
-            ? 'El siguiente producto se ha quedado <strong>sin stock (0 unidades)</strong>. Los clientes no podrán comprarlo hasta que repongas inventario.'
-            : 'El siguiente producto tiene <strong>stock bajo (' . $stock . ' unidades)</strong>. Te recomendamos reponer inventario pronto.';
+    /**
+     * Logo URL pública para correos
+     */
+    private function get_email_logo_url() {
+        return content_url('uploads/petsgo-assets/logo-petsgo.png');
+    }
 
-        return '
-        <div style="font-family:Poppins,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8f9fa;padding:30px;">
-            <div style="background:#fff;border-radius:12px;padding:30px;border:1px solid #e9ecef;">
-                <div style="text-align:center;margin-bottom:20px;">
-                    <span style="font-size:48px;">' . $icon . '</span>
-                    <h1 style="color:' . $color . ';font-size:22px;margin:10px 0 0;">' . esc_html($title) . '</h1>
-                </div>
-                <p style="color:#555;font-size:14px;line-height:1.6;">' . $message . '</p>
-                <table style="width:100%;border-collapse:collapse;margin:20px 0;">
-                    <tr style="background:#f0f0f0;"><td style="padding:10px 14px;font-weight:600;color:#333;width:120px;">Tienda</td><td style="padding:10px 14px;color:#555;">' . esc_html($store_name) . '</td></tr>
-                    <tr><td style="padding:10px 14px;font-weight:600;color:#333;border-top:1px solid #eee;">Producto</td><td style="padding:10px 14px;color:#555;border-top:1px solid #eee;">' . esc_html($product_name) . '</td></tr>
-                    <tr style="background:#f0f0f0;"><td style="padding:10px 14px;font-weight:600;color:#333;">Stock Actual</td><td style="padding:10px 14px;font-weight:700;color:' . $color . ';font-size:18px;">' . $stock . ' unidades</td></tr>
-                </table>
-                <p style="color:#888;font-size:12px;margin-top:20px;text-align:center;">Este correo fue enviado automáticamente por <strong>PetsGo</strong>. Ingresa al panel de administración para actualizar tu inventario.</p>
-            </div>
-            <p style="text-align:center;color:#aaa;font-size:11px;margin-top:16px;">© ' . date('Y') . ' PetsGo · contacto@petsgo.cl</p>
-        </div>';
+    /**
+     * Plantilla base de email corporativo PetsGo (anti-spam compliant)
+     */
+    private function email_wrap($inner_html, $preheader = '') {
+        $logo_url = $this->get_email_logo_url();
+        $year     = date('Y');
+        $site_url = home_url();
+
+        return '<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="x-apple-disable-message-reformatting">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>PetsGo</title>
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style>
+  body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
+  table,td{mso-table-lspace:0;mso-table-rspace:0}
+  img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none}
+  body{margin:0;padding:0;width:100%!important;background-color:#f4f6f8;font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .email-body{background-color:#f4f6f8}
+  @media only screen and (max-width:620px){
+    .email-container{width:100%!important;padding:0 12px!important}
+    .content-cell{padding:24px 16px!important}
+    .kpi-td{display:block!important;width:100%!important;padding:8px 0!important}
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f8;">
+' . ($preheader ? '<div style="display:none;font-size:1px;color:#f4f6f8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">' . esc_html($preheader) . '</div>' : '') . '
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" class="email-body" style="background-color:#f4f6f8;">
+<tr><td align="center" style="padding:24px 0;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="580" class="email-container" style="max-width:580px;width:100%;">
+
+  <!-- HEADER -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#00A8E8 0%,#0090c7 100%);padding:28px 32px;text-align:center;border-radius:12px 12px 0 0;">
+      <img src="' . esc_url($logo_url) . '" alt="PetsGo" width="160" style="display:block;margin:0 auto;max-width:160px;height:auto;">
+      <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:10px 0 0;letter-spacing:0.5px;">Marketplace de mascotas</p>
+    </td>
+  </tr>
+
+  <!-- BODY -->
+  <tr>
+    <td class="content-cell" style="background-color:#ffffff;padding:32px;border-left:1px solid #e9ecef;border-right:1px solid #e9ecef;">
+      ' . $inner_html . '
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td style="background-color:#2F3A40;padding:24px 32px;border-radius:0 0 12px 12px;text-align:center;">
+      <p style="color:#ffffff;font-size:13px;margin:0 0 6px;font-weight:600;">PetsGo</p>
+      <p style="color:rgba(255,255,255,0.6);font-size:11px;margin:0 0 12px;line-height:1.5;">
+        Marketplace de mascotas &middot; Santiago, Chile<br>
+        <a href="mailto:contacto@petsgo.cl" style="color:#FFC400;text-decoration:none;">contacto@petsgo.cl</a>
+      </p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+        <tr>
+          <td style="padding:0 6px;"><a href="https://www.instagram.com/petsgo.cl" style="color:#FFC400;font-size:12px;text-decoration:none;">Instagram</a></td>
+          <td style="color:rgba(255,255,255,0.3);font-size:12px;">&middot;</td>
+          <td style="padding:0 6px;"><a href="https://www.facebook.com/petsgo.cl" style="color:#FFC400;font-size:12px;text-decoration:none;">Facebook</a></td>
+          <td style="color:rgba(255,255,255,0.3);font-size:12px;">&middot;</td>
+          <td style="padding:0 6px;"><a href="' . esc_url($site_url) . '" style="color:#FFC400;font-size:12px;text-decoration:none;">petsgo.cl</a></td>
+        </tr>
+      </table>
+      <p style="color:rgba(255,255,255,0.35);font-size:10px;margin:14px 0 0;line-height:1.5;">
+        &copy; ' . $year . ' PetsGo SpA. Todos los derechos reservados.<br>
+        Recibes este correo porque eres tienda registrada en PetsGo.<br>
+        <a href="mailto:contacto@petsgo.cl?subject=Desuscribir%20alertas%20stock" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Desuscribirse de alertas de inventario</a>
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>';
+    }
+
+    private function stock_email_html($store_name, $product_name, $stock, $is_zero, $vendor_email = '') {
+        $accent  = $is_zero ? '#dc3545' : '#e67e00';
+        $bg_bar  = $is_zero ? '#fdf0f0' : '#fff8ed';
+        $title   = $is_zero ? 'Producto sin stock' : 'Stock bajo detectado';
+        $pretext = $is_zero
+            ? $product_name . ' de ' . $store_name . ' se ha quedado sin stock (0 unidades).'
+            : $product_name . ' de ' . $store_name . ' tiene stock bajo (' . $stock . ' uds).';
+        $greeting = 'Hola, equipo de <strong>' . esc_html($store_name) . '</strong>';
+
+        $message = $is_zero
+            ? 'Te informamos que el siguiente producto se ha quedado <strong>sin stock (0 unidades)</strong>. Mientras no repongas inventario, los clientes no podrán adquirirlo en la plataforma.'
+            : 'Te informamos que el siguiente producto tiene <strong>stock bajo (' . $stock . ' unidades restantes)</strong>. Te recomendamos reponer inventario para no perder ventas.';
+
+        $icon_stock = $is_zero ? '0' : $stock;
+        $admin_url  = admin_url('admin.php?page=petsgo-products');
+
+        $inner = '
+      <!-- Alert banner -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr>
+          <td style="background-color:' . $bg_bar . ';border-left:4px solid ' . $accent . ';border-radius:6px;padding:14px 18px;">
+            <p style="margin:0;font-size:15px;font-weight:700;color:' . $accent . ';">' . ($is_zero ? '&#9888;' : '&#9888;') . '&nbsp; ' . esc_html($title) . '</p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Greeting -->
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:24px 0 8px;">' . $greeting . ',</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">' . $message . '</p>
+
+      <!-- Product detail card -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle del producto</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">Producto</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;font-weight:600;">' . esc_html($product_name) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Tienda</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($store_name) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Stock actual</td>
+          <td style="padding:12px 18px;border-top:1px solid #f0f0f0;">
+            <span style="display:inline-block;background:' . $accent . ';color:#fff;font-size:14px;font-weight:700;padding:4px 14px;border-radius:20px;">' . $icon_stock . ' ' . ($stock === 1 ? 'unidad' : 'unidades') . '</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha alerta</td>
+          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+        </tr>
+      </table>
+
+      <!-- CTA Button -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:28px 0 8px;">
+        <tr>
+          <td align="center">
+            <a href="' . esc_url($admin_url) . '" target="_blank" style="display:inline-block;background:#00A8E8;color:#ffffff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.3px;">Gestionar inventario</a>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Tip -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:24px;">
+        <tr>
+          <td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
+            <p style="margin:0;font-size:12px;color:#00718a;line-height:1.6;">
+              <strong>&#128161; Consejo:</strong> Mantener productos con stock adecuado mejora tu posicionamiento en PetsGo y la experiencia de tus clientes. Puedes configurar tus niveles de stock directamente desde el panel de administración.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Disclaimer -->
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificación automática del sistema de inventario de PetsGo.<br>
+        Se envió a <span style="color:#888;">' . esc_html($vendor_email) . '</span> por ser el correo registrado de la tienda.
+      </p>';
+
+        return $this->email_wrap($inner, $pretext);
     }
 
     // ============================================================
@@ -2951,31 +3102,62 @@ Dashboard con analíticas"></textarea>
         $to = $order->customer_email;
         if (!$to) return;
 
-        $subject = 'PetsGo — Tu Boleta ' . $inv_number;
-        $body = '<html><body style="font-family:Arial,sans-serif;color:#333;">';
-        $body .= '<div style="max-width:600px;margin:0 auto;">';
-        $body .= '<div style="background:#00A8E8;color:#fff;padding:20px;text-align:center;border-radius:8px 8px 0 0;">';
-        $body .= '<h1 style="margin:0;">🐾 PetsGo</h1>';
-        $body .= '<p style="margin:4px 0 0;">Tu compra ha sido procesada</p></div>';
-        $body .= '<div style="padding:20px;background:#fff;border:1px solid #eee;">';
-        $body .= '<p>Hola <strong>' . esc_html($order->customer_name ?? 'Cliente') . '</strong>,</p>';
-        $body .= '<p>Gracias por tu compra en <strong>' . esc_html($order->store_name) . '</strong>.</p>';
-        $body .= '<table style="width:100%;border-collapse:collapse;margin:16px 0;">';
-        $body .= '<tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>Nº Boleta:</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">' . $inv_number . '</td></tr>';
-        $body .= '<tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>Total:</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">$' . number_format($order->total_amount, 0, ',', '.') . '</td></tr>';
-        $body .= '<tr><td style="padding:8px;border-bottom:1px solid #eee;"><strong>Tienda:</strong></td><td style="padding:8px;border-bottom:1px solid #eee;">' . esc_html($order->store_name) . '</td></tr>';
-        $body .= '</table>';
-        $body .= '<p>Adjuntamos tu boleta en formato PDF. También puedes verificar su validez escaneando el código QR incluido.</p>';
-        $body .= '<p style="color:#999;font-size:12px;">Si tienes preguntas, contacta a contacto@petsgo.cl</p>';
-        $body .= '</div>';
-        $body .= '<div style="background:#2F3A40;color:#fff;padding:12px;text-align:center;border-radius:0 0 8px 8px;font-size:12px;">© ' . date('Y') . ' PetsGo — Marketplace de mascotas</div>';
-        $body .= '</div></body></html>';
+        $subject  = 'PetsGo — Tu Boleta ' . $inv_number;
+        $pretext  = 'Boleta ' . $inv_number . ' por $' . number_format($order->total_amount, 0, ',', '.') . ' en ' . $order->store_name;
 
-        // BCC: admin + vendor
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($order->customer_name ?? 'Cliente') . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">Gracias por tu compra en <strong>' . esc_html($order->store_name) . '</strong>. Tu boleta ha sido generada exitosamente.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle de tu compra</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">N&ordm; Boleta</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;font-weight:700;">' . esc_html($inv_number) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Total</td>
+          <td style="padding:12px 18px;font-size:16px;color:#00A8E8;border-top:1px solid #f0f0f0;font-weight:700;">$' . number_format($order->total_amount, 0, ',', '.') . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Tienda</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($order->store_name) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha</td>
+          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:24px;">
+        <tr>
+          <td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
+            <p style="margin:0;font-size:13px;color:#00718a;line-height:1.6;">
+              &#128206; Adjuntamos tu boleta en formato PDF. Tambi&eacute;n puedes verificar su validez escaneando el c&oacute;digo QR incluido en el documento.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificaci&oacute;n autom&aacute;tica de compra de PetsGo.<br>
+        Se envi&oacute; a <span style="color:#888;">' . esc_html($to) . '</span> por ser el correo de tu cuenta.
+      </p>';
+
+        $body = $this->email_wrap($inner, $pretext);
+
         $bcc = ['contacto@petsgo.cl'];
         if (!empty($order->vendor_email)) $bcc[] = $order->vendor_email;
 
-        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: PetsGo <notificaciones@petsgo.cl>',
+            'Reply-To: PetsGo Soporte <contacto@petsgo.cl>',
+            'List-Unsubscribe: <mailto:contacto@petsgo.cl?subject=Desuscribir>',
+            'X-Mailer: PetsGo/1.0',
+        ];
         foreach ($bcc as $b) { $headers[] = 'Bcc: ' . $b; }
 
         $attachments = [];
