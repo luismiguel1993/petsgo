@@ -3002,35 +3002,96 @@ Dashboard con analíticas"></textarea>
                 update_user_meta($rider_id, 'petsgo_rider_status', 'approved');
                 $this->audit('rider_approved', 'user', $rider_id, 'Todos los documentos aprobados');
 
-                // Send approval email
+                // Send WELCOME email (bienvenida) when admin approves
                 $rider_user = get_userdata($rider_id);
                 $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
-                $approve_inner = '
-                <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Felicidades <strong>' . esc_html($rider_name) . '</strong>! 🎉🚴</p>
-                <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Tu solicitud como Rider de PetsGo ha sido <strong style="color:#16a34a;">APROBADA</strong>. Ya puedes comenzar a recibir y realizar entregas.</p>
-                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                  <tr><td align="center">
-                    <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#22C55E;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a mi Panel de Rider</a>
-                  </td></tr>
-                </table>';
-                $approve_html = $this->email_wrap($approve_inner, '¡Tu cuenta Rider fue aprobada!');
+                $vehicle_type = get_user_meta($rider_id, 'petsgo_vehicle', true) ?: '';
+                $vtLabels = ['bicicleta'=>'Bicicleta','moto'=>'Moto','auto'=>'Auto','scooter'=>'Scooter','a_pie'=>'A pie'];
+                $vtLabel = $vtLabels[$vehicle_type] ?? $vehicle_type;
+
+                $welcome_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($rider_name) . '</strong>! 🚴</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. ¡Tu cuenta ha sido <strong style="color:#16a34a;">aprobada</strong> y ya puedes comenzar a realizar entregas!</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0fdf4;border-left:4px solid #22C55E;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#166534;font-weight:700;">✅ Cuenta Aprobada</p>
+          <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">Todos tus documentos fueron verificados exitosamente. Ya formas parte del equipo.</p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Pr' . chr(243) . 'ximos pasos:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>1️⃣ Ingresa a tu Panel de Rider</td></tr>
+            <tr><td>2️⃣ Revisa las entregas disponibles</td></tr>
+            <tr><td>3️⃣ Acepta y realiza entregas a los clientes</td></tr>
+            <tr><td>4️⃣ Entrega con ❤️ y gana valoraciones positivas</td></tr>
+          </table>
+        </td></tr>
+      </table>' . ($vtLabel ? '
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:14px 20px;font-size:13px;color:#555;">
+          🚗 Veh' . chr(237) . 'culo registrado: <strong style="color:#333;">' . esc_html($vtLabel) . '</strong>
+        </td></tr>
+      </table>' : '') . '
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a mi Panel de Rider 🚴</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($rider_user->user_email) . '</span> porque tu cuenta Rider fue aprobada en PetsGo.
+      </p>';
+                $welcome_html = $this->email_wrap($welcome_inner, '¡Bienvenido al equipo de Delivery, ' . $rider_name . '!');
                 $company = $this->pg_setting('company_name', 'PetsGo');
                 $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
                 $hdrs = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
-                @wp_mail($rider_user->user_email, "¡Cuenta Rider aprobada! - {$company} 🎉", $approve_html, $hdrs);
+                @wp_mail($rider_user->user_email, "¡Bienvenido al equipo Rider de {$company}! 🚴", $welcome_html, $hdrs);
             }
         }
 
-        // If rejected, send rejection email
+        // If rejected, send rejection notification email
         if ($status === 'rejected' && $doc) {
             $rider_id = $doc->rider_id;
             $rider_user = get_userdata($rider_id);
             $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
+            $docLabels = ['license'=>'Licencia de Conducir','vehicle_registration'=>'Padr' . chr(243) . 'n del Veh' . chr(237) . 'culo','id_card'=>'Documento de Identidad'];
+            $docLabel = $docLabels[$doc->doc_type] ?? $doc->doc_type;
+
             // Set back to pending_docs so rider can re-upload
             $current_rs = get_user_meta($rider_id, 'petsgo_rider_status', true);
             if ($current_rs === 'pending_review') {
                 update_user_meta($rider_id, 'petsgo_rider_status', 'pending_docs');
             }
+
+            $reject_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($rider_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que uno de tus documentos ha sido <strong style="color:#dc2626;">rechazado</strong> durante la revisi' . chr(243) . 'n.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#991b1b;font-weight:700;">❌ Documento rechazado</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#555;">Tipo: <strong>' . esc_html($docLabel) . '</strong></p>' .
+          ($notes ? '<p style="margin:0;font-size:13px;color:#555;">Motivo: <strong>' . esc_html($notes) . '</strong></p>' : '') . '
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:16px 24px;">
+          <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">📋 Ingresa a tu Panel de Rider y sube nuevamente el documento corregido para continuar con tu solicitud.</p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#F97316;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Subir Documento Corregido</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($rider_user->user_email) . '</span> por la revisi' . chr(243) . 'n de tu cuenta Rider en PetsGo.
+      </p>';
+            $reject_html = $this->email_wrap($reject_inner, 'Documento rechazado - Acci' . chr(243) . 'n requerida');
+            $company = $this->pg_setting('company_name', 'PetsGo');
+            $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+            $hdrs = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+            @wp_mail($rider_user->user_email, "Documento rechazado - {$company} ⚠️", $reject_html, $hdrs);
         }
 
         wp_send_json_success(['message' => 'Documento ' . ($status === 'approved' ? 'aprobado' : 'rechazado')]);
