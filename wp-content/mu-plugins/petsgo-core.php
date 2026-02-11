@@ -149,11 +149,18 @@ class PetsGo_Core {
     public function admin_assets($hook) {
         if (strpos($hook, 'petsgo') === false) return;
         wp_enqueue_media();
-        // Output CSS/JS in admin_head (after jQuery is loaded by admin_print_scripts)
-        add_action('admin_head', function() {
-            $this->print_admin_css();
-            $this->print_admin_js();
-        });
+        // CSS: safe to output anytime in head
+        add_action('admin_head', [$this, 'print_admin_css'], 1);
+        // JS: use wp_add_inline_script to GUARANTEE jQuery loads first
+        // This solves the issue where admin_enqueue_scripts or admin_head
+        // may fire before jQuery is available (WP 6.9+ deferred scripts)
+        ob_start();
+        $this->print_admin_js();
+        $raw = ob_get_clean();
+        $js = trim(preg_replace('#</?script[^>]*>#i', '', $raw));
+        wp_register_script('petsgo-admin-js', false, ['jquery'], '1.0', false);
+        wp_enqueue_script('petsgo-admin-js');
+        wp_add_inline_script('petsgo-admin-js', $js);
     }
 
     private function print_admin_css() {
