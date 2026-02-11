@@ -24,12 +24,17 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     const { data } = await apiLogin(username, password);
+    const u = data.user;
     const userData = {
-      id: data.user_id,
-      username: data.username,
-      email: data.email,
-      displayName: data.display_name,
-      role: data.role,
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      displayName: u.displayName,
+      firstName: u.firstName || '',
+      lastName: u.lastName || '',
+      phone: u.phone || '',
+      avatarUrl: u.avatarUrl || '',
+      role: u.role,
     };
     localStorage.setItem('petsgo_token', data.token);
     localStorage.setItem('petsgo_user', JSON.stringify(userData));
@@ -37,9 +42,17 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
-  const register = async (username, email, password) => {
-    const { data } = await apiRegister(username, email, password);
+  const register = async (formData) => {
+    const { data } = await apiRegister(formData);
     return data;
+  };
+
+  const updateUser = (updates) => {
+    setUser(prev => {
+      const updated = { ...prev, ...updates };
+      localStorage.setItem('petsgo_user', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   const logout = () => {
@@ -55,7 +68,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, login, register, logout,
+      user, loading, login, register, logout, updateUser,
       isAdmin, isVendor, isRider, isAuthenticated: !!user,
     }}>
       {children}

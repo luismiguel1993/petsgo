@@ -54,6 +54,9 @@ class PetsGo_Core {
             'petsgo_dashboard_data',
             'petsgo_save_settings',
             'petsgo_preview_email',
+            'petsgo_search_pets',
+            'petsgo_save_pet',
+            'petsgo_delete_pet',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -82,6 +85,53 @@ class PetsGo_Core {
     // ============================================================
     // STOCK ALERT — Envía email cuando stock < 5 o == 0
     // ============================================================
+
+    // ---- Validation helpers ----
+    public static function validate_rut($rut) {
+        $rut = preg_replace('/[^0-9kK]/', '', strtoupper($rut));
+        if (strlen($rut) < 8 || strlen($rut) > 9) return false;
+        $body = substr($rut, 0, -1);
+        $dv   = substr($rut, -1);
+        $sum  = 0; $mul = 2;
+        for ($i = strlen($body) - 1; $i >= 0; $i--) {
+            $sum += intval($body[$i]) * $mul;
+            $mul = $mul === 7 ? 2 : $mul + 1;
+        }
+        $expected = 11 - ($sum % 11);
+        if ($expected === 11) $expected = '0';
+        elseif ($expected === 10) $expected = 'K';
+        else $expected = (string)$expected;
+        return $dv === $expected;
+    }
+    public static function validate_chilean_phone($phone) {
+        $clean = preg_replace('/[^0-9+]/', '', $phone);
+        // +569XXXXXXXX (12 chars) or 9XXXXXXXX (9 chars)
+        if (preg_match('/^\+569\d{8}$/', $clean)) return true;
+        if (preg_match('/^9\d{8}$/', $clean)) return true;
+        return false;
+    }
+    public static function normalize_phone($phone) {
+        $clean = preg_replace('/[^0-9]/', '', $phone);
+        if (strlen($clean) === 9 && $clean[0] === '9') return '+56' . $clean;
+        if (strlen($clean) === 11 && substr($clean, 0, 3) === '569') return '+' . $clean;
+        return '+56' . $clean;
+    }
+    public static function validate_password_strength($pass) {
+        $errors = [];
+        if (strlen($pass) < 8) $errors[] = 'Mínimo 8 caracteres';
+        if (!preg_match('/[A-Z]/', $pass)) $errors[] = 'Debe tener al menos una mayúscula';
+        if (!preg_match('/[a-z]/', $pass)) $errors[] = 'Debe tener al menos una minúscula';
+        if (!preg_match('/[0-9]/', $pass)) $errors[] = 'Debe tener al menos un número';
+        if (!preg_match('/[^A-Za-z0-9]/', $pass)) $errors[] = 'Debe tener al menos un carácter especial';
+        return $errors;
+    }
+    public static function format_rut($rut) {
+        $clean = preg_replace('/[^0-9kK]/', '', strtoupper($rut));
+        $dv = substr($clean, -1);
+        $body = substr($clean, 0, -1);
+        return number_format((int)$body, 0, '', '.') . '-' . $dv;
+    }
+
     private function check_stock_alert($product_id) {
         global $wpdb;
         $pfx = $wpdb->prefix;
@@ -1820,22 +1870,25 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pu-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-user-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Usuario</a>
             </div>
-            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Tienda</th><th>Registrado</th><th>Acciones</th></tr></thead>
-            <tbody id="pu-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>RUT/Doc</th><th>Rol</th><th>Tienda</th><th>🐾</th><th>Registrado</th><th>Acciones</th></tr></thead>
+            <tbody id="pu-body"><tr><td colspan="11" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
         jQuery(function($){
             var t;
             var tbl=PG.table({
                 thead:'#pu-thead',body:'#pu-body',perPage:25,defaultSort:'ID',defaultDir:'desc',
-                columns:['ID','user_login','display_name','user_email','role_label','store_name','user_registered','_actions'],
+                columns:['ID','user_login','display_name','user_email','phone','id_number','role_label','store_name','pet_count','user_registered','_actions'],
                 emptyMsg:'Sin resultados.',
                 onTotal:function(n){$('#pu-total').text(n);},
                 renderRow:function(u){
                     var r='<tr><td>'+u.ID+'</td><td>'+PG.esc(u.user_login)+'</td><td>'+PG.esc(u.display_name)+'</td>';
                     r+='<td>'+PG.esc(u.user_email)+'</td>';
+                    r+='<td style="font-size:12px;">'+PG.esc(u.phone||'—')+'</td>';
+                    r+='<td style="font-size:12px;">'+PG.esc(u.id_number||'—')+'</td>';
                     r+='<td><span class="petsgo-role-tag '+u.role_key+'">'+PG.esc(u.role_label)+'</span></td>';
                     r+='<td>'+PG.esc(u.store_name||'—')+'</td>';
+                    r+='<td style="text-align:center;">'+(u.pet_count>0?'🐾 '+u.pet_count:'—')+'</td>';
                     r+='<td>'+PG.esc(u.user_registered)+'</td>';
                     r+='<td><a href="'+PG.adminUrl+'?page=petsgo-user-form&id='+u.ID+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
                     if(u.ID!=1) r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pu-del" data-id="'+u.ID+'">🗑️</button>';
@@ -1864,20 +1917,37 @@ class PetsGo_Core {
         global $wpdb;
         $uid = intval($_GET['id'] ?? 0);
         $user = $uid ? get_userdata($uid) : null;
+        $profile = $uid ? $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid)) : null;
         $roles = ['subscriber'=>'Cliente','petsgo_vendor'=>'Tienda (Vendor)','petsgo_rider'=>'Delivery (Rider)','petsgo_support'=>'Soporte','administrator'=>'Administrador'];
         $current_role = $user ? (in_array('administrator',$user->roles)?'administrator':(in_array('petsgo_vendor',$user->roles)?'petsgo_vendor':(in_array('petsgo_rider',$user->roles)?'petsgo_rider':(in_array('petsgo_support',$user->roles)?'petsgo_support':'subscriber')))) : 'subscriber';
+        $pet_types = ['perro'=>'🐕 Perro','gato'=>'🐱 Gato','ave'=>'🐦 Ave','conejo'=>'🐰 Conejo','hamster'=>'🐹 Hámster','pez'=>'🐟 Pez','reptil'=>'🦎 Reptil','otro'=>'🐾 Otro'];
         ?>
         <div class="wrap petsgo-wrap">
             <h1>👤 <?php echo $uid ? 'Editar Usuario #'.$uid : 'Nuevo Usuario'; ?></h1>
             <a href="<?php echo admin_url('admin.php?page=petsgo-users'); ?>" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" style="margin-bottom:16px;display:inline-block;">← Volver</a>
-            <form id="user-form" novalidate>
+            <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;">
+            <!-- Left: User data -->
+            <form id="user-form" novalidate style="flex:1;min-width:320px;max-width:600px;">
                 <input type="hidden" id="uf-id" value="<?php echo $uid; ?>">
-                <div class="petsgo-form-section" style="max-width:600px;">
+                <div class="petsgo-form-section">
                     <h3>📋 Datos del Usuario</h3>
                     <div class="petsgo-field" id="uf-f-login"><label>Usuario *</label><input type="text" id="uf-login" value="<?php echo esc_attr($user->user_login ?? ''); ?>" <?php echo $uid?'readonly':''; ?> maxlength="60"><div class="field-error">Obligatorio.</div></div>
-                    <div class="petsgo-field" id="uf-f-name"><label>Nombre / Display Name *</label><input type="text" id="uf-name" value="<?php echo esc_attr($user->display_name ?? ''); ?>"><div class="field-error">Obligatorio.</div></div>
+                    <div style="display:flex;gap:12px;">
+                        <div class="petsgo-field" id="uf-f-fname" style="flex:1;"><label>Nombre *</label><input type="text" id="uf-fname" value="<?php echo esc_attr($profile->first_name ?? ($user->first_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
+                        <div class="petsgo-field" id="uf-f-lname" style="flex:1;"><label>Apellido *</label><input type="text" id="uf-lname" value="<?php echo esc_attr($profile->last_name ?? ($user->last_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
+                    </div>
                     <div class="petsgo-field" id="uf-f-email"><label>Email *</label><input type="email" id="uf-email" value="<?php echo esc_attr($user->user_email ?? ''); ?>"><div class="field-error">Email válido obligatorio.</div></div>
-                    <div class="petsgo-field"><label>Contraseña <?php echo $uid?'(dejar vacío para no cambiar)':'*'; ?></label><input type="password" id="uf-pass" autocomplete="new-password"><div class="field-hint"><?php echo $uid?'':'Mín. 6 caracteres.'; ?></div></div>
+                    <div style="display:flex;gap:12px;">
+                        <div class="petsgo-field" style="width:140px;"><label>Tipo Doc.</label>
+                            <select id="uf-idtype"><option value="rut" <?php selected($profile->id_type??'rut','rut'); ?>>RUT</option><option value="dni" <?php selected($profile->id_type??'','dni'); ?>>DNI</option><option value="passport" <?php selected($profile->id_type??'','passport'); ?>>Pasaporte</option></select>
+                        </div>
+                        <div class="petsgo-field" id="uf-f-idnum" style="flex:1;"><label>N° Documento *</label><input type="text" id="uf-idnum" value="<?php echo esc_attr($profile->id_number ?? ''); ?>" placeholder="12.345.678-K"><div class="field-error">Documento inválido.</div></div>
+                    </div>
+                    <div style="display:flex;gap:12px;">
+                        <div class="petsgo-field" style="flex:1;"><label>Teléfono</label><input type="text" id="uf-phone" value="<?php echo esc_attr($profile->phone ?? ''); ?>" placeholder="+569XXXXXXXX"></div>
+                        <div class="petsgo-field" style="flex:1;"><label>Fecha Nacimiento</label><input type="date" id="uf-birth" value="<?php echo esc_attr($profile->birth_date ?? ''); ?>"></div>
+                    </div>
+                    <div class="petsgo-field"><label>Contraseña <?php echo $uid?'(dejar vacío para no cambiar)':'*'; ?></label><input type="password" id="uf-pass" autocomplete="new-password"><div class="field-hint"><?php echo $uid?'':'Mín. 8 caracteres, mayúscula, minúscula, número y especial.'; ?></div></div>
                     <div class="petsgo-field" id="uf-f-role"><label>Rol *</label>
                         <select id="uf-role"><?php foreach ($roles as $k=>$v): ?><option value="<?php echo $k; ?>" <?php selected($current_role, $k); ?>><?php echo $v; ?></option><?php endforeach; ?></select>
                     </div>
@@ -1888,27 +1958,120 @@ class PetsGo_Core {
                     </div>
                 </div>
             </form>
+
+            <!-- Right: Pets (only if editing existing user) -->
+            <?php if ($uid): ?>
+            <div class="petsgo-form-section" style="flex:1;min-width:320px;max-width:550px;">
+                <h3>🐾 Mascotas de <?php echo esc_html($user->display_name); ?> (<span id="pet-count">0</span>)</h3>
+                <div id="pet-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;"></div>
+                <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="pet-add-btn">➕ Agregar Mascota</button>
+                <span class="petsgo-loader" id="pet-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+
+                <!-- Pet edit modal -->
+                <div id="pet-modal" style="display:none;margin-top:16px;background:#f8f9fa;border:1px solid #e9ecef;border-radius:12px;padding:20px;">
+                    <h4 id="pet-modal-title" style="margin:0 0 16px;">🐾 Nueva Mascota</h4>
+                    <input type="hidden" id="pm-id" value="0">
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                        <div class="petsgo-field" style="width:140px;"><label>Tipo *</label>
+                            <select id="pm-type"><?php foreach ($pet_types as $k=>$v): ?><option value="<?php echo $k; ?>"><?php echo $v; ?></option><?php endforeach; ?></select>
+                        </div>
+                        <div class="petsgo-field" style="flex:1;min-width:150px;"><label>Nombre *</label><input type="text" id="pm-name"></div>
+                    </div>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                        <div class="petsgo-field" style="flex:1;"><label>Raza</label><input type="text" id="pm-breed" placeholder="Ej: Labrador, Siamés..."></div>
+                        <div class="petsgo-field" style="width:160px;"><label>Fecha Nacimiento</label><input type="date" id="pm-birth"></div>
+                    </div>
+                    <div class="petsgo-field"><label>URL Foto</label><input type="url" id="pm-photo" placeholder="https://..."></div>
+                    <div class="petsgo-field"><label>Notas</label><textarea id="pm-notes" rows="2" style="width:100%;"></textarea></div>
+                    <div style="display:flex;gap:8px;margin-top:12px;">
+                        <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="pm-save">💾 Guardar</button>
+                        <button type="button" class="petsgo-btn petsgo-btn-sm" id="pm-cancel" style="background:#e9ecef;color:#555;">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+            </div>
         </div>
         <script>
         jQuery(function($){
+            // --- User form ---
             $('#user-form').on('submit',function(e){
                 e.preventDefault();var ok=true;
                 if(!$.trim($('#uf-login').val())){$('#uf-f-login').addClass('has-error');ok=false;}else{$('#uf-f-login').removeClass('has-error');}
-                if(!$.trim($('#uf-name').val())){$('#uf-f-name').addClass('has-error');ok=false;}else{$('#uf-f-name').removeClass('has-error');}
+                if(!$.trim($('#uf-fname').val())){$('#uf-f-fname').addClass('has-error');ok=false;}else{$('#uf-f-fname').removeClass('has-error');}
+                if(!$.trim($('#uf-lname').val())){$('#uf-f-lname').addClass('has-error');ok=false;}else{$('#uf-f-lname').removeClass('has-error');}
                 if(!$('#uf-email').val()||$('#uf-email').val().indexOf('@')<1){$('#uf-f-email').addClass('has-error');ok=false;}else{$('#uf-f-email').removeClass('has-error');}
                 if(!ok)return;
                 $('#uf-loader').addClass('active');$('#uf-msg').hide();
                 PG.post('petsgo_save_user',{
-                    id:$('#uf-id').val(),user_login:$('#uf-login').val(),display_name:$('#uf-name').val(),
-                    user_email:$('#uf-email').val(),password:$('#uf-pass').val(),role:$('#uf-role').val()
+                    id:$('#uf-id').val(),user_login:$('#uf-login').val(),
+                    display_name:$.trim($('#uf-fname').val()+' '+$('#uf-lname').val()),
+                    first_name:$('#uf-fname').val(),last_name:$('#uf-lname').val(),
+                    user_email:$('#uf-email').val(),password:$('#uf-pass').val(),role:$('#uf-role').val(),
+                    id_type:$('#uf-idtype').val(),id_number:$('#uf-idnum').val(),
+                    phone:$('#uf-phone').val(),birth_date:$('#uf-birth').val()
                 },function(r){
                     $('#uf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
                     $('#uf-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
-                    if(r.success&&!$('#uf-id').val()&&r.data.id){$('#uf-id').val(r.data.id);}
+                    if(r.success&&!$('#uf-id').val()&&r.data.id){$('#uf-id').val(r.data.id);location.href=PG.adminUrl+'?page=petsgo-user-form&id='+r.data.id;}
                 });
             });
             $('.petsgo-field input,.petsgo-field select').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
+
+            <?php if ($uid): ?>
+            // --- Pets ---
+            function loadPets(){
+                $('#pet-loader').addClass('active');
+                PG.post('petsgo_search_pets',{user_id:<?php echo $uid; ?>},function(r){
+                    $('#pet-loader').removeClass('active');
+                    if(!r.success){$('#pet-list').html('<p style="color:#999;">Error cargando mascotas.</p>');return;}
+                    var pets=r.data;$('#pet-count').text(pets.length);
+                    if(!pets.length){$('#pet-list').html('<p style="color:#999;font-size:13px;">Sin mascotas registradas.</p>');return;}
+                    var html='';
+                    $.each(pets,function(i,p){
+                        var img=p.photo_url?'<img src="'+PG.esc(p.photo_url)+'" style="width:48px;height:48px;border-radius:50%;object-fit:cover;">':'<span style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:50%;background:#f0f9ff;font-size:24px;">🐾</span>';
+                        html+='<div style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:#fff;border:1px solid #e9ecef;border-radius:10px;">';
+                        html+=img;
+                        html+='<div style="flex:1;"><strong style="font-size:14px;">'+PG.esc(p.name)+'</strong>';
+                        html+=' <span style="font-size:11px;color:#888;background:#f0f0f0;padding:2px 8px;border-radius:12px;margin-left:6px;">'+PG.esc(p.pet_type)+'</span>';
+                        if(p.breed) html+='<br><span style="font-size:12px;color:#666;">'+PG.esc(p.breed)+'</span>';
+                        if(p.age) html+=' <span style="font-size:11px;color:#00A8E8;">• '+PG.esc(p.age)+'</span>';
+                        html+='</div>';
+                        html+='<button class="petsgo-btn petsgo-btn-warning petsgo-btn-sm pet-edit" data-pet=\''+JSON.stringify(p)+'\'>✏️</button>';
+                        html+=' <button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pet-del" data-id="'+p.id+'">🗑️</button>';
+                        html+='</div>';
+                    });
+                    $('#pet-list').html(html);
+                });
+            }
+            function resetPetModal(){$('#pm-id').val(0);$('#pm-type').val('perro');$('#pm-name,#pm-breed,#pm-photo,#pm-notes').val('');$('#pm-birth').val('');$('#pet-modal-title').text('🐾 Nueva Mascota');}
+            $('#pet-add-btn').on('click',function(){resetPetModal();$('#pet-modal').slideDown(200);});
+            $('#pm-cancel').on('click',function(){$('#pet-modal').slideUp(200);});
+            $(document).on('click','.pet-edit',function(){
+                var p=JSON.parse($(this).attr('data-pet'));
+                $('#pm-id').val(p.id);$('#pm-type').val(p.pet_type);$('#pm-name').val(p.name);
+                $('#pm-breed').val(p.breed);$('#pm-birth').val(p.birth_date||'');
+                $('#pm-photo').val(p.photo_url);$('#pm-notes').val(p.notes||'');
+                $('#pet-modal-title').text('✏️ Editar: '+p.name);
+                $('#pet-modal').slideDown(200);
+            });
+            $(document).on('click','.pet-del',function(){
+                if(!confirm('¿Eliminar esta mascota?'))return;
+                PG.post('petsgo_delete_pet',{id:$(this).data('id')},function(r){if(r.success)loadPets();else alert(r.data);});
+            });
+            $('#pm-save').on('click',function(){
+                if(!$.trim($('#pm-name').val())){alert('Nombre de mascota obligatorio');return;}
+                PG.post('petsgo_save_pet',{
+                    id:$('#pm-id').val(),user_id:<?php echo $uid; ?>,
+                    pet_type:$('#pm-type').val(),name:$('#pm-name').val(),breed:$('#pm-breed').val(),
+                    birth_date:$('#pm-birth').val(),photo_url:$('#pm-photo').val(),notes:$('#pm-notes').val()
+                },function(r){
+                    if(r.success){$('#pet-modal').slideUp(200);loadPets();}else{alert(r.data);}
+                });
+            });
+            loadPets();
+            <?php endif; ?>
         });
         </script>
         <?php
@@ -2362,7 +2525,9 @@ Dashboard con analíticas"></textarea>
             elseif(in_array('petsgo_rider',$u->roles))$rk='petsgo_rider';
             elseif(in_array('petsgo_support',$u->roles))$rk='petsgo_support';
             $store = $wpdb->get_var($wpdb->prepare("SELECT store_name FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $u->ID));
-            $data[]=['ID'=>$u->ID,'user_login'=>$u->user_login,'display_name'=>$u->display_name,'user_email'=>$u->user_email,'role_key'=>str_replace('petsgo_','',$rk),'role_label'=>$role_map[$rk]??$rk,'store_name'=>$store,'user_registered'=>$u->user_registered];
+            $profile = $wpdb->get_row($wpdb->prepare("SELECT phone, id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $u->ID));
+            $pet_count = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_pets WHERE user_id=%d", $u->ID));
+            $data[]=['ID'=>$u->ID,'user_login'=>$u->user_login,'display_name'=>$u->display_name,'user_email'=>$u->user_email,'role_key'=>str_replace('petsgo_','',$rk),'role_label'=>$role_map[$rk]??$rk,'store_name'=>$store,'user_registered'=>$u->user_registered,'phone'=>$profile->phone??'','id_number'=>$profile->id_number??'','pet_count'=>$pet_count];
         }
         wp_send_json_success($data);
     }
@@ -2370,23 +2535,40 @@ Dashboard con analíticas"></textarea>
     public function petsgo_save_user() {
         check_ajax_referer('petsgo_ajax');
         if(!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
         $id=intval($_POST['id']??0);$login=$this->san('user_login');$name=$this->san('display_name');$email=sanitize_email($_POST['user_email']??'');$pass=$_POST['password']??'';$role=sanitize_text_field($_POST['role']??'subscriber');
+        $first_name = sanitize_text_field($_POST['first_name'] ?? '');
+        $last_name  = sanitize_text_field($_POST['last_name'] ?? '');
+        $id_type    = sanitize_text_field($_POST['id_type'] ?? 'rut');
+        $id_number  = sanitize_text_field($_POST['id_number'] ?? '');
+        $phone      = sanitize_text_field($_POST['phone'] ?? '');
+        $birth_date = sanitize_text_field($_POST['birth_date'] ?? '');
+        if (!$name && $first_name) $name = trim($first_name . ' ' . $last_name);
+
         $errors=[];
         if(!$login)$errors[]='Usuario obligatorio';if(!$name)$errors[]='Nombre obligatorio';if(!$email)$errors[]='Email obligatorio';
         if(!$id&&strlen($pass)<6)$errors[]='Contraseña mín 6 caracteres';
+        if($id_type==='rut' && $id_number && !self::validate_rut($id_number)) $errors[]='RUT inválido';
+        if($phone && !self::validate_chilean_phone($phone)) $errors[]='Teléfono chileno inválido';
         if($errors)wp_send_json_error(implode('. ',$errors));
 
         if($id){
-            wp_update_user(['ID'=>$id,'display_name'=>$name,'user_email'=>$email]);
+            wp_update_user(['ID'=>$id,'display_name'=>$name,'user_email'=>$email,'first_name'=>$first_name,'last_name'=>$last_name]);
             if($pass) wp_set_password($pass,$id);
             $user=get_userdata($id);$user->set_role($role);
+            // Update or insert profile
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$id));
+            $pdata = ['first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null];
+            if($exists){$wpdb->update("{$wpdb->prefix}petsgo_user_profiles",$pdata,['user_id'=>$id]);}
+            else{$pdata['user_id']=$id;$wpdb->insert("{$wpdb->prefix}petsgo_user_profiles",$pdata);}
             $this->audit('user_update','user',$id,$name);
             wp_send_json_success(['message'=>'Usuario actualizado','id'=>$id]);
         }else{
             $uid=wp_create_user($login,$pass,$email);
             if(is_wp_error($uid)) wp_send_json_error($uid->get_error_message());
-            wp_update_user(['ID'=>$uid,'display_name'=>$name]);
+            wp_update_user(['ID'=>$uid,'display_name'=>$name,'first_name'=>$first_name,'last_name'=>$last_name]);
             $user=get_userdata($uid);$user->set_role($role);
+            $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles",['user_id'=>$uid,'first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null]);
             $this->audit('user_create','user',$uid,$name);
             wp_send_json_success(['message'=>'Usuario creado','id'=>$uid]);
         }
@@ -2401,6 +2583,82 @@ Dashboard con analíticas"></textarea>
         wp_delete_user($id);
         $this->audit('user_delete','user',$id);
         wp_send_json_success(['message'=>'Usuario eliminado']);
+    }
+
+    // --- PETS ADMIN AJAX ---
+    public function petsgo_search_pets() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $user_id = intval($_POST['user_id'] ?? 0);
+        if (!$user_id) wp_send_json_error('user_id requerido');
+        $pets = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE user_id=%d ORDER BY id ASC", $user_id
+        ));
+        $data = [];
+        foreach ($pets as $pet) {
+            $age = '';
+            if ($pet->birth_date) {
+                $diff = date_diff(date_create($pet->birth_date), date_create());
+                $age = $diff->y > 0 ? $diff->y . ' año' . ($diff->y > 1 ? 's' : '') : $diff->m . ' mes' . ($diff->m > 1 ? 'es' : '');
+            }
+            $data[] = [
+                'id' => (int)$pet->id, 'pet_type' => $pet->pet_type, 'name' => $pet->name,
+                'breed' => $pet->breed, 'birth_date' => $pet->birth_date, 'age' => $age,
+                'photo_url' => $pet->photo_url, 'notes' => $pet->notes,
+            ];
+        }
+        wp_send_json_success($data);
+    }
+
+    public function petsgo_save_pet() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id       = intval($_POST['id'] ?? 0);
+        $user_id  = intval($_POST['user_id'] ?? 0);
+        $name     = sanitize_text_field($_POST['name'] ?? '');
+        $pet_type = sanitize_text_field($_POST['pet_type'] ?? 'perro');
+        $breed    = sanitize_text_field($_POST['breed'] ?? '');
+        $birth_date = sanitize_text_field($_POST['birth_date'] ?? '');
+        $photo_url  = esc_url_raw($_POST['photo_url'] ?? '');
+        $notes    = sanitize_textarea_field($_POST['notes'] ?? '');
+
+        if (!$user_id) wp_send_json_error('user_id requerido');
+        if (!$name) wp_send_json_error('Nombre de mascota obligatorio');
+
+        $data = [
+            'user_id'    => $user_id,
+            'pet_type'   => $pet_type,
+            'name'       => $name,
+            'breed'      => $breed,
+            'birth_date' => $birth_date ?: null,
+            'photo_url'  => $photo_url,
+            'notes'      => $notes,
+        ];
+
+        if ($id) {
+            $wpdb->update("{$wpdb->prefix}petsgo_pets", $data, ['id' => $id]);
+            $this->audit('pet_update_admin', 'pet', $id, $name);
+            wp_send_json_success(['message' => 'Mascota actualizada', 'id' => $id]);
+        } else {
+            $wpdb->insert("{$wpdb->prefix}petsgo_pets", $data, ['%d','%s','%s','%s','%s','%s','%s']);
+            $new_id = $wpdb->insert_id;
+            $this->audit('pet_add_admin', 'pet', $new_id, $name . ' para user #' . $user_id);
+            wp_send_json_success(['message' => 'Mascota agregada', 'id' => $new_id]);
+        }
+    }
+
+    public function petsgo_delete_pet() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+        $pet = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE id=%d", $id));
+        if (!$pet) wp_send_json_error('Mascota no encontrada');
+        $wpdb->delete("{$wpdb->prefix}petsgo_pets", ['id' => $id]);
+        $this->audit('pet_delete_admin', 'pet', $id, $pet->name);
+        wp_send_json_success(['message' => 'Mascota eliminada']);
     }
 
     // --- DELIVERY ---
@@ -3759,6 +4017,18 @@ Dashboard con analíticas"></textarea>
         // Auth
         register_rest_route('petsgo/v1','/auth/login',['methods'=>'POST','callback'=>[$this,'api_login'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/register',['methods'=>'POST','callback'=>[$this,'api_register'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/auth/register-rider',['methods'=>'POST','callback'=>[$this,'api_register_rider'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/auth/forgot-password',['methods'=>'POST','callback'=>[$this,'api_forgot_password'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/auth/reset-password',['methods'=>'POST','callback'=>[$this,'api_reset_password'],'permission_callback'=>'__return_true']);
+        // Profile (logged in)
+        register_rest_route('petsgo/v1','/profile',['methods'=>'GET','callback'=>[$this,'api_get_profile'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/profile',['methods'=>'PUT','callback'=>[$this,'api_update_profile'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/profile/change-password',['methods'=>'POST','callback'=>[$this,'api_change_password'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        // Pets (logged in)
+        register_rest_route('petsgo/v1','/pets',['methods'=>'GET','callback'=>[$this,'api_get_pets'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/pets',['methods'=>'POST','callback'=>[$this,'api_add_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/pets/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_update_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/pets/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_delete_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
         // Cliente
         register_rest_route('petsgo/v1','/orders',['methods'=>'POST','callback'=>[$this,'api_create_order'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/orders/mine',['methods'=>'GET','callback'=>[$this,'api_get_my_orders'],'permission_callback'=>function(){return is_user_logged_in();}]);
@@ -3810,13 +4080,396 @@ Dashboard con analíticas"></textarea>
     }
     // --- API Auth ---
     public function api_login($request) {
-        $p=$request->get_json_params();$user=wp_signon(['user_login'=>$p['username'],'user_password'=>$p['password'],'remember'=>true],false);
+        $p=$request->get_json_params();
+        $user=wp_signon(['user_login'=>$p['username']??'','user_password'=>$p['password']??'','remember'=>true],false);
         if(is_wp_error($user)) return new WP_Error('auth_failed','Credenciales inválidas',['status'=>401]);
         $role='customer';if(in_array('administrator',$user->roles))$role='admin';elseif(in_array('petsgo_vendor',$user->roles))$role='vendor';elseif(in_array('petsgo_rider',$user->roles))$role='rider';
+        // Get profile data
+        global $wpdb;
+        $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$user->ID));
         $this->audit('login', 'login', $user->ID, $user->user_login . ' (' . $role . ')');
-        return rest_ensure_response(['token'=>'session_cookie','user'=>['id'=>$user->ID,'username'=>$user->user_login,'displayName'=>$user->display_name,'email'=>$user->user_email,'role'=>$role]]);
+        return rest_ensure_response(['token'=>'session_cookie','user'=>[
+            'id'=>$user->ID,'username'=>$user->user_login,'displayName'=>$user->display_name,
+            'email'=>$user->user_email,'role'=>$role,
+            'firstName'=>$profile->first_name??'','lastName'=>$profile->last_name??'',
+            'phone'=>$profile->phone??'','avatarUrl'=>$profile->avatar_url??'',
+        ]]);
     }
-    public function api_register($request) {$p=$request->get_json_params();$uid=wp_create_user($p['username'],$p['password'],$p['email']);if(is_wp_error($uid)) return new WP_Error('register_failed',$uid->get_error_message(),['status'=>400]);return rest_ensure_response(['message'=>'Usuario creado']);}
+
+    public function api_register($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+
+        // Validate required fields
+        $errors = [];
+        $first_name = sanitize_text_field($p['first_name'] ?? '');
+        $last_name  = sanitize_text_field($p['last_name'] ?? '');
+        $email      = sanitize_email($p['email'] ?? '');
+        $password   = $p['password'] ?? '';
+        $phone      = sanitize_text_field($p['phone'] ?? '');
+        $id_type    = sanitize_text_field($p['id_type'] ?? 'rut');
+        $id_number  = sanitize_text_field($p['id_number'] ?? '');
+        $birth_date = sanitize_text_field($p['birth_date'] ?? '');
+
+        if (!$first_name) $errors[] = 'Nombre es obligatorio';
+        if (!$last_name) $errors[] = 'Apellido es obligatorio';
+        if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
+        if (email_exists($email)) $errors[] = 'Este email ya está registrado';
+
+        // Password strength
+        $pass_errors = self::validate_password_strength($password);
+        $errors = array_merge($errors, $pass_errors);
+
+        // Phone validation
+        if (!$phone) {
+            $errors[] = 'Teléfono es obligatorio';
+        } elseif (!self::validate_chilean_phone($phone)) {
+            $errors[] = 'Teléfono chileno inválido (debe ser +569XXXXXXXX)';
+        }
+
+        // ID validation
+        if (!$id_number) {
+            $errors[] = 'Documento de identidad es obligatorio';
+        } elseif ($id_type === 'rut' && !self::validate_rut($id_number)) {
+            $errors[] = 'RUT inválido';
+        } elseif (in_array($id_type, ['dni','passport']) && strlen($id_number) < 5) {
+            $errors[] = 'Número de documento demasiado corto';
+        }
+
+        if ($birth_date) {
+            $bd = strtotime($birth_date);
+            if (!$bd || $bd > time()) $errors[] = 'Fecha de nacimiento inválida';
+        }
+
+        if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        // Generate username from email
+        $username = strtolower(explode('@', $email)[0]);
+        $base_username = $username;
+        $i = 1;
+        while (username_exists($username)) { $username = $base_username . $i; $i++; }
+
+        $uid = wp_create_user($username, $password, $email);
+        if (is_wp_error($uid)) return new WP_Error('register_failed', $uid->get_error_message(), ['status' => 400]);
+
+        $display_name = $first_name . ' ' . $last_name;
+        wp_update_user(['ID' => $uid, 'display_name' => $display_name, 'first_name' => $first_name, 'last_name' => $last_name]);
+
+        // Save extended profile
+        $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles", [
+            'user_id'    => $uid,
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'id_type'    => $id_type,
+            'id_number'  => $id_type === 'rut' ? self::format_rut($id_number) : $id_number,
+            'birth_date' => $birth_date ?: null,
+            'phone'      => self::normalize_phone($phone),
+        ], ['%d','%s','%s','%s','%s','%s','%s']);
+
+        $this->audit('register', 'user', $uid, $display_name . ' (customer)');
+        return rest_ensure_response(['message' => 'Cuenta creada exitosamente', 'username' => $username]);
+    }
+
+    public function api_register_rider($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+
+        $errors = [];
+        $first_name = sanitize_text_field($p['first_name'] ?? '');
+        $last_name  = sanitize_text_field($p['last_name'] ?? '');
+        $email      = sanitize_email($p['email'] ?? '');
+        $password   = $p['password'] ?? '';
+        $phone      = sanitize_text_field($p['phone'] ?? '');
+        $id_type    = sanitize_text_field($p['id_type'] ?? 'rut');
+        $id_number  = sanitize_text_field($p['id_number'] ?? '');
+        $birth_date = sanitize_text_field($p['birth_date'] ?? '');
+        $vehicle    = sanitize_text_field($p['vehicle'] ?? '');
+
+        if (!$first_name) $errors[] = 'Nombre es obligatorio';
+        if (!$last_name) $errors[] = 'Apellido es obligatorio';
+        if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
+        if (email_exists($email)) $errors[] = 'Este email ya está registrado';
+
+        $pass_errors = self::validate_password_strength($password);
+        $errors = array_merge($errors, $pass_errors);
+
+        if (!$phone) {
+            $errors[] = 'Teléfono es obligatorio';
+        } elseif (!self::validate_chilean_phone($phone)) {
+            $errors[] = 'Teléfono chileno inválido (debe ser +569XXXXXXXX)';
+        }
+
+        if (!$id_number) {
+            $errors[] = 'Documento de identidad es obligatorio';
+        } elseif ($id_type === 'rut' && !self::validate_rut($id_number)) {
+            $errors[] = 'RUT inválido';
+        } elseif (in_array($id_type, ['dni','passport']) && strlen($id_number) < 5) {
+            $errors[] = 'Número de documento demasiado corto';
+        }
+
+        if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        $username = strtolower(explode('@', $email)[0]);
+        $base_username = $username; $i = 1;
+        while (username_exists($username)) { $username = $base_username . $i; $i++; }
+
+        $uid = wp_create_user($username, $password, $email);
+        if (is_wp_error($uid)) return new WP_Error('register_failed', $uid->get_error_message(), ['status' => 400]);
+
+        $display_name = $first_name . ' ' . $last_name;
+        wp_update_user(['ID' => $uid, 'display_name' => $display_name, 'first_name' => $first_name, 'last_name' => $last_name]);
+        $user = get_userdata($uid); $user->set_role('petsgo_rider');
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles", [
+            'user_id'    => $uid,
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'id_type'    => $id_type,
+            'id_number'  => $id_type === 'rut' ? self::format_rut($id_number) : $id_number,
+            'birth_date' => $birth_date ?: null,
+            'phone'      => self::normalize_phone($phone),
+        ], ['%d','%s','%s','%s','%s','%s','%s']);
+
+        if ($vehicle) update_user_meta($uid, 'petsgo_vehicle', $vehicle);
+        $this->audit('register_rider', 'user', $uid, $display_name . ' (rider)');
+        return rest_ensure_response(['message' => 'Registro como Rider exitoso. Bienvenido a PetsGo.', 'username' => $username]);
+    }
+
+    // --- Forgot / Reset password ---
+    public function api_forgot_password($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $email = sanitize_email($p['email'] ?? '');
+        if (!$email) return new WP_Error('missing', 'Email es obligatorio', ['status' => 400]);
+
+        $user = get_user_by('email', $email);
+        // Always return success to prevent email enumeration
+        if (!$user) return rest_ensure_response(['message' => 'Si el correo existe, recibirás instrucciones para restablecer tu contraseña.']);
+
+        // Generate token
+        $token = bin2hex(random_bytes(32));
+        $wpdb->insert("{$wpdb->prefix}petsgo_password_resets", [
+            'user_id'    => $user->ID,
+            'token'      => $token,
+            'expires_at' => date('Y-m-d H:i:s', time() + 3600), // 1 hour
+        ], ['%d','%s','%s']);
+
+        // Send email
+        $reset_url = home_url('/reset-password?token=' . $token);
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($user->display_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">Recibimos una solicitud para restablecer tu contraseña en PetsGo.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:24px;">
+        <tr>
+          <td align="center">
+            <a href="' . esc_url($reset_url) . '" style="display:inline-block;padding:14px 40px;background:#00A8E8;color:#fff;font-weight:700;font-size:16px;text-decoration:none;border-radius:12px;box-shadow:0 4px 14px rgba(0,168,232,0.35);">🔑 Restablecer Contraseña</a>
+          </td>
+        </tr>
+      </table>
+      <p style="color:#888;font-size:12px;">Este enlace expira en 1 hora. Si no solicitaste esto, ignora este correo.</p>';
+
+        $body = $this->email_wrap($inner, 'Restablece tu contraseña de PetsGo');
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $this->pg_setting('company_name','PetsGo') . ' <' . $this->pg_setting('company_from_email','notificaciones@petsgo.cl') . '>',
+        ];
+        wp_mail($email, 'PetsGo — Restablecer Contraseña', $body, $headers);
+        $this->audit('forgot_password', 'user', $user->ID, $email);
+        return rest_ensure_response(['message' => 'Si el correo existe, recibirás instrucciones para restablecer tu contraseña.']);
+    }
+
+    public function api_reset_password($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $token    = sanitize_text_field($p['token'] ?? '');
+        $password = $p['password'] ?? '';
+        if (!$token) return new WP_Error('missing', 'Token requerido', ['status' => 400]);
+
+        $pass_errors = self::validate_password_strength($password);
+        if ($pass_errors) return new WP_Error('weak_password', implode('. ', $pass_errors), ['status' => 400]);
+
+        $reset = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_password_resets WHERE token=%s AND used=0 AND expires_at > NOW() ORDER BY id DESC LIMIT 1",
+            $token
+        ));
+        if (!$reset) return new WP_Error('invalid_token', 'Token inválido o expirado. Solicita uno nuevo.', ['status' => 400]);
+
+        wp_set_password($password, $reset->user_id);
+        $wpdb->update("{$wpdb->prefix}petsgo_password_resets", ['used' => 1], ['id' => $reset->id]);
+        $this->audit('reset_password', 'user', $reset->user_id);
+        return rest_ensure_response(['message' => 'Contraseña restablecida exitosamente. Ahora puedes iniciar sesión.']);
+    }
+
+    // --- Profile API ---
+    public function api_get_profile($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $user = get_userdata($uid);
+        $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+        $pets = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE user_id=%d ORDER BY id ASC", $uid));
+        $role = 'customer';
+        if (in_array('administrator',$user->roles)) $role='admin';
+        elseif (in_array('petsgo_vendor',$user->roles)) $role='vendor';
+        elseif (in_array('petsgo_rider',$user->roles)) $role='rider';
+
+        return rest_ensure_response([
+            'id'         => $uid,
+            'username'   => $user->user_login,
+            'email'      => $user->user_email,
+            'displayName'=> $user->display_name,
+            'role'       => $role,
+            'firstName'  => $profile->first_name ?? '',
+            'lastName'   => $profile->last_name ?? '',
+            'idType'     => $profile->id_type ?? 'rut',
+            'idNumber'   => $profile->id_number ?? '',
+            'birthDate'  => $profile->birth_date ?? '',
+            'phone'      => $profile->phone ?? '',
+            'avatarUrl'  => $profile->avatar_url ?? '',
+            'pets'       => array_map(function($pet) {
+                $age = '';
+                if ($pet->birth_date) {
+                    $diff = date_diff(date_create($pet->birth_date), date_create());
+                    $age = $diff->y > 0 ? $diff->y . ' año' . ($diff->y > 1 ? 's':'') : $diff->m . ' mes' . ($diff->m > 1 ? 'es':'');
+                }
+                return [
+                    'id'        => (int)$pet->id,
+                    'petType'   => $pet->pet_type,
+                    'name'      => $pet->name,
+                    'breed'     => $pet->breed,
+                    'birthDate' => $pet->birth_date,
+                    'age'       => $age,
+                    'photoUrl'  => $pet->photo_url,
+                    'notes'     => $pet->notes,
+                ];
+            }, $pets),
+        ]);
+    }
+
+    public function api_update_profile($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $errors = [];
+
+        $first_name = sanitize_text_field($p['firstName'] ?? '');
+        $last_name  = sanitize_text_field($p['lastName'] ?? '');
+        $phone      = sanitize_text_field($p['phone'] ?? '');
+
+        if ($first_name) wp_update_user(['ID' => $uid, 'first_name' => $first_name]);
+        if ($last_name) wp_update_user(['ID' => $uid, 'last_name' => $last_name]);
+        if ($first_name || $last_name) {
+            $dn = trim($first_name . ' ' . $last_name);
+            if ($dn) wp_update_user(['ID' => $uid, 'display_name' => $dn]);
+        }
+
+        if ($phone && !self::validate_chilean_phone($phone)) {
+            $errors[] = 'Teléfono chileno inválido';
+        }
+
+        if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+        $data = [];
+        if ($first_name) $data['first_name'] = $first_name;
+        if ($last_name) $data['last_name'] = $last_name;
+        if ($phone) $data['phone'] = self::normalize_phone($phone);
+
+        if ($exists) {
+            $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", $data, ['user_id' => $uid]);
+        } else {
+            $data['user_id'] = $uid;
+            $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles", $data);
+        }
+
+        $this->audit('profile_update', 'user', $uid);
+        return rest_ensure_response(['message' => 'Perfil actualizado']);
+    }
+
+    public function api_change_password($request) {
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $current  = $p['currentPassword'] ?? '';
+        $new_pass = $p['newPassword'] ?? '';
+
+        $user = get_userdata($uid);
+        if (!wp_check_password($current, $user->user_pass, $uid)) {
+            return new WP_Error('wrong_password', 'Contraseña actual incorrecta', ['status' => 400]);
+        }
+        $pass_errors = self::validate_password_strength($new_pass);
+        if ($pass_errors) return new WP_Error('weak_password', implode('. ', $pass_errors), ['status' => 400]);
+
+        wp_set_password($new_pass, $uid);
+        // Re-login to keep session
+        wp_signon(['user_login' => $user->user_login, 'user_password' => $new_pass, 'remember' => true], false);
+        $this->audit('change_password', 'user', $uid);
+        return rest_ensure_response(['message' => 'Contraseña actualizada exitosamente']);
+    }
+
+    // --- Pets API ---
+    public function api_get_pets($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $pets = $wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE user_id=%d ORDER BY id ASC", $uid));
+        return rest_ensure_response(['data' => array_map(function($pet) {
+            $age = '';
+            if ($pet->birth_date) {
+                $diff = date_diff(date_create($pet->birth_date), date_create());
+                $age = $diff->y > 0 ? $diff->y . ' año' . ($diff->y > 1 ? 's':'') : $diff->m . ' mes' . ($diff->m > 1 ? 'es':'');
+            }
+            return ['id'=>(int)$pet->id,'petType'=>$pet->pet_type,'name'=>$pet->name,'breed'=>$pet->breed,'birthDate'=>$pet->birth_date,'age'=>$age,'photoUrl'=>$pet->photo_url,'notes'=>$pet->notes];
+        }, $pets)]);
+    }
+
+    public function api_add_pet($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $name = sanitize_text_field($p['name'] ?? '');
+        if (!$name) return new WP_Error('missing', 'Nombre de mascota es obligatorio', ['status' => 400]);
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_pets", [
+            'user_id'    => $uid,
+            'pet_type'   => sanitize_text_field($p['petType'] ?? 'perro'),
+            'name'       => $name,
+            'breed'      => sanitize_text_field($p['breed'] ?? ''),
+            'birth_date' => !empty($p['birthDate']) ? sanitize_text_field($p['birthDate']) : null,
+            'photo_url'  => esc_url_raw($p['photoUrl'] ?? ''),
+            'notes'      => sanitize_textarea_field($p['notes'] ?? ''),
+        ], ['%d','%s','%s','%s','%s','%s','%s']);
+        $pet_id = $wpdb->insert_id;
+        $this->audit('pet_add', 'pet', $pet_id, $name);
+        return rest_ensure_response(['id' => $pet_id, 'message' => 'Mascota agregada']);
+    }
+
+    public function api_update_pet($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $pet_id = (int)$request->get_param('id');
+        $pet = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE id=%d AND user_id=%d", $pet_id, $uid));
+        if (!$pet) return new WP_Error('not_found', 'Mascota no encontrada', ['status' => 404]);
+        $p = $request->get_json_params();
+        $data = [];
+        if (isset($p['name']))      $data['name']       = sanitize_text_field($p['name']);
+        if (isset($p['petType']))    $data['pet_type']   = sanitize_text_field($p['petType']);
+        if (isset($p['breed']))      $data['breed']      = sanitize_text_field($p['breed']);
+        if (isset($p['birthDate']))  $data['birth_date'] = $p['birthDate'] ?: null;
+        if (isset($p['photoUrl']))   $data['photo_url']  = esc_url_raw($p['photoUrl']);
+        if (isset($p['notes']))      $data['notes']      = sanitize_textarea_field($p['notes']);
+        if ($data) $wpdb->update("{$wpdb->prefix}petsgo_pets", $data, ['id' => $pet_id]);
+        $this->audit('pet_update', 'pet', $pet_id, $data['name'] ?? $pet->name);
+        return rest_ensure_response(['message' => 'Mascota actualizada']);
+    }
+
+    public function api_delete_pet($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $pet_id = (int)$request->get_param('id');
+        $pet = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_pets WHERE id=%d AND user_id=%d", $pet_id, $uid));
+        if (!$pet) return new WP_Error('not_found', 'Mascota no encontrada', ['status' => 404]);
+        $wpdb->delete("{$wpdb->prefix}petsgo_pets", ['id' => $pet_id]);
+        $this->audit('pet_delete', 'pet', $pet_id, $pet->name);
+        return rest_ensure_response(['message' => 'Mascota eliminada']);
+    }
     // --- API Orders ---
     public function api_create_order($request) {
         global $wpdb;$uid=get_current_user_id();$p=$request->get_json_params();

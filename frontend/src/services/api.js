@@ -81,9 +81,57 @@ export const getPlans = () =>
 export const login = (username, password) =>
   api.post('/auth/login', { username, password });
 
-/** Registro de cliente */
-export const register = (username, email, password) =>
-  api.post('/auth/register', { username, email, password });
+/** Registro de cliente (completo) */
+export const register = (data) =>
+  api.post('/auth/register', data);
+
+/** Registro de rider */
+export const registerRider = (data) =>
+  api.post('/auth/register-rider', data);
+
+/** Solicitar reset de contraseña */
+export const forgotPassword = (email) =>
+  api.post('/auth/forgot-password', { email });
+
+/** Restablecer contraseña con token */
+export const resetPassword = (token, password) =>
+  api.post('/auth/reset-password', { token, password });
+
+// ==========================================
+// PERFIL DE USUARIO
+// ==========================================
+
+/** Obtener perfil del usuario autenticado */
+export const getProfile = () =>
+  api.get('/profile');
+
+/** Actualizar perfil */
+export const updateProfile = (data) =>
+  api.put('/profile', data);
+
+/** Cambiar contraseña */
+export const changePassword = (currentPassword, newPassword) =>
+  api.post('/profile/change-password', { currentPassword, newPassword });
+
+// ==========================================
+// MASCOTAS
+// ==========================================
+
+/** Obtener mascotas del usuario */
+export const getPets = () =>
+  api.get('/pets');
+
+/** Agregar mascota */
+export const addPet = (data) =>
+  api.post('/pets', data);
+
+/** Actualizar mascota */
+export const updatePet = (id, data) =>
+  api.put(`/pets/${id}`, data);
+
+/** Eliminar mascota */
+export const deletePet = (id) =>
+  api.delete(`/pets/${id}`);
 
 // ==========================================
 // CLIENTE AUTENTICADO

@@ -210,6 +210,11 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
 
                   {userMenuOpen && (
                     <div className="absolute right-0 top-12 bg-white rounded-xl shadow-xl border border-gray-100 py-2 w-52 z-50">
+                      <Link to="/perfil" onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-sm font-medium no-underline text-gray-700">
+                        <User size={16} />
+                        👤 Mi Perfil
+                      </Link>
                       <Link to={getDashboardLink()} onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-sm font-medium no-underline text-gray-700">
                         {isAdmin() ? <Shield size={16} /> : isVendor() ? <Store size={16} /> : isRider() ? <Truck size={16} /> : <Package size={16} />}

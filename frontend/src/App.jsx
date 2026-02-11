@@ -7,6 +7,11 @@ import FloatingCart from './components/FloatingCart'
 import { useCart } from './context/CartContext'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
+import RiderRegisterPage from './pages/RiderRegisterPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+import UserProfilePage from './pages/UserProfilePage'
 import VendorsPage from './pages/VendorsPage'
 import VendorDetailPage from './pages/VendorDetailPage'
 import CartPage from './pages/CartPage'
@@ -56,6 +61,10 @@ function App() {
           {/* Rutas públicas */}
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/registro" element={<RegisterPage />} />
+          <Route path="/registro-rider" element={<RiderRegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/tiendas" element={<VendorsPage />} />
           <Route path="/tienda/:id" element={<VendorDetailPage />} />
           <Route path="/producto/:id" element={<ProductDetailPage />} />
@@ -64,6 +73,7 @@ function App() {
 
           {/* Rutas autenticadas */}
           <Route path="/mis-pedidos" element={<MyOrdersPage />} />
+          <Route path="/perfil" element={<UserProfilePage />} />
 
           {/* Dashboards por rol */}
           <Route path="/vendor" element={<VendorDashboard />} />
