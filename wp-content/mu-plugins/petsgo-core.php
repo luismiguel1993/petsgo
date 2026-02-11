@@ -38,6 +38,7 @@ class PetsGo_Core {
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
+        add_filter('rest_authentication_errors', [$this, 'bypass_cookie_nonce_for_token'], 90);
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
         add_action('admin_menu', [$this, 'register_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
@@ -4268,9 +4269,22 @@ Dashboard con analíticas"></textarea>
         return $user_id;
     }
 
+    /**
+     * Bypass WordPress cookie nonce check when our custom token auth is active.
+     * wp_signon sets WP cookies; WP REST then demands a _wpnonce alongside them.
+     * Since we use Bearer/X-PetsGo-Token auth, suppress that check.
+     */
+    public function bypass_cookie_nonce_for_token($result) {
+        if (get_current_user_id() > 0 &&
+            (isset($_SERVER['HTTP_X_PETSGO_TOKEN']) || !empty($_SERVER['HTTP_AUTHORIZATION']))) {
+            return true;
+        }
+        return $result;
+    }
+
     public function api_login($request) {
         $p=$request->get_json_params();
-        $user=wp_signon(['user_login'=>$p['username']??'','user_password'=>$p['password']??'','remember'=>true],false);
+        $user=wp_authenticate($p['username']??'', $p['password']??'');
         if(is_wp_error($user)) return new WP_Error('auth_failed','Credenciales inválidas',['status'=>401]);
         wp_set_current_user($user->ID);
         // Generate persistent API token
@@ -4660,8 +4674,9 @@ Dashboard con analíticas"></textarea>
         if ($pass_errors) return new WP_Error('weak_password', implode('. ', $pass_errors), ['status' => 400]);
 
         wp_set_password($new_pass, $uid);
-        // Re-login to keep session
-        wp_signon(['user_login' => $user->user_login, 'user_password' => $new_pass, 'remember' => true], false);
+        // Regenerate token after password change
+        $new_token = 'petsgo_' . bin2hex(random_bytes(32));
+        update_user_meta($uid, 'petsgo_api_token', $new_token);
         $this->audit('change_password', 'user', $uid);
         return rest_ensure_response(['message' => 'Contraseña actualizada exitosamente']);
     }
