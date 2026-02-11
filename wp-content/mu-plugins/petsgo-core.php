@@ -229,6 +229,20 @@ class PetsGo_Core {
         .pgcl-item:hover{background:#f0faff}
         .pgcl-item input[type=checkbox]{accent-color:#00A8E8;width:16px;height:16px;margin:0;cursor:pointer}
         .pgcl-item span{pointer-events:none}
+        /* ── Sortable Table Headers ── */
+        .petsgo-table th.pg-sortable{cursor:pointer;user-select:none;position:relative;padding-right:22px!important;transition:background .15s}
+        .petsgo-table th.pg-sortable:hover{background:#0090c7}
+        .petsgo-table th.pg-sortable::after{content:"⇅";position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:11px;opacity:.5}
+        .petsgo-table th.pg-sortable.asc::after{content:"▲";opacity:1}
+        .petsgo-table th.pg-sortable.desc::after{content:"▼";opacity:1}
+        /* ── Pagination ── */
+        .pg-pagination{display:flex;align-items:center;gap:8px;margin:16px 0;flex-wrap:wrap;font-size:13px}
+        .pg-pagination button{padding:6px 12px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:13px;transition:.15s}
+        .pg-pagination button:hover:not(:disabled){background:#00A8E8;color:#fff;border-color:#00A8E8}
+        .pg-pagination button.active{background:#00A8E8;color:#fff;border-color:#00A8E8;font-weight:700}
+        .pg-pagination button:disabled{opacity:.4;cursor:not-allowed}
+        .pg-pagination .pg-page-info{color:#666}
+        .pg-pagination select{padding:4px 8px;border:1px solid #ccc;border-radius:6px;font-size:13px}
         /* ── Global Responsive ── */
         @media(max-width:900px){.petsgo-form-grid{grid-template-columns:1fr}.petsgo-cards{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:600px){
@@ -284,6 +298,68 @@ class PetsGo_Core {
                 var hh=String(d.getHours()).padStart(2,'0'),mi=String(d.getMinutes()).padStart(2,'0');
                 return dd+'-'+mm+'-'+yy+' '+hh+':'+mi;
             }
+        };
+        /* ── Sortable Table + Pagination Engine ── */
+        PG.table=function(cfg){
+            var data=[],sorted=[],sortCol=cfg.defaultSort||null,sortDir=cfg.defaultDir||'asc';
+            var page=1,perPage=cfg.perPage||25;
+            var $body=$(cfg.body),$thead=$(cfg.thead),$pgWrap=null;
+            // add sort classes to headers
+            $thead.find('th').each(function(i){
+                var key=cfg.columns[i];
+                if(key&&key!=='_actions'&&key!=='_photo'){
+                    $(this).addClass('pg-sortable').attr('data-col',key);
+                    if(key===sortCol) $(this).addClass(sortDir);
+                }
+            });
+            $thead.on('click','th.pg-sortable',function(){
+                var col=$(this).attr('data-col');
+                if(sortCol===col) sortDir=sortDir==='asc'?'desc':'asc'; else {sortCol=col;sortDir='asc';}
+                $thead.find('th').removeClass('asc desc');
+                $(this).addClass(sortDir);
+                page=1;render();
+            });
+            // create pagination container
+            $pgWrap=$('<div class="pg-pagination"></div>').insertAfter($(cfg.body).closest('table'));
+            function compare(a,b){
+                if(!sortCol)return 0;
+                var va=a[sortCol],vb=b[sortCol];
+                if(va==null)va='';if(vb==null)vb='';
+                // numeric
+                var na=parseFloat(va),nb=parseFloat(vb);
+                if(!isNaN(na)&&!isNaN(nb)){return sortDir==='asc'?na-nb:nb-na;}
+                va=String(va).toLowerCase();vb=String(vb).toLowerCase();
+                if(va<vb)return sortDir==='asc'?-1:1;
+                if(va>vb)return sortDir==='asc'?1:-1;
+                return 0;
+            }
+            function render(){
+                sorted=data.slice().sort(compare);
+                var total=sorted.length,pages=Math.ceil(total/perPage)||1;
+                if(page>pages)page=pages;
+                var start=(page-1)*perPage,slice=sorted.slice(start,start+perPage);
+                var rows='';
+                if(!slice.length){rows='<tr><td colspan="'+cfg.columns.length+'" style="text-align:center;padding:30px;color:#999;">'+(cfg.emptyMsg||'Sin resultados.')+'</td></tr>';}
+                else{ $.each(slice,function(i,item){rows+=cfg.renderRow(item,start+i);}); }
+                $body.html(rows);
+                // pagination
+                if(total<=perPage){$pgWrap.html('');return;}
+                var ph='<span class="pg-page-info">Mostrando '+(start+1)+'–'+Math.min(start+perPage,total)+' de '+total+'</span> ';
+                ph+='<button class="pg-prev" '+(page<=1?'disabled':'')+'>← Ant</button> ';
+                var maxBtns=7,half=Math.floor(maxBtns/2),startP=Math.max(1,page-half),endP=Math.min(pages,startP+maxBtns-1);
+                if(endP-startP<maxBtns-1)startP=Math.max(1,endP-maxBtns+1);
+                for(var p=startP;p<=endP;p++){ph+='<button class="pg-go'+(p===page?' active':'')+'" data-p="'+p+'">'+p+'</button> ';}
+                ph+='<button class="pg-next" '+(page>=pages?'disabled':'')+'>Sig →</button> ';
+                ph+='<select class="pg-per-page">';
+                [10,25,50,100].forEach(function(n){ph+='<option value="'+n+'"'+(n===perPage?' selected':'')+'>'+n+'/pág</option>';});
+                ph+='</select>';
+                $pgWrap.html(ph);
+            }
+            $pgWrap.on('click','.pg-prev',function(){if(page>1){page--;render();}});
+            $pgWrap.on('click','.pg-next',function(){var pages=Math.ceil(data.length/perPage)||1;if(page<pages){page++;render();}});
+            $pgWrap.on('click','.pg-go',function(){page=parseInt($(this).data('p'));render();});
+            $pgWrap.on('change','.pg-per-page',function(){perPage=parseInt($(this).val());page=1;render();});
+            return {setData:function(d){data=d;page=1;if(cfg.onTotal)cfg.onTotal(d.length);render();},getData:function(){return data;}};
         };
         /* ── Multi-select Checklist Widget ── */
         (function($){
@@ -795,13 +871,33 @@ class PetsGo_Core {
             </div>
 
             <table class="petsgo-table">
-                <thead><tr><th style="width:50px">Foto</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th style="width:140px">Acciones</th></tr></thead>
+                <thead id="pg-thead"><tr><th style="width:50px">Foto</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th style="width:140px">Acciones</th></tr></thead>
                 <tbody id="pg-products-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody>
             </table>
         </div>
         <script>
         jQuery(function($){
             var timer;
+            var cols=['_photo','product_name','price','stock','category'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'_actions'];
+            var tbl=PG.table({
+                thead:'#pg-thead',body:'#pg-products-body',perPage:25,defaultSort:'product_name',defaultDir:'asc',
+                columns:cols,emptyMsg:'Sin resultados.',
+                onTotal:function(n){$('#pg-total').text(n);},
+                renderRow:function(p){
+                    var thumb = p.image_url ? '<img src="'+p.image_url+'" class="petsgo-thumb">' : '<span style="display:inline-block;width:50px;height:50px;background:#f0f0f0;border-radius:6px;text-align:center;line-height:50px;color:#bbb;">📷</span>';
+                    var sc = p.stock<5?'petsgo-stock-low':'petsgo-stock-ok';
+                    var r='<tr><td>'+thumb+'</td>';
+                    r+='<td><strong>'+PG.esc(p.product_name)+'</strong>';
+                    if(p.description) r+='<br><small style="color:#888;">'+PG.esc(p.description.substring(0,60))+(p.description.length>60?'...':'')+'</small>';
+                    r+='</td><td>'+PG.money(p.price)+'</td><td class="'+sc+'">'+p.stock+'</td>';
+                    r+='<td>'+PG.esc(p.category||'—')+'</td>';
+                    <?php if($is_admin): ?>r+='<td>'+PG.esc(p.store_name||'—')+'</td>';<?php endif; ?>
+                    r+='<td><a href="'+PG.adminUrl+'?page=petsgo-product-form&id='+p.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
+                    <?php if($is_admin): ?>r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pg-del" data-id="'+p.id+'">🗑️</button>';<?php endif; ?>
+                    r+='</td></tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#pg-loader').addClass('active');
                 var d = {search:$('#pg-search').val(), category:$('#pg-filter-cat').val()};
@@ -809,23 +905,7 @@ class PetsGo_Core {
                 PG.post('petsgo_search_products', d, function(r){
                     $('#pg-loader').removeClass('active');
                     if(!r.success) return;
-                    $('#pg-total').text(r.data.length);
-                    var rows='';
-                    if(!r.data.length){ rows='<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Sin resultados.</td></tr>'; }
-                    $.each(r.data, function(i,p){
-                        var thumb = p.image_url ? '<img src="'+p.image_url+'" class="petsgo-thumb">' : '<span style="display:inline-block;width:50px;height:50px;background:#f0f0f0;border-radius:6px;text-align:center;line-height:50px;color:#bbb;">📷</span>';
-                        var sc = p.stock<5?'petsgo-stock-low':'petsgo-stock-ok';
-                        rows+='<tr><td>'+thumb+'</td>';
-                        rows+='<td><strong>'+PG.esc(p.product_name)+'</strong>';
-                        if(p.description) rows+='<br><small style="color:#888;">'+PG.esc(p.description.substring(0,60))+(p.description.length>60?'...':'')+'</small>';
-                        rows+='</td><td>'+PG.money(p.price)+'</td><td class="'+sc+'">'+p.stock+'</td>';
-                        rows+='<td>'+PG.esc(p.category||'—')+'</td>';
-                        <?php if($is_admin): ?>rows+='<td>'+PG.esc(p.store_name||'—')+'</td>';<?php endif; ?>
-                        rows+='<td><a href="'+PG.adminUrl+'?page=petsgo-product-form&id='+p.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
-                        <?php if($is_admin): ?>rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pg-del" data-id="'+p.id+'">🗑️</button>';<?php endif; ?>
-                        rows+='</td></tr>';
-                    });
-                    $('#pg-products-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             $('#pg-search').on('input',function(){clearTimeout(timer);timer=setTimeout(load,300);});
@@ -1122,30 +1202,35 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pv-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-vendor-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nueva Tienda</a>
             </div>
-            <table class="petsgo-table"><thead><tr><th>ID</th><th>Tienda</th><th>RUT</th><th>Email</th><th>Teléfono</th><th>Comisión</th><th>Productos</th><th>Pedidos</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <table class="petsgo-table"><thead id="pv-thead"><tr><th>ID</th><th>Tienda</th><th>RUT</th><th>Email</th><th>Teléfono</th><th>Comisión</th><th>Productos</th><th>Pedidos</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="pv-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
         jQuery(function($){
             var t;
             $('#pv-filter-status').pgChecklist({placeholder:'Todos los estados'});
+            var tbl=PG.table({
+                thead:'#pv-thead',body:'#pv-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:['id','store_name','rut','email','phone','sales_commission','total_products','total_orders','status','_actions'],
+                emptyMsg:'Sin resultados.',
+                onTotal:function(n){$('#pv-total').text(n);},
+                renderRow:function(v){
+                    var r='<tr><td>'+v.id+'</td><td><strong>'+PG.esc(v.store_name)+'</strong></td><td>'+PG.esc(v.rut)+'</td>';
+                    r+='<td>'+PG.esc(v.email)+'</td><td>'+PG.esc(v.phone)+'</td><td>'+v.sales_commission+'%</td>';
+                    r+='<td>'+v.total_products+'</td><td>'+v.total_orders+'</td>';
+                    r+='<td>'+PG.badge(v.status)+'</td>';
+                    r+='<td><a href="'+PG.adminUrl+'?page=petsgo-vendor-form&id='+v.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm" title="Editar">✏️</a> ';
+                    r+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&vendor_id='+v.id+'" class="petsgo-btn petsgo-btn-sm" style="background:#00A8E8;color:#fff;" title="Config Boleta">🧾</a> ';
+                    r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pv-del" data-id="'+v.id+'">🗑️</button></td></tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#pv-loader').addClass('active');
                 var sv=$('#pv-filter-status').val()||[];
                 PG.post('petsgo_search_vendors',{search:$('#pv-search').val(),status:Array.isArray(sv)?sv.join(','):(sv||'')},function(r){
                     $('#pv-loader').removeClass('active');if(!r.success)return;
-                    $('#pv-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Sin resultados.</td></tr>';}
-                    $.each(r.data,function(i,v){
-                        rows+='<tr><td>'+v.id+'</td><td><strong>'+PG.esc(v.store_name)+'</strong></td><td>'+PG.esc(v.rut)+'</td>';
-                        rows+='<td>'+PG.esc(v.email)+'</td><td>'+PG.esc(v.phone)+'</td><td>'+v.sales_commission+'%</td>';
-                        rows+='<td>'+v.total_products+'</td><td>'+v.total_orders+'</td>';
-                        rows+='<td>'+PG.badge(v.status)+'</td>';
-                        rows+='<td><a href="'+PG.adminUrl+'?page=petsgo-vendor-form&id='+v.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm" title="Editar">✏️</a> ';
-                        rows+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&vendor_id='+v.id+'" class="petsgo-btn petsgo-btn-sm" style="background:#00A8E8;color:#fff;" title="Config Boleta">🧾</a> ';
-                        rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pv-del" data-id="'+v.id+'">🗑️</button></td></tr>';
-                    });
-                    $('#pv-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             $('#pv-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
@@ -1305,7 +1390,7 @@ class PetsGo_Core {
                 <?php endif; ?>
                 <span class="petsgo-loader" id="po-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
-            <table class="petsgo-table"><thead><tr><th>#</th><th>Cliente</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th>Total</th><th>Comisión</th><th>Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Cambiar</th><?php endif; ?></tr></thead>
+            <table class="petsgo-table"><thead id="po-thead"><tr><th>#</th><th>Cliente</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th>Total</th><th>Comisión</th><th>Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Cambiar</th><?php endif; ?></tr></thead>
             <tbody id="po-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
@@ -1313,6 +1398,29 @@ class PetsGo_Core {
             var t;var statuses=<?php echo json_encode($statuses); ?>;
             $('#po-filter-status').pgChecklist({placeholder:'Todos los estados'});
             <?php if($is_admin): ?>$('#po-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
+            var cols=['id','customer_name'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'total_amount','petsgo_commission','delivery_fee','rider_name','status','created_at'<?php if($is_admin): ?>,'_actions'<?php endif; ?>];
+            var tbl=PG.table({
+                thead:'#po-thead',body:'#po-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:cols,emptyMsg:'Sin pedidos.',
+                onTotal:function(n){$('#po-total').text(n);},
+                renderRow:function(o){
+                    var r='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td>';
+                    <?php if($is_admin): ?>r+='<td>'+PG.esc(o.store_name||'N/A')+'</td>';<?php endif; ?>
+                    r+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.petsgo_commission)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
+                    r+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
+                    r+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
+                    <?php if($is_admin): ?>
+                    r+='<td><select class="po-status-sel" data-id="'+o.id+'" style="font-size:12px;">';
+                    $.each(statuses,function(k,lbl){r+='<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+lbl+'</option>';});
+                    r+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success po-status-btn" data-id="'+o.id+'">✓</button>';
+                    if(!o.has_invoice) r+=' <button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary po-gen-invoice" data-id="'+o.id+'" title="Generar Boleta">🧾</button>';
+                    else r+=' <a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+o.invoice_id+'" class="petsgo-btn petsgo-btn-sm" title="Ver Boleta" target="_blank">🧾✅</a>';
+                    r+='</td>';
+                    <?php endif; ?>
+                    r+='</tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#po-loader').addClass('active');
                 var sv=$('#po-filter-status').val()||[];
@@ -1320,25 +1428,7 @@ class PetsGo_Core {
                 <?php if($is_admin): ?>var vv=$('#po-filter-vendor').val()||[];d.vendor_id=Array.isArray(vv)?vv.join(','):(vv||'');<?php endif; ?>
                 PG.post('petsgo_search_orders',d,function(r){
                     $('#po-loader').removeClass('active');if(!r.success)return;
-                    $('#po-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Sin pedidos.</td></tr>';}
-                    $.each(r.data,function(i,o){
-                        rows+='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td>';
-                        <?php if($is_admin): ?>rows+='<td>'+PG.esc(o.store_name||'N/A')+'</td>';<?php endif; ?>
-                        rows+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.petsgo_commission)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
-                        rows+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
-                        rows+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
-                        <?php if($is_admin): ?>
-                        rows+='<td><select class="po-status-sel" data-id="'+o.id+'" style="font-size:12px;">';
-                        $.each(statuses,function(k,lbl){rows+='<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+lbl+'</option>';});
-                        rows+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success po-status-btn" data-id="'+o.id+'">✓</button>';
-                        if(!o.has_invoice) rows+=' <button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary po-gen-invoice" data-id="'+o.id+'" title="Generar Boleta">🧾</button>';
-                        else rows+=' <a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+o.invoice_id+'" class="petsgo-btn petsgo-btn-sm" title="Ver Boleta" target="_blank">🧾✅</a>';
-                        rows+='</td>';
-                        <?php endif; ?>
-                        rows+='</tr>';
-                    });
-                    $('#po-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             $('#po-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
@@ -1375,29 +1465,34 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pu-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-user-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Usuario</a>
             </div>
-            <table class="petsgo-table"><thead><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Tienda</th><th>Registrado</th><th>Acciones</th></tr></thead>
+            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Tienda</th><th>Registrado</th><th>Acciones</th></tr></thead>
             <tbody id="pu-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
         jQuery(function($){
             var t;
+            var tbl=PG.table({
+                thead:'#pu-thead',body:'#pu-body',perPage:25,defaultSort:'ID',defaultDir:'desc',
+                columns:['ID','user_login','display_name','user_email','role_label','store_name','user_registered','_actions'],
+                emptyMsg:'Sin resultados.',
+                onTotal:function(n){$('#pu-total').text(n);},
+                renderRow:function(u){
+                    var r='<tr><td>'+u.ID+'</td><td>'+PG.esc(u.user_login)+'</td><td>'+PG.esc(u.display_name)+'</td>';
+                    r+='<td>'+PG.esc(u.user_email)+'</td>';
+                    r+='<td><span class="petsgo-role-tag '+u.role_key+'">'+PG.esc(u.role_label)+'</span></td>';
+                    r+='<td>'+PG.esc(u.store_name||'—')+'</td>';
+                    r+='<td>'+PG.esc(u.user_registered)+'</td>';
+                    r+='<td><a href="'+PG.adminUrl+'?page=petsgo-user-form&id='+u.ID+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
+                    if(u.ID!=1) r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pu-del" data-id="'+u.ID+'">🗑️</button>';
+                    r+='</td></tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#pu-loader').addClass('active');
                 PG.post('petsgo_search_users',{search:$('#pu-search').val(),role:$('#pu-filter-role').val()},function(r){
                     $('#pu-loader').removeClass('active');if(!r.success)return;
-                    $('#pu-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Sin resultados.</td></tr>';}
-                    $.each(r.data,function(i,u){
-                        rows+='<tr><td>'+u.ID+'</td><td>'+PG.esc(u.user_login)+'</td><td>'+PG.esc(u.display_name)+'</td>';
-                        rows+='<td>'+PG.esc(u.user_email)+'</td>';
-                        rows+='<td><span class="petsgo-role-tag '+u.role_key+'">'+PG.esc(u.role_label)+'</span></td>';
-                        rows+='<td>'+PG.esc(u.store_name||'—')+'</td>';
-                        rows+='<td>'+PG.esc(u.user_registered)+'</td>';
-                        rows+='<td><a href="'+PG.adminUrl+'?page=petsgo-user-form&id='+u.ID+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
-                        if(u.ID!=1) rows+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pu-del" data-id="'+u.ID+'">🗑️</button>';
-                        rows+='</td></tr>';
-                    });
-                    $('#pu-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             $('#pu-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
@@ -1483,7 +1578,7 @@ class PetsGo_Core {
                 <?php endif; ?>
                 <span class="petsgo-loader" id="pd-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
-            <table class="petsgo-table"><thead><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
+            <table class="petsgo-table"><thead id="pd-thead"><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
             <tbody id="pd-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
@@ -1491,6 +1586,25 @@ class PetsGo_Core {
             var riders=<?php echo json_encode($riders); ?>;
             $('#pd-filter-status').pgChecklist({placeholder:'Todos los estados'});
             <?php if($is_admin): ?>$('#pd-filter-rider').pgChecklist({placeholder:'Todos los riders'});<?php endif; ?>
+            var cols=['id','customer_name','store_name','total_amount','delivery_fee','rider_name','status','created_at'<?php if($is_admin): ?>,'_actions'<?php endif; ?>];
+            var tbl=PG.table({
+                thead:'#pd-thead',body:'#pd-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:cols,emptyMsg:'Sin entregas.',
+                onTotal:function(n){$('#pd-total').text(n);},
+                renderRow:function(o){
+                    var r='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td><td>'+PG.esc(o.store_name||'N/A')+'</td>';
+                    r+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
+                    r+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
+                    r+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
+                    <?php if($is_admin): ?>
+                    r+='<td><select class="pd-rider-sel" data-id="'+o.id+'" style="font-size:12px;"><option value="">—</option>';
+                    $.each(riders,function(j,rd){r+='<option value="'+rd.ID+'"'+(o.rider_id==rd.ID?' selected':'')+'>'+PG.esc(rd.display_name)+'</option>';});
+                    r+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success pd-assign" data-id="'+o.id+'">✓</button></td>';
+                    <?php endif; ?>
+                    r+='</tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#pd-loader').addClass('active');
                 var sv=$('#pd-filter-status').val()||[];
@@ -1498,21 +1612,7 @@ class PetsGo_Core {
                 <?php if($is_admin): ?>var rv=$('#pd-filter-rider').val()||[];d.rider_id=Array.isArray(rv)?rv.join(','):(rv||'');<?php endif; ?>
                 PG.post('petsgo_search_riders',d,function(r){
                     $('#pd-loader').removeClass('active');if(!r.success)return;
-                    $('#pd-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Sin entregas.</td></tr>';}
-                    $.each(r.data,function(i,o){
-                        rows+='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td><td>'+PG.esc(o.store_name||'N/A')+'</td>';
-                        rows+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
-                        rows+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
-                        rows+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
-                        <?php if($is_admin): ?>
-                        rows+='<td><select class="pd-rider-sel" data-id="'+o.id+'" style="font-size:12px;"><option value="">—</option>';
-                        $.each(riders,function(j,rd){rows+='<option value="'+rd.ID+'"'+(o.rider_id==rd.ID?' selected':'')+'>'+PG.esc(rd.display_name)+'</option>';});
-                        rows+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success pd-assign" data-id="'+o.id+'">✓</button></td>';
-                        <?php endif; ?>
-                        rows+='</tr>';
-                    });
-                    $('#pd-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             $('#pd-filter-status<?php if($is_admin): ?>, #pd-filter-rider<?php endif; ?>').on('change',load);
@@ -2036,31 +2136,36 @@ Dashboard con analíticas"></textarea>
                 <?php endif; ?>
                 <span class="petsgo-loader" id="bi-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
-            <table class="petsgo-table"><thead><tr><th>#</th><th>Nº Boleta</th><th>Pedido</th><th>Tienda</th><th>Cliente</th><th>Total</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <table class="petsgo-table"><thead id="bi-thead"><tr><th>#</th><th>Nº Boleta</th><th>Pedido</th><th>Tienda</th><th>Cliente</th><th>Total</th><th>Fecha</th><th>Acciones</th></tr></thead>
             <tbody id="bi-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
         jQuery(function($){
             <?php if($is_admin): ?>$('#bi-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
+            var tbl=PG.table({
+                thead:'#bi-thead',body:'#bi-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:['id','invoice_number','order_id','store_name','customer_name','total_amount','created_at','_actions'],
+                emptyMsg:'Sin boletas.',
+                onTotal:function(n){$('#bi-total').text(n);},
+                renderRow:function(b){
+                    var r='<tr><td>'+b.id+'</td><td><strong>'+PG.esc(b.invoice_number)+'</strong></td>';
+                    r+='<td>#'+b.order_id+'</td><td>'+PG.esc(b.store_name||'')+'</td>';
+                    r+='<td>'+PG.esc(b.customer_name||'')+'</td><td>'+PG.money(b.total_amount)+'</td>';
+                    r+='<td>'+PG.fdate(b.created_at)+'</td>';
+                    r+='<td>';
+                    r+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+b.id+'" class="petsgo-btn petsgo-btn-sm petsgo-btn-primary" target="_blank">👁️ Ver</a> ';
+                    r+='<a href="'+PG.ajaxUrl+'?action=petsgo_download_invoice&_wpnonce='+PG.nonce+'&id='+b.id+'" class="petsgo-btn petsgo-btn-sm petsgo-btn-success" target="_blank">📥 PDF</a>';
+                    r+='</td></tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#bi-loader').addClass('active');
                 var d={search:$('#bi-search').val()};
                 <?php if($is_admin): ?>var vv=$('#bi-filter-vendor').val()||[];d.vendor_id=Array.isArray(vv)?vv.join(','):(vv||'');<?php endif; ?>
                 PG.post('petsgo_search_invoices',d,function(r){
                     $('#bi-loader').removeClass('active');if(!r.success)return;
-                    $('#bi-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Sin boletas.</td></tr>';}
-                    $.each(r.data,function(i,b){
-                        rows+='<tr><td>'+b.id+'</td><td><strong>'+PG.esc(b.invoice_number)+'</strong></td>';
-                        rows+='<td>#'+b.order_id+'</td><td>'+PG.esc(b.store_name||'')+'</td>';
-                        rows+='<td>'+PG.esc(b.customer_name||'')+'</td><td>'+PG.money(b.total_amount)+'</td>';
-                        rows+='<td>'+PG.fdate(b.created_at)+'</td>';
-                        rows+='<td>';
-                        rows+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+b.id+'" class="petsgo-btn petsgo-btn-sm petsgo-btn-primary" target="_blank">👁️ Ver</a> ';
-                        rows+='<a href="'+PG.ajaxUrl+'?action=petsgo_download_invoice&_wpnonce='+PG.nonce+'&id='+b.id+'" class="petsgo-btn petsgo-btn-sm petsgo-btn-success" target="_blank">📥 PDF</a>';
-                        rows+='</td></tr>';
-                    });
-                    $('#bi-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             load();var t;$('#bi-search,#bi-filter-vendor').on('input change',function(){clearTimeout(t);t=setTimeout(load,400);});
@@ -2230,12 +2335,25 @@ Dashboard con analíticas"></textarea>
                 <input type="date" id="au-date-to" title="Hasta">
                 <span class="petsgo-loader" id="au-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
-            <table class="petsgo-table"><thead><tr><th>#</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID Ent.</th><th>Detalles</th><th>IP</th><th>Fecha</th></tr></thead>
+            <table class="petsgo-table"><thead id="au-thead"><tr><th>#</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID Ent.</th><th>Detalles</th><th>IP</th><th>Fecha</th></tr></thead>
             <tbody id="au-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
         jQuery(function($){
             $('#au-entity').pgChecklist({placeholder:'Todas las entidades'});
+            var tbl=PG.table({
+                thead:'#au-thead',body:'#au-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:['id','user_name','action','entity_type','entity_id','details','ip_address','created_at'],
+                emptyMsg:'Sin registros.',
+                onTotal:function(n){$('#au-total').text(n);},
+                renderRow:function(a){
+                    var r='<tr><td>'+a.id+'</td><td>'+PG.esc(a.user_name)+'</td><td><code>'+PG.esc(a.action)+'</code></td>';
+                    r+='<td>'+PG.esc(a.entity_type||'')+'</td><td>'+(a.entity_id||'-')+'</td>';
+                    r+='<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+PG.esc(a.details||'')+'">'+PG.esc(a.details||'')+'</td>';
+                    r+='<td><small>'+PG.esc(a.ip_address)+'</small></td><td><small>'+PG.fdate(a.created_at)+'</small></td></tr>';
+                    return r;
+                }
+            });
             function load(){
                 $('#au-loader').addClass('active');
                 var ev=$('#au-entity').val()||[];
@@ -2244,15 +2362,7 @@ Dashboard con analíticas"></textarea>
                     date_from:$('#au-date-from').val(),date_to:$('#au-date-to').val()
                 },function(r){
                     $('#au-loader').removeClass('active');if(!r.success)return;
-                    $('#au-total').text(r.data.length);var rows='';
-                    if(!r.data.length){rows='<tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Sin registros.</td></tr>';}
-                    $.each(r.data,function(i,a){
-                        rows+='<tr><td>'+a.id+'</td><td>'+PG.esc(a.user_name)+'</td><td><code>'+PG.esc(a.action)+'</code></td>';
-                        rows+='<td>'+PG.esc(a.entity_type||'')+'</td><td>'+(a.entity_id||'-')+'</td>';
-                        rows+='<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+PG.esc(a.details||'')+'">'+PG.esc(a.details||'')+'</td>';
-                        rows+='<td><small>'+PG.esc(a.ip_address)+'</small></td><td><small>'+PG.fdate(a.created_at)+'</small></td></tr>';
-                    });
-                    $('#au-body').html(rows);
+                    tbl.setData(r.data);
                 });
             }
             load();var t;$('#au-search,#au-entity,#au-date-from,#au-date-to').on('input change',function(){clearTimeout(t);t=setTimeout(load,400);});
