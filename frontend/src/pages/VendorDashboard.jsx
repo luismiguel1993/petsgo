@@ -46,6 +46,8 @@ const VendorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [vendorInactive, setVendorInactive] = useState(false);
+  const [inactiveMessage, setInactiveMessage] = useState('');
 
   // Formulario de producto
   const emptyProduct = { product_name: '', description: '', price: '', stock: '', category: '' };
@@ -72,6 +74,12 @@ const VendorDashboard = () => {
       }
     } catch (err) {
       console.error('Error cargando datos:', err);
+      // Detect vendor inactive / subscription expired
+      if (err.response?.status === 403 && (err.response?.data?.code === 'vendor_inactive' || err.response?.data?.code === 'subscription_expired')) {
+        setVendorInactive(true);
+        setInactiveMessage(err.response?.data?.message || 'Tu tienda está inactiva.');
+        return;
+      }
       if (tab === 'dashboard') setStats(DEMO_VENDOR_STATS);
       if (tab === 'inventory') setInventory(DEMO_INVENTORY);
       if (tab === 'orders') setOrders(DEMO_VENDOR_ORDERS);
@@ -81,6 +89,31 @@ const VendorDashboard = () => {
   };
 
   if (!isAuthenticated || (!isVendor() && !isAdmin())) return <Navigate to="/login" />;
+
+  // Vendor inactive screen
+  if (vendorInactive) {
+    return (
+      <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', background: 'linear-gradient(135deg, #f0f9ff 0%, #FDFCFB 50%, #fff8e1 100%)' }}>
+        <div style={{ maxWidth: 520, width: '100%', textAlign: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: '48px 32px', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', border: '2px solid #ef9a9a' }}>
+            <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
+            <h2 style={{ color: '#c62828', margin: '0 0 16px', fontSize: 24, fontWeight: 800 }}>Suscripción Inactiva</h2>
+            <p style={{ color: '#555', fontSize: 15, lineHeight: 1.7, margin: '0 0 24px' }}>{inactiveMessage}</p>
+            <div style={{ background: '#f8f9fa', borderRadius: 12, padding: '16px 20px', marginBottom: 24, textAlign: 'left', fontSize: 13, color: '#555' }}>
+              <p style={{ margin: '0 0 8px', fontWeight: 700, color: '#333' }}>⚠️ Mientras tu tienda esté inactiva:</p>
+              <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 2 }}>
+                <li>Tus productos no serán visibles para los clientes</li>
+                <li>No podrás recibir nuevos pedidos</li>
+                <li>No tendrás acceso al panel de administración</li>
+              </ul>
+            </div>
+            <a href="mailto:contacto@petsgo.cl?subject=Renovación suscripción" style={{ display: 'inline-block', background: '#00A8E8', color: '#fff', fontSize: 15, fontWeight: 700, textDecoration: 'none', padding: '14px 36px', borderRadius: 10 }}>📧 Contactar para renovar</a>
+            <p style={{ color: '#aaa', fontSize: 12, marginTop: 16 }}>contacto@petsgo.cl · +56 9 1234 5678</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
 

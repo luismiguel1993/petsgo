@@ -808,11 +808,22 @@ class PetsGo_Core {
         $has_analytics = $is_admin;
         $vendor_plan   = 'basico';
         $store_name    = '';
+        $vendor_inactive = false;
+        $vendor_sub_end  = '';
         if ($is_vendor && $vid) {
-            $vr = $wpdb->get_row($wpdb->prepare("SELECT v.store_name, v.plan_id, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.id=%d", $vid));
+            $vr = $wpdb->get_row($wpdb->prepare("SELECT v.store_name, v.plan_id, v.status, v.subscription_end, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.id=%d", $vid));
             $store_name  = $vr->store_name ?? '';
             $vendor_plan = strtolower($vr->plan_name ?? 'basico');
             $has_analytics = in_array($vendor_plan, ['pro','enterprise']);
+            $vendor_sub_end = $vr->subscription_end ?? '';
+            // Auto-deactivate if subscription expired
+            if ($vr && $vr->subscription_end && $vr->subscription_end < date('Y-m-d') && $vr->status === 'active') {
+                $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['status' => 'inactive'], ['id' => $vid]);
+                $vr->status = 'inactive';
+            }
+            if ($vr && $vr->status !== 'active') {
+                $vendor_inactive = true;
+            }
         }
 
         // Vendor/category lists for filter dropdowns (admin only)
@@ -901,6 +912,36 @@ class PetsGo_Core {
 
         <?php elseif (!$is_admin && !$is_vendor): ?>
             <h1>🐾 PetsGo</h1><p>No tienes una tienda o rol asignado.</p>
+
+        <?php elseif ($is_vendor && $vendor_inactive): ?>
+            <h1>🚫 Suscripción Inactiva</h1>
+            <div style="max-width:600px;margin:40px auto;text-align:center;">
+                <div style="background:#fce4ec;border-radius:16px;padding:40px 30px;border:2px solid #ef9a9a;">
+                    <div style="font-size:60px;margin-bottom:16px;">🔒</div>
+                    <h2 style="color:#c62828;margin:0 0 12px;font-size:22px;">Tu tienda está inactiva</h2>
+                    <p style="color:#555;font-size:15px;line-height:1.7;margin:0 0 8px;">
+                        <strong><?php echo esc_html($store_name); ?></strong> no tiene una suscripción activa.
+                    </p>
+                    <?php if ($vendor_sub_end): ?>
+                    <p style="color:#888;font-size:13px;margin:0 0 20px;">
+                        Tu suscripción venció el <strong style="color:#c62828;"><?php echo date('d/m/Y', strtotime($vendor_sub_end)); ?></strong>
+                    </p>
+                    <?php endif; ?>
+                    <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">
+                        Para volver a publicar productos y recibir pedidos, debes renovar tu plan de suscripción.
+                    </p>
+                    <div style="background:#f8f9fa;border-radius:10px;padding:16px 20px;margin-bottom:20px;text-align:left;font-size:13px;color:#555;">
+                        <p style="margin:0 0 8px;font-weight:700;color:#333;">⚠️ Mientras tu tienda esté inactiva:</p>
+                        <ul style="margin:0;padding-left:20px;line-height:2;">
+                            <li>Tus productos no serán visibles para los clientes</li>
+                            <li>No podrás recibir nuevos pedidos</li>
+                            <li>No tendrás acceso al panel de administración</li>
+                        </ul>
+                    </div>
+                    <a href="mailto:contacto@petsgo.cl?subject=Renovación suscripción - <?php echo esc_attr($store_name); ?>" style="display:inline-block;background:#00A8E8;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:10px;">📧 Contactar para renovar</a>
+                    <p style="color:#aaa;font-size:12px;margin:16px 0 0;">contacto@petsgo.cl · +56 9 1234 5678</p>
+                </div>
+            </div>
 
         <?php else: ?>
             <?php if ($is_admin): ?>
@@ -4276,9 +4317,11 @@ Dashboard con analíticas"></textarea>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
         <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:16px 20px;">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
-            <tr><td style="padding:3px 0;font-weight:600;width:100px;">Plan:</td><td style="padding:3px 0;"><strong style="color:#00A8E8;">Pro</strong></td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;width:140px;">Plan:</td><td style="padding:3px 0;"><strong style="color:#00A8E8;">Pro</strong></td></tr>
             <tr><td style="padding:3px 0;font-weight:600;">Tienda:</td><td style="padding:3px 0;">Patitas Chile</td></tr>
             <tr><td style="padding:3px 0;font-weight:600;">Email:</td><td style="padding:3px 0;">patitas@demo.cl</td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">📅 Inicio suscripci&oacute;n:</td><td style="padding:3px 0;font-weight:600;color:#333;">' . date('d/m/Y') . '</td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">📅 Fin suscripci&oacute;n:</td><td style="padding:3px 0;font-weight:600;color:#333;">' . date('d/m/Y', strtotime('+1 year')) . '</td></tr>
           </table>
         </td></tr>
       </table>
@@ -4577,11 +4620,15 @@ Dashboard con analíticas"></textarea>
             }
         }
 
-        // Also check already expired (0 or negative days)
+        // Also check already expired (0 or negative days) — auto-deactivate
         $expired = $wpdb->get_results(
             "SELECT v.*, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.subscription_end < CURDATE() AND v.subscription_end IS NOT NULL AND v.status = 'active'"
         );
         foreach ($expired as $vendor) {
+            // Auto-deactivate expired vendors
+            $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['status' => 'inactive'], ['id' => $vendor->id]);
+            $this->audit('vendor_auto_deactivated', 'vendor', $vendor->id, "Suscripción vencida: {$vendor->store_name} ({$vendor->subscription_end})");
+
             $diff = (int) round((strtotime($vendor->subscription_end) - time()) / 86400);
             $alerts[] = [
                 'vendor_id'   => $vendor->id,
@@ -4693,7 +4740,7 @@ Dashboard con analíticas"></textarea>
     // --- API Productos ---
     public function api_get_products($request) {
         global $wpdb;
-        $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE 1=1";$args=[];
+        $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active'";$args=[];
         if($vid=$request->get_param('vendor_id')){$sql.=" AND i.vendor_id=%d";$args[]=$vid;}
         if($cat=$request->get_param('category')){if($cat!=='Todos'){$sql.=" AND i.category=%s";$args[]=$cat;}}
         if($s=$request->get_param('search')){$sql.=" AND i.product_name LIKE %s";$args[]='%'.$wpdb->esc_like($s).'%';}
@@ -4707,8 +4754,9 @@ Dashboard con analíticas"></textarea>
     }
     public function api_get_product_detail($request) {
         global $wpdb;$id=$request->get_param('id');
-        $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
+        $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url,v.status AS vendor_status FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
         if(!$p) return new WP_Error('not_found','Producto no encontrado',['status'=>404]);
+        if($p->vendor_status!=='active') return new WP_Error('vendor_inactive','La tienda de este producto se encuentra inactiva.',['status'=>403]);
         $disc=floatval($p->discount_percent??0);$active=false;
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
         return rest_ensure_response(['id'=>(int)$p->id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price]);
@@ -4794,6 +4842,22 @@ Dashboard con analíticas"></textarea>
             update_user_meta($user->ID, 'petsgo_api_token', $existing_token);
         }
         $role='customer';if(in_array('administrator',$user->roles))$role='admin';elseif(in_array('petsgo_vendor',$user->roles))$role='vendor';elseif(in_array('petsgo_rider',$user->roles))$role='rider';
+
+        // Block inactive vendors from logging in
+        if ($role === 'vendor') {
+            global $wpdb;
+            $vendor_status = $wpdb->get_row($wpdb->prepare(
+                "SELECT v.status, v.subscription_end, v.store_name FROM {$wpdb->prefix}petsgo_vendors v WHERE v.user_id = %d", $user->ID
+            ));
+            if ($vendor_status && $vendor_status->status !== 'active') {
+                return new WP_Error('vendor_inactive', 'Tu tienda "' . ($vendor_status->store_name ?? '') . '" se encuentra inactiva. Debes renovar tu suscripción para acceder a la plataforma PetsGo. Contacta a contacto@petsgo.cl para más información.', ['status' => 403]);
+            }
+            if ($vendor_status && $vendor_status->subscription_end && $vendor_status->subscription_end < date('Y-m-d')) {
+                $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['status' => 'inactive'], ['user_id' => $user->ID]);
+                return new WP_Error('subscription_expired', 'Tu suscripción venció el ' . date('d/m/Y', strtotime($vendor_status->subscription_end)) . '. Renueva tu plan para seguir vendiendo en PetsGo. Contacta a contacto@petsgo.cl.', ['status' => 403]);
+            }
+        }
+
         // Get profile data
         global $wpdb;
         $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$user->ID));
@@ -5307,18 +5371,33 @@ Dashboard con analíticas"></textarea>
     }
     public function api_get_my_orders() {global $wpdb;$uid=get_current_user_id();return rest_ensure_response(['data'=>$wpdb->get_results($wpdb->prepare("SELECT o.*,v.store_name FROM {$wpdb->prefix}petsgo_orders o JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id WHERE o.customer_id=%d ORDER BY o.created_at DESC",$uid))]);}
     // --- API Vendor Dashboard ---
-    public function check_vendor_role() { $u=wp_get_current_user(); return in_array('petsgo_vendor',(array)$u->roles)||in_array('administrator',(array)$u->roles); }
+    public function check_vendor_role() {
+        $u=wp_get_current_user();
+        if (in_array('administrator',(array)$u->roles)) return true;
+        if (!in_array('petsgo_vendor',(array)$u->roles)) return false;
+        // Check if vendor is active
+        global $wpdb;
+        $vs = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d",$u->ID));
+        if ($vs !== 'active') return new WP_Error('vendor_inactive','Tu tienda está inactiva. Renueva tu suscripción para acceder.',['status'=>403]);
+        return true;
+    }
     public function api_vendor_inventory($request) {
-        global $wpdb;$uid=get_current_user_id();$vid=$wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d",$uid));
+        global $wpdb;$uid=get_current_user_id();
+        $vendor=$wpdb->get_row($wpdb->prepare("SELECT id,status FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d",$uid));
+        $vid=$vendor->id??0;
         if(!$vid&&!current_user_can('administrator')) return new WP_Error('no_vendor','Sin tienda',['status'=>403]);
+        if($vendor&&$vendor->status!=='active'&&!current_user_can('administrator')) return new WP_Error('vendor_inactive','Tu tienda está inactiva. Renueva tu suscripción para acceder.',['status'=>403]);
         if($request->get_method()==='GET') return rest_ensure_response(['data'=>$wpdb->get_results($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id=%d",$vid))]);
         $p=$request->get_json_params();$wpdb->insert("{$wpdb->prefix}petsgo_inventory",['vendor_id'=>$vid,'product_name'=>$p['product_name'],'price'=>$p['price'],'stock'=>$p['stock'],'category'=>$p['category']]);
         return rest_ensure_response(['id'=>$wpdb->insert_id,'message'=>'Producto agregado']);
     }
     public function api_vendor_dashboard() {
-        global $wpdb;$uid=get_current_user_id();$vid=$wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d",$uid));
+        global $wpdb;$uid=get_current_user_id();
+        $vendor=$wpdb->get_row($wpdb->prepare("SELECT id,status,subscription_end FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d",$uid));
+        $vid=$vendor->id??0;
         if(!$vid) return new WP_Error('no_vendor','Sin tienda',['status'=>403]);
-        return rest_ensure_response(['sales'=>(float)$wpdb->get_var($wpdb->prepare("SELECT SUM(total_amount) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'",$vid)),'pending_orders'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='pending'",$vid)),'store_status'=>'active']);
+        if($vendor->status!=='active') return new WP_Error('vendor_inactive','Tu tienda está inactiva. Renueva tu suscripción para acceder.',['status'=>403]);
+        return rest_ensure_response(['sales'=>(float)$wpdb->get_var($wpdb->prepare("SELECT SUM(total_amount) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'",$vid)),'pending_orders'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='pending'",$vid)),'store_status'=>$vendor->status]);
     }
     public function api_admin_dashboard() {
         global $wpdb;
