@@ -12,6 +12,8 @@ export default defineConfig({
       '/wp-json': {
         target: 'http://localhost/PetsGoDev',
         changeOrigin: true,
+        cookieDomainRewrite: '',
+        cookiePathRewrite: '/',
       },
     },
   },

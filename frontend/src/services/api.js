@@ -10,6 +10,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/wp-json/petsgo/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -33,9 +34,15 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('petsgo_token');
-      localStorage.removeItem('petsgo_user');
-      window.location.href = '/login';
+      // Only redirect if we think the user should be logged in
+      // (token exists but server rejected it = session expired)
+      const hadToken = localStorage.getItem('petsgo_token');
+      if (hadToken) {
+        localStorage.removeItem('petsgo_token');
+        localStorage.removeItem('petsgo_nonce');
+        localStorage.removeItem('petsgo_user');
+        // Don't hard redirect — let the component handle it
+      }
     }
     return Promise.reject(error);
   }

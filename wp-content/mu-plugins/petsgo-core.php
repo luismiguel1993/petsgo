@@ -4229,12 +4229,15 @@ Dashboard con analíticas"></textarea>
         $p=$request->get_json_params();
         $user=wp_signon(['user_login'=>$p['username']??'','user_password'=>$p['password']??'','remember'=>true],false);
         if(is_wp_error($user)) return new WP_Error('auth_failed','Credenciales inválidas',['status'=>401]);
+        // Set current user so nonce generation works
+        wp_set_current_user($user->ID);
+        $nonce = wp_create_nonce('wp_rest');
         $role='customer';if(in_array('administrator',$user->roles))$role='admin';elseif(in_array('petsgo_vendor',$user->roles))$role='vendor';elseif(in_array('petsgo_rider',$user->roles))$role='rider';
         // Get profile data
         global $wpdb;
         $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$user->ID));
         $this->audit('login', 'login', $user->ID, $user->user_login . ' (' . $role . ')');
-        return rest_ensure_response(['token'=>'session_cookie','user'=>[
+        return rest_ensure_response(['token'=>'session_cookie','nonce'=>$nonce,'user'=>[
             'id'=>$user->ID,'username'=>$user->user_login,'displayName'=>$user->display_name,
             'email'=>$user->user_email,'role'=>$role,
             'firstName'=>$profile->first_name??'','lastName'=>$profile->last_name??'',

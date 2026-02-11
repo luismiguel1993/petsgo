@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { Package, Clock, CheckCircle2, Truck, MapPin, Store, ChevronRight, PawPrint } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Package, Clock, CheckCircle2, Truck, MapPin, Store, PawPrint, Filter } from 'lucide-react';
 import { getMyOrders } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const STATUS_CONFIG = {
-  payment_pending: { label: 'Pago Pendiente', color: '#FFC400', icon: Clock },
-  preparing: { label: 'Preparando', color: '#00A8E8', icon: Package },
-  ready_for_pickup: { label: 'Listo para enviar', color: '#8B5CF6', icon: Package },
-  in_transit: { label: 'En camino', color: '#F97316', icon: Truck },
-  delivered: { label: 'Entregado', color: '#22C55E', icon: CheckCircle2 },
-  cancelled: { label: 'Cancelado', color: '#EF4444', icon: Package },
+  payment_pending: { label: 'Pago Pendiente', color: '#FFC400', bg: '#fff8e1', icon: Clock },
+  preparing: { label: 'Preparando', color: '#00A8E8', bg: '#e0f7fa', icon: Package },
+  ready_for_pickup: { label: 'Listo para enviar', color: '#8B5CF6', bg: '#ede9fe', icon: Package },
+  in_transit: { label: 'En camino', color: '#F97316', bg: '#fff7ed', icon: Truck },
+  delivered: { label: 'Entregado', color: '#22C55E', bg: '#f0fdf4', icon: CheckCircle2 },
+  cancelled: { label: 'Cancelado', color: '#EF4444', bg: '#fef2f2', icon: Package },
 };
 
 const DEMO_ORDERS = [
@@ -22,15 +22,23 @@ const DEMO_ORDERS = [
   { id: 1015, status: 'delivered', store_name: 'PetLand Chile', total_amount: 62990, delivery_fee: 0, created_at: '2026-01-20T09:00:00Z' },
 ];
 
+const cardStyle = {
+  background: '#fff', borderRadius: '20px', padding: '24px',
+  boxShadow: '0 2px 16px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0',
+  transition: 'transform 0.15s, box-shadow 0.15s',
+};
+
 const MyOrdersPage = () => {
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
+    if (!user) { navigate('/login'); return; }
     loadOrders();
-  }, []);
+  }, [user, navigate]);
 
   const loadOrders = async () => {
     try {
@@ -45,7 +53,7 @@ const MyOrdersPage = () => {
     }
   };
 
-  if (!isAuthenticated) return <Navigate to="/login" />;
+  if (!isAuthenticated) return null;
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
   const formatDate = (date) => new Date(date).toLocaleDateString('es-CL', {
@@ -54,91 +62,120 @@ const MyOrdersPage = () => {
 
   const filteredOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
 
+  const filterBtnStyle = (active) => ({
+    padding: '8px 18px', borderRadius: '12px', fontSize: '12px', fontWeight: 700,
+    border: active ? 'none' : '1.5px solid #e5e7eb', cursor: 'pointer',
+    background: active ? '#00A8E8' : '#fff',
+    color: active ? '#fff' : '#6b7280',
+    boxShadow: active ? '0 4px 12px rgba(0,168,232,0.25)' : 'none',
+    whiteSpace: 'nowrap', transition: 'all 0.2s',
+    fontFamily: 'Poppins, sans-serif',
+  });
+
   return (
-    <div className="max-w-4xl mx-auto px-4 lg:px-8 py-8">
-      <h2 className="text-3xl font-black text-[#2F3A40] mb-2">Mis Pedidos</h2>
-      <p className="text-gray-400 font-medium mb-8">Historial y seguimiento de tus compras</p>
+    <div style={{
+      minHeight: '80vh', padding: '32px 16px',
+      background: 'linear-gradient(135deg, #f0f9ff 0%, #FDFCFB 50%, #fef9c3 100%)',
+    }}>
+      <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <h1 style={{ fontSize: '28px', fontWeight: 900, color: '#2F3A40', marginBottom: '4px' }}>
+          📦 Mis Pedidos
+        </h1>
+        <p style={{ color: '#9ca3af', fontWeight: 500, fontSize: '14px', marginBottom: '24px' }}>
+          Historial y seguimiento de tus compras
+        </p>
 
-      {/* Filtros */}
-      <div className="flex gap-2 overflow-x-auto pb-4 mb-6">
-        {[{ key: 'all', label: 'Todos' }, ...Object.entries(STATUS_CONFIG).map(([key, val]) => ({ key, label: val.label }))].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
-              filter === f.key
-                ? 'bg-[#00A8E8] text-white shadow-md'
-                : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'
-            }`}
-          >
-            {f.label}
+        {/* Filtros */}
+        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '20px' }}>
+          <button onClick={() => setFilter('all')} style={filterBtnStyle(filter === 'all')}>
+            Todos
           </button>
-        ))}
-      </div>
-
-      {/* Lista de pedidos */}
-      {loading ? (
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="petsgo-card p-6 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-1/3 mb-3" />
-              <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
-              <div className="h-3 bg-gray-200 rounded w-1/4" />
-            </div>
+          {Object.entries(STATUS_CONFIG).map(([key, val]) => (
+            <button key={key} onClick={() => setFilter(key)} style={filterBtnStyle(filter === key)}>
+              {val.label}
+            </button>
           ))}
         </div>
-      ) : filteredOrders.length === 0 ? (
-        <div className="text-center py-20">
-          <PawPrint size={48} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-gray-400 font-bold text-lg">
-            {filter === 'all' ? 'Aún no tienes pedidos' : 'No hay pedidos con este estado'}
-          </p>
-          <Link to="/" className="petsgo-btn inline-block mt-4 no-underline text-sm">
-            Explorar Productos
-          </Link>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredOrders.map((order) => {
-            const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.payment_pending;
-            const StatusIcon = status.icon;
-            return (
-              <div key={order.id} className="petsgo-card p-6">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <span className="text-xs font-bold text-gray-400">Pedido #{order.id}</span>
-                    <h4 className="font-bold text-[#2F3A40] flex items-center gap-2 mt-1">
-                      <Store size={14} className="text-gray-400" />
-                      {order.store_name || 'Tienda PetsGo'}
-                    </h4>
-                  </div>
-                  <div
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
-                    style={{ backgroundColor: status.color + '15', color: status.color }}
-                  >
-                    <StatusIcon size={14} />
-                    {status.label}
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex gap-6 text-gray-500 font-medium">
-                    <span>Total: <strong className="text-[#2F3A40]">{formatPrice(order.total_amount)}</strong></span>
-                    <span>Delivery: <strong className="text-[#2F3A40]">{formatPrice(order.delivery_fee)}</strong></span>
-                  </div>
-                  <span className="text-xs text-gray-400">{formatDate(order.created_at)}</span>
-                </div>
-
-                {order.status === 'in_transit' && (
-                  <div className="mt-4 bg-orange-50 rounded-xl p-3 flex items-center gap-2 text-sm text-orange-600 font-medium">
-                    <MapPin size={14} /> Tu pedido está en camino
-                  </div>
-                )}
+        {/* Loading */}
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {[1, 2, 3].map(i => (
+              <div key={i} style={{ ...cardStyle, opacity: 0.6 }}>
+                <div style={{ height: '16px', background: '#e5e7eb', borderRadius: '8px', width: '35%', marginBottom: '12px' }} />
+                <div style={{ height: '12px', background: '#e5e7eb', borderRadius: '8px', width: '55%', marginBottom: '8px' }} />
+                <div style={{ height: '12px', background: '#e5e7eb', borderRadius: '8px', width: '30%' }} />
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '64px 16px' }}>
+            <PawPrint size={48} style={{ margin: '0 auto 16px', color: '#d1d5db' }} />
+            <p style={{ color: '#9ca3af', fontWeight: 700, fontSize: '18px' }}>
+              {filter === 'all' ? 'Aún no tienes pedidos' : 'No hay pedidos con este estado'}
+            </p>
+            <Link to="/" style={{
+              display: 'inline-block', marginTop: '16px', padding: '12px 28px',
+              background: 'linear-gradient(135deg, #00A8E8, #0077b6)', color: '#fff',
+              borderRadius: '12px', fontWeight: 700, fontSize: '14px', textDecoration: 'none',
+            }}>
+              Explorar Productos
+            </Link>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {filteredOrders.map((order) => {
+              const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.payment_pending;
+              const StatusIcon = status.icon;
+              return (
+                <div key={order.id} style={cardStyle}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 16px rgba(0,0,0,0.06)'; }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
+                    <div>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Pedido #{order.id}
+                      </span>
+                      <h4 style={{ fontWeight: 800, color: '#2F3A40', fontSize: '16px', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Store size={15} style={{ color: '#9ca3af' }} />
+                        {order.store_name || 'Tienda PetsGo'}
+                      </h4>
+                    </div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '6px 14px', borderRadius: '50px',
+                      backgroundColor: status.bg, color: status.color,
+                      fontSize: '12px', fontWeight: 700, flexShrink: 0,
+                    }}>
+                      <StatusIcon size={14} />
+                      {status.label}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '14px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '24px', color: '#6b7280', fontWeight: 500 }}>
+                      <span>Total: <strong style={{ color: '#2F3A40' }}>{formatPrice(order.total_amount)}</strong></span>
+                      <span>Delivery: <strong style={{ color: '#2F3A40' }}>{order.delivery_fee > 0 ? formatPrice(order.delivery_fee) : 'Gratis'}</strong></span>
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>{formatDate(order.created_at)}</span>
+                  </div>
+
+                  {order.status === 'in_transit' && (
+                    <div style={{
+                      marginTop: '14px', background: '#fff7ed', borderRadius: '12px',
+                      padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '8px',
+                      fontSize: '13px', color: '#ea580c', fontWeight: 600,
+                    }}>
+                      <MapPin size={15} /> Tu pedido está en camino 🚚
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
