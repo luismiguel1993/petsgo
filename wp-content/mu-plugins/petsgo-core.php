@@ -4233,6 +4233,16 @@ Dashboard con analíticas"></textarea>
         if ($user_id) return $user_id; // Already authenticated
         $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
         if (!$auth && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+        // Apache/WAMP fallback: apache_request_headers() survives mod_rewrite
+        if (!$auth && function_exists('apache_request_headers')) {
+            $headers = apache_request_headers();
+            $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+        }
+        if (!$auth && function_exists('getallheaders')) {
+            foreach (getallheaders() as $k => $v) {
+                if (strtolower($k) === 'authorization') { $auth = $v; break; }
+            }
+        }
         if (!preg_match('/^Bearer\s+(petsgo_[a-f0-9]{64})$/i', $auth, $m)) return $user_id;
         $token = $m[1];
         global $wpdb;

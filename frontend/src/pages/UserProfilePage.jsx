@@ -55,9 +55,20 @@ const UserProfilePage = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [profileRes, petsRes] = await Promise.all([getProfile(), getPets()]);
-      setProfile(profileRes.data);
-      setPets(petsRes.data?.pets || petsRes.data || []);
+      const profileRes = await getProfile();
+      const d = profileRes.data;
+      // Normalise camelCase from API into the flat shape the UI expects
+      setProfile({
+        first_name: d.firstName ?? '',
+        last_name: d.lastName ?? '',
+        email: d.email ?? '',
+        phone: d.phone ?? '',
+        id_type: d.idType ?? '',
+        id_number: d.idNumber ?? '',
+        birth_date: d.birthDate ?? '',
+        avatar_url: d.avatarUrl ?? '',
+      });
+      setPets(Array.isArray(d.pets) ? d.pets : []);
     } catch { setMsg({ type: 'error', text: 'Error cargando datos' }); }
     finally { setLoading(false); }
   }, []);
@@ -79,8 +90,9 @@ const UserProfilePage = () => {
   const saveProfile = async () => {
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      const res = await updateProfile(editForm);
-      setProfile(prev => ({ ...prev, ...res.data.user, ...editForm }));
+      // API expects camelCase
+      await updateProfile({ firstName: editForm.first_name, lastName: editForm.last_name, phone: editForm.phone });
+      setProfile(prev => ({ ...prev, ...editForm }));
       updateUser({ firstName: editForm.first_name, lastName: editForm.last_name, phone: editForm.phone });
       setEditing(false);
       setMsg({ type: 'success', text: 'Perfil actualizado' });

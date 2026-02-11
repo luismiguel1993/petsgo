@@ -55,11 +55,15 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
+  const [loggedOut, setLoggedOut] = useState(false);
+
   const logout = () => {
     localStorage.removeItem('petsgo_token');
     localStorage.removeItem('petsgo_nonce');
     localStorage.removeItem('petsgo_user');
     setUser(null);
+    setLoggedOut(true);
+    setTimeout(() => setLoggedOut(false), 2500);
   };
 
   const isAdmin = () => user?.role === 'admin';
@@ -68,7 +72,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, login, register, logout, updateUser,
+      user, loading, login, register, logout, updateUser, loggedOut,
       isAdmin, isVendor, isRider, isAuthenticated: !!user,
     }}>
       {children}
