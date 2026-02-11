@@ -149,8 +149,11 @@ class PetsGo_Core {
     public function admin_assets($hook) {
         if (strpos($hook, 'petsgo') === false) return;
         wp_enqueue_media();
-        $this->print_admin_css();
-        $this->print_admin_js();
+        // Output CSS/JS in admin_head (after jQuery is loaded by admin_print_scripts)
+        add_action('admin_head', function() {
+            $this->print_admin_css();
+            $this->print_admin_js();
+        });
     }
 
     private function print_admin_css() {
@@ -222,7 +225,9 @@ class PetsGo_Core {
         .petsgo-info-bar{background:#e3f5fc;border-left:4px solid #00A8E8;padding:10px 16px;margin:10px 0;border-radius:0 6px 6px 0;font-size:13px;color:#004085}
         /* ── Multi-select Checklist ── */
         .pgcl-wrap{position:relative;display:inline-block;min-width:200px;vertical-align:middle}
-        .pgcl-btn{padding:9px 32px 9px 12px;border:1px solid #b0b0b0;border-radius:6px;font-size:13px;cursor:pointer;background:#fff url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%277%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%23555%27 stroke-width=%271.5%27 fill=%27none%27/%3E%3C/svg%3E") no-repeat right 10px center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px;font-family:inherit;color:#333;transition:border-color .15s,box-shadow .15s}
+        .pgcl-btn{padding:9px 32px 9px 12px;border:1px solid #b0b0b0;border-radius:6px;font-size:13px;cursor:pointer;background:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px;font-family:inherit;color:#333;transition:border-color .15s,box-shadow .15s;position:relative}
+        .pgcl-btn::after{content:"";position:absolute;right:12px;top:50%;transform:translateY(-50%);border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #666;transition:transform .2s}
+        .pgcl-btn.open::after{transform:translateY(-50%) rotate(180deg)}
         .pgcl-btn:hover,.pgcl-btn.open{border-color:#00A8E8;box-shadow:0 0 0 2px rgba(0,168,232,.15)}
         .pgcl-dd{display:none;position:absolute;top:calc(100% + 3px);left:0;min-width:100%;width:max-content;max-width:360px;max-height:280px;overflow-y:auto;background:#fff;border:1px solid #ccc;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);z-index:999;padding:0}
         .pgcl-dd.open{display:block}
@@ -236,8 +241,10 @@ class PetsGo_Core {
         .pgcl-item input[type=checkbox]{accent-color:#00A8E8;width:17px;height:17px;min-width:17px;margin:0;cursor:pointer}
         .pgcl-item.checked input[type=checkbox]{accent-color:#fff}
         .pgcl-item span{pointer-events:none;white-space:nowrap}
-        .pgcl-clear{display:block;text-align:center;padding:6px;font-size:12px;color:#00A8E8;cursor:pointer;border-top:1px solid #eee}
-        .pgcl-clear:hover{background:#f0faff}
+        .pgcl-clear:hover,.pgcl-sel-all:hover{background:#f0faff}
+        .pgcl-actions{display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:6px 12px;font-size:12px}
+        .pgcl-actions span{cursor:pointer;color:#00A8E8;font-weight:500}
+        .pgcl-actions span:hover{text-decoration:underline}
         /* ── Sortable Table Headers ── */
         .petsgo-table th.pg-sortable{cursor:pointer;user-select:none;position:relative;padding-right:22px!important;transition:background .15s}
         .petsgo-table th.pg-sortable:hover{background:#0090c7}
@@ -378,26 +385,34 @@ class PetsGo_Core {
             $.fn.pgChecklist=function(opts){
                 return this.each(function(){
                     var $sel=$(this).hide(),ph=opts&&opts.placeholder||'Todos';
+                    if($sel.data('pgcl'))return; // already initialized
+                    $sel.data('pgcl',true);
                     var $wrap=$('<div class="pgcl-wrap"></div>').insertAfter($sel);
                     var $btn=$('<div class="pgcl-btn">'+ph+'</div>').appendTo($wrap);
                     var $dd=$('<div class="pgcl-dd"></div>').appendTo($wrap);
-                    var hasMany=$sel.find('option[value!=""]').length>5;
+                    var items=$sel.find('option[value!=""]');
+                    var hasMany=items.length>5;
                     if(hasMany) $dd.append('<input type="text" class="pgcl-dd-search" placeholder="Buscar...">');
+                    // Select all / Deselect all bar
+                    if(items.length>1) $dd.append('<div class="pgcl-actions"><span class="pgcl-sel-all">✅ Seleccionar todo</span><span class="pgcl-clear">✕ Limpiar</span></div>');
                     var $list=$('<div class="pgcl-dd-list"></div>').appendTo($dd);
-                    $sel.find('option').each(function(){
+                    items.each(function(){
                         var v=$(this).val(),t=$(this).text();
-                        if(!v)return;
                         $list.append('<label class="pgcl-item" data-val="'+v+'"><input type="checkbox" value="'+v+'"><span>'+t+'</span></label>');
                     });
-                    $dd.append('<div class="pgcl-clear">Limpiar selecci\u00f3n</div>');
                     function syncBtn(){
-                        var names=$list.find('input:checked').map(function(){return $(this).next().text();}).get();
-                        if(!names.length) $btn.text(ph);
-                        else $btn.text(names.join(', '));
-                        $btn.attr('title',names.join(', '));
+                        var checked=$list.find('input:checked');
+                        var count=checked.length;
+                        if(!count){ $btn.text(ph).removeAttr('title'); }
+                        else if(count<=2){
+                            var names=checked.map(function(){return $(this).next().text();}).get();
+                            $btn.text(names.join(', ')).attr('title',names.join(', '));
+                        } else {
+                            $btn.text(count+' seleccionados').attr('title',checked.map(function(){return $(this).next().text();}).get().join(', '));
+                        }
                     }
                     $btn.on('click',function(e){e.stopPropagation();$('.pgcl-dd').not($dd).removeClass('open');$('.pgcl-btn').not($btn).removeClass('open');$dd.toggleClass('open');$btn.toggleClass('open');if($dd.hasClass('open')&&hasMany)$dd.find('.pgcl-dd-search').focus();});
-                    $(document).on('click',function(){$dd.removeClass('open');$btn.removeClass('open');});
+                    $(document).on('click.pgcl',function(){$dd.removeClass('open');$btn.removeClass('open');});
                     $dd.on('click',function(e){e.stopPropagation();});
                     $list.on('change','input',function(){
                         var $it=$(this).closest('.pgcl-item');
@@ -410,7 +425,20 @@ class PetsGo_Core {
                         var q=$.trim($(this).val()).toLowerCase();
                         $list.find('.pgcl-item').each(function(){$(this).toggle(!q||$(this).find('span').text().toLowerCase().indexOf(q)>-1);});
                     });
-                    $dd.on('click','.pgcl-clear',function(){$list.find('input:checked').prop('checked',false);$list.find('.pgcl-item').removeClass('checked');$sel.val([]).trigger('change');syncBtn();});
+                    $dd.on('click','.pgcl-clear',function(){
+                        $list.find('input:checked').prop('checked',false);$list.find('.pgcl-item').removeClass('checked');
+                        $sel.val([]).trigger('change');syncBtn();
+                    });
+                    $dd.on('click','.pgcl-sel-all',function(){
+                        $list.find('.pgcl-item:visible input:not(:checked)').prop('checked',true).closest('.pgcl-item').addClass('checked');
+                        var vals=[];$list.find('input:checked').each(function(){vals.push($(this).val());});
+                        $sel.val(vals).trigger('change');syncBtn();
+                    });
+                    // Public reset
+                    $sel.data('pgcl-reset',function(){
+                        $list.find('input:checked').prop('checked',false);$list.find('.pgcl-item').removeClass('checked');
+                        $sel.val([]).trigger('change');$btn.text(ph).removeAttr('title');$dd.removeClass('open');$btn.removeClass('open');
+                    });
                 });
             };
         })(jQuery);
@@ -641,7 +669,11 @@ class PetsGo_Core {
             function loadDashboard(){
                 var f=getFilters();
                 PG.post('petsgo_dashboard_data',f,function(r){
-                    if(!r.success)return;
+                    if(!r.success){
+                        $('#dash-kpis').html('<div class="pg-dash-loader" style="color:#dc3545;">❌ Error cargando datos: '+(r.data||'Sin respuesta')+'. <a href="javascript:loadDashboard()">Reintentar</a></div>');
+                        $('#dash-orders').html('');
+                        return;
+                    }
                     var d=r.data;
                     $('#dash-updated').text(PG.fdate(d.updated_at));
                     renderKPIs(d);
@@ -824,7 +856,12 @@ class PetsGo_Core {
             // Filter events
             $('#df-apply').on('click',loadDashboard);
             $('#df-reset').on('click',function(){
-                $('#df-vendors').val([]);$('#df-category,#df-status,#df-from,#df-to,#df-search').val('');
+                // Reset pgChecklist widgets
+                $('#df-vendors,#df-category,#df-status').each(function(){
+                    var reset=$(this).data('pgcl-reset');
+                    if(reset) reset(); else $(this).val([]);
+                });
+                $('#df-from,#df-to,#df-search').val('');
                 loadDashboard();
             });
             // Enter key on search
@@ -883,13 +920,11 @@ class PetsGo_Core {
 
             <div class="petsgo-search-bar">
                 <input type="text" id="pg-search" placeholder="🔍 Buscar por nombre..." autocomplete="off">
-                <select id="pg-filter-cat">
-                    <option value="">Todas las categorías</option>
-                    <?php foreach ($categories as $c): ?><option><?php echo $c; ?></option><?php endforeach; ?>
+                <select id="pg-filter-cat" multiple>
+                    <?php foreach ($categories as $c): ?><option value="<?php echo esc_attr($c); ?>"><?php echo $c; ?></option><?php endforeach; ?>
                 </select>
                 <?php if ($is_admin): ?>
-                <select id="pg-filter-vendor">
-                    <option value="">Todas las tiendas</option>
+                <select id="pg-filter-vendor" multiple>
                     <?php foreach ($vendors as $v): ?><option value="<?php echo $v->id; ?>"><?php echo esc_html($v->store_name); ?></option><?php endforeach; ?>
                 </select>
                 <?php endif; ?>
@@ -906,6 +941,8 @@ class PetsGo_Core {
         <script>
         jQuery(function($){
             var timer;
+            $('#pg-filter-cat').pgChecklist({placeholder:'Todas las categorías'});
+            <?php if($is_admin): ?>$('#pg-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
             var cols=['_photo','product_name','price','stock','category'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'_actions'];
             var tbl=PG.table({
                 thead:'#pg-thead',body:'#pg-products-body',perPage:25,defaultSort:'product_name',defaultDir:'asc',
@@ -928,8 +965,9 @@ class PetsGo_Core {
             });
             function load(){
                 $('#pg-loader').addClass('active');
-                var d = {search:$('#pg-search').val(), category:$('#pg-filter-cat').val()};
-                <?php if($is_admin): ?>d.vendor_id=$('#pg-filter-vendor').val();<?php endif; ?>
+                var cv=$('#pg-filter-cat').val()||[];
+                var d = {search:$('#pg-search').val(), category:Array.isArray(cv)?cv.join(','):(cv||'')};
+                <?php if($is_admin): ?>var vv=$('#pg-filter-vendor').val()||[];d.vendor_id=Array.isArray(vv)?vv.join(','):(vv||'');<?php endif; ?>
                 PG.post('petsgo_search_products', d, function(r){
                     $('#pg-loader').removeClass('active');
                     if(!r.success){tbl.setData([]);return;}
@@ -1835,16 +1873,27 @@ Dashboard con analíticas"></textarea>
     public function petsgo_search_products() {
         check_ajax_referer('petsgo_ajax');
         global $wpdb;
-        $vid = $this->is_admin() ? intval($_POST['vendor_id'] ?? 0) : $this->get_my_vendor_id();
+        $is_admin = $this->is_admin();
+        $vid_raw = sanitize_text_field($_POST['vendor_id'] ?? '');
+        $my_vid = $this->get_my_vendor_id();
         $search = sanitize_text_field($_POST['search'] ?? '');
-        $category = sanitize_text_field($_POST['category'] ?? '');
+        $cat_raw = sanitize_text_field($_POST['category'] ?? '');
+        $categories = array_filter(array_map('sanitize_text_field', explode(',', $cat_raw)));
 
         $sql = "SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE 1=1";
         $args = [];
-        if (!$this->is_admin() && $vid) { $sql .= " AND i.vendor_id=%d"; $args[] = $vid; }
-        elseif ($this->is_admin() && $vid) { $sql .= " AND i.vendor_id=%d"; $args[] = $vid; }
+        if (!$is_admin && $my_vid) { $sql .= " AND i.vendor_id=%d"; $args[] = $my_vid; }
+        elseif ($is_admin && $vid_raw) {
+            $vids = array_filter(array_map('intval', explode(',', $vid_raw)));
+            if (count($vids) === 1) { $sql .= " AND i.vendor_id=%d"; $args[] = $vids[0]; }
+            elseif ($vids) { $sql .= " AND i.vendor_id IN (" . implode(',', $vids) . ")"; }
+        }
         if ($search) { $sql .= " AND i.product_name LIKE %s"; $args[] = '%'.$wpdb->esc_like($search).'%'; }
-        if ($category) { $sql .= " AND i.category=%s"; $args[] = $category; }
+        if ($categories) {
+            $phs = implode(',', array_fill(0, count($categories), '%s'));
+            $sql .= " AND i.category IN ($phs)";
+            $args = array_merge($args, $categories);
+        }
         $sql .= " ORDER BY i.id DESC";
         if ($args) $sql = $wpdb->prepare($sql, ...$args);
 
