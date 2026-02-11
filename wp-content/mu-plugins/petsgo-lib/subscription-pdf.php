@@ -74,40 +74,51 @@ class PetsGo_Subscription_PDF extends FPDF {
     // HEADER: Fondo celeste con logo PetsGo blanco centrado
     // ========================
     function Header() {
-        $hdrH = 38;
+        $hdrH = 34;
 
         // Fondo celeste PetsGo
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->Rect(0, 0, 210, $hdrH, 'F');
 
-        // Logo PetsGo blanco centrado (parte superior)
+        // Logo PetsGo blanco (izquierda)
         $logo = $this->findWhiteLogo();
+        $logoPlaced = false;
         if ($logo) {
-            $logoH = 14;
+            $logoH = 20;
             $imgSize = @getimagesize($logo);
             if ($imgSize && $imgSize[1] > 0) {
                 $ratio = $imgSize[0] / $imgSize[1];
                 $logoW = $logoH * $ratio;
             } else {
-                $logoW = 45;
+                $logoW = 55;
             }
-            $logoX = (210 - $logoW) / 2;
-            $this->Image($logo, $logoX, 3, $logoW, $logoH);
-        } else {
-            $this->SetXY(0, 3);
-            $this->SetFont('Arial', 'B', 18);
-            $this->SetTextColor(255, 255, 255);
-            $this->Cell(210, 12, 'PetsGo', 0, 0, 'C');
+            $logoY = ($hdrH - $logoH) / 2;
+            $this->Image($logo, 15, $logoY, $logoW, $logoH);
+            $logoPlaced = true;
         }
 
-        // Datos empresa PetsGo (debajo del logo, en blanco)
+        if (!$logoPlaced) {
+            $this->SetXY(15, 8);
+            $this->SetFont('Arial', 'B', 20);
+            $this->SetTextColor(255, 255, 255);
+            $this->Cell(60, 14, 'PetsGo', 0, 0, 'L');
+        }
+
+        // Datos empresa PetsGo (derecha, alineados)
+        $dataX = 110;
         $this->SetTextColor(255, 255, 255);
-        $this->SetXY(0, 18);
-        $this->SetFont('Arial', 'B', 8);
-        $this->Cell(210, 4, $this->utf8('PetsGo Marketplace  |  RUT: 77.123.456-7'), 0, 1, 'C');
-        $this->SetFont('Arial', '', 7);
-        $this->Cell(210, 3.5, $this->utf8('+56 9 1234 5678  |  www.petsgo.cl  |  contacto@petsgo.cl'), 0, 1, 'C');
-        $this->Cell(210, 3.5, $this->utf8('Santiago, Chile'), 0, 1, 'C');
+
+        $this->SetXY($dataX, 6);
+        $this->SetFont('Arial', 'B', 11);
+        $this->Cell(90, 5, $this->utf8('PetsGo Marketplace'), 0, 2, 'R');
+
+        $this->SetFont('Arial', '', 7.5);
+        $this->SetX($dataX);
+        $this->Cell(90, 4, $this->utf8('RUT: 77.123.456-7'), 0, 2, 'R');
+        $this->SetX($dataX);
+        $this->Cell(90, 4, $this->utf8('+56 9 1234 5678  |  contacto@petsgo.cl'), 0, 2, 'R');
+        $this->SetX($dataX);
+        $this->Cell(90, 4, $this->utf8('www.petsgo.cl  |  Santiago, Chile'), 0, 2, 'R');
 
         // Franja amarilla
         $this->SetFillColor($this->secondary[0], $this->secondary[1], $this->secondary[2]);
