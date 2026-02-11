@@ -4174,6 +4174,7 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/pets',['methods'=>'POST','callback'=>[$this,'api_add_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/pets/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_update_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/pets/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_delete_pet'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/pets/upload-photo',['methods'=>'POST','callback'=>[$this,'api_upload_pet_photo'],'permission_callback'=>function(){return is_user_logged_in();}]);
         // Cliente
         register_rest_route('petsgo/v1','/orders',['methods'=>'POST','callback'=>[$this,'api_create_order'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/orders/mine',['methods'=>'GET','callback'=>[$this,'api_get_my_orders'],'permission_callback'=>function(){return is_user_logged_in();}]);
@@ -4720,6 +4721,23 @@ Dashboard con analíticas"></textarea>
         $this->audit('pet_delete', 'pet', $pet_id, $pet->name);
         return rest_ensure_response(['message' => 'Mascota eliminada']);
     }
+    public function api_upload_pet_photo($request) {
+        if (empty($_FILES['photo'])) return new WP_Error('no_file', 'No se envió ninguna foto', ['status' => 400]);
+        $file = $_FILES['photo'];
+        $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!in_array($file['type'], $allowed)) return new WP_Error('invalid_type', 'Tipo de imagen no permitido', ['status' => 400]);
+        if ($file['size'] > 5 * 1024 * 1024) return new WP_Error('too_large', 'La imagen no debe exceder 5MB', ['status' => 400]);
+        $upload_dir = wp_upload_dir();
+        $pet_dir = $upload_dir['basedir'] . '/petsgo-pets/';
+        if (!file_exists($pet_dir)) wp_mkdir_p($pet_dir);
+        $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+        $filename = 'pet_' . get_current_user_id() . '_' . time() . '_' . wp_rand(100,999) . '.' . $ext;
+        $dest = $pet_dir . $filename;
+        if (!move_uploaded_file($file['tmp_name'], $dest)) return new WP_Error('upload_fail', 'Error al guardar la imagen', ['status' => 500]);
+        $url = $upload_dir['baseurl'] . '/petsgo-pets/' . $filename;
+        return rest_ensure_response(['url' => $url]);
+    }
+
     // --- API Orders ---
     public function api_create_order($request) {
         global $wpdb;$uid=get_current_user_id();$p=$request->get_json_params();

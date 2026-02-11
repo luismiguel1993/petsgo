@@ -15,6 +15,10 @@ export default defineConfig({
         cookieDomainRewrite: '',
         cookiePathRewrite: '/',
       },
+      '/wp-content/uploads': {
+        target: 'http://localhost/PetsGoDev',
+        changeOrigin: true,
+      },
     },
   },
 })

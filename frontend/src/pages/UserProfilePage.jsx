@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { User, Edit2, Save, X, Plus, Trash2, Camera, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet } from '../services/api';
+import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet, uploadPetPhoto } from '../services/api';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb', borderRadius: '12px',
@@ -129,13 +129,29 @@ const UserProfilePage = () => {
   const savePet = async () => {
     setSaving(true); setMsg({ type: '', text: '' });
     try {
-      if (petModal.id) {
-        await updatePet(petModal.id, petModal);
-      } else {
-        await addPet(petModal);
+      // Upload photo if a new file was selected
+      let photoUrl = petModal.photoUrl || '';
+      if (petModal._photoFile) {
+        const uploadRes = await uploadPetPhoto(petModal._photoFile);
+        photoUrl = uploadRes.data.url;
       }
-      const petsRes = await getPets();
-      setPets(petsRes.data?.pets || petsRes.data || []);
+      const payload = {
+        name: petModal.name,
+        petType: petModal.petType,
+        breed: petModal.breed || '',
+        birthDate: petModal.birthDate || '',
+        notes: petModal.notes || '',
+        photoUrl,
+      };
+      if (petModal.id) {
+        await updatePet(petModal.id, payload);
+      } else {
+        await addPet(payload);
+      }
+      // Re-fetch from profile which includes pets
+      const profileRes = await getProfile();
+      const d = profileRes.data;
+      setPets(Array.isArray(d.pets) ? d.pets : []);
       setPetModal(null);
       setMsg({ type: 'success', text: petModal.id ? 'Mascota actualizada' : 'Mascota agregada' });
     } catch (err) {
@@ -306,7 +322,7 @@ const UserProfilePage = () => {
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40' }}>🐾 Mis Mascotas</h2>
-              <button onClick={() => setPetModal({ pet_type: 'perro', name: '', breed: '', birth_date: '', notes: '' })}
+              <button onClick={() => setPetModal({ petType: 'perro', name: '', breed: '', birthDate: '', notes: '', photoUrl: '' })}
                 style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'linear-gradient(135deg, #FFC400, #e6b000)' }}>
                 <Plus size={14} /> Agregar
               </button>
@@ -325,25 +341,25 @@ const UserProfilePage = () => {
                     background: '#f9fafb', borderRadius: '14px', padding: '14px',
                     border: '1.5px solid #e5e7eb', display: 'flex', alignItems: 'center', gap: '14px'
                   }}>
-                    {pet.photo_url ? (
-                      <img src={pet.photo_url} alt={pet.name} style={{ width: '56px', height: '56px', borderRadius: '14px', objectFit: 'cover' }} />
+                    {pet.photoUrl ? (
+                      <img src={pet.photoUrl} alt={pet.name} style={{ width: '56px', height: '56px', borderRadius: '14px', objectFit: 'cover' }} />
                     ) : (
                       <div style={{
                         width: '56px', height: '56px', borderRadius: '14px', background: '#e0f2fe',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', flexShrink: 0
                       }}>
-                        {petEmojis[pet.pet_type] || '🐾'}
+                        {petEmojis[pet.petType] || '🐾'}
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontWeight: 800, fontSize: '15px', color: '#2F3A40' }}>{pet.name}</p>
                       <p style={{ fontSize: '12px', color: '#6b7280' }}>
-                        {PET_TYPES.find(t => t.value === pet.pet_type)?.label || pet.pet_type}
+                        {PET_TYPES.find(t => t.value === pet.petType)?.label || pet.petType}
                         {pet.breed ? ` · ${pet.breed}` : ''}
                       </p>
-                      {pet.birth_date && (
+                      {pet.birthDate && (
                         <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>
-                          🎂 {calcAge(pet.birth_date)}
+                          🎂 {calcAge(pet.birthDate)}
                         </p>
                       )}
                     </div>
@@ -385,9 +401,69 @@ const UserProfilePage = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+
+              {/* Photo upload */}
+              <div>
+                <label style={labelStyle}>Foto (opcional)</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  {/* Preview */}
+                  <div style={{
+                    width: '80px', height: '80px', borderRadius: '16px', overflow: 'hidden', flexShrink: 0,
+                    border: '2px dashed #d1d5db', background: '#f9fafb',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    position: 'relative', cursor: 'pointer',
+                  }}
+                    onClick={() => document.getElementById('pet-photo-input').click()}
+                  >
+                    {(petModal._photoPreview || petModal.photoUrl) ? (
+                      <img src={petModal._photoPreview || petModal.photoUrl} alt="preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ textAlign: 'center', color: '#9ca3af' }}>
+                        <Camera size={24} style={{ margin: '0 auto 2px' }} />
+                        <div style={{ fontSize: '10px', fontWeight: 600 }}>Subir</div>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <input type="file" id="pet-photo-input" accept="image/*" style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > 5 * 1024 * 1024) { setMsg({ type: 'error', text: 'La imagen no debe exceder 5MB' }); return; }
+                        const reader = new FileReader();
+                        reader.onload = () => setPetModal(p => ({ ...p, _photoFile: file, _photoPreview: reader.result }));
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                    <button type="button" onClick={() => document.getElementById('pet-photo-input').click()}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px',
+                        background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: '10px',
+                        color: '#0077b6', fontWeight: 600, fontSize: '12px', cursor: 'pointer',
+                        fontFamily: 'Poppins, sans-serif',
+                      }}>
+                      <Camera size={14} /> {petModal._photoPreview || petModal.photoUrl ? 'Cambiar foto' : 'Seleccionar foto'}
+                    </button>
+                    {(petModal._photoPreview || petModal.photoUrl) && (
+                      <button type="button"
+                        onClick={() => setPetModal(p => ({ ...p, _photoFile: null, _photoPreview: null, photoUrl: '' }))}
+                        style={{
+                          marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px',
+                          background: 'none', border: 'none', color: '#ef4444', fontSize: '11px',
+                          fontWeight: 600, cursor: 'pointer', padding: 0,
+                        }}>
+                        <Trash2 size={12} /> Quitar foto
+                      </button>
+                    )}
+                    <p style={{ fontSize: '10px', color: '#9ca3af', marginTop: '4px' }}>JPG, PNG, WebP. Máx 5MB</p>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label style={labelStyle}>Tipo de Mascota *</label>
-                <select value={petModal.pet_type} onChange={e => setPetModal(p => ({ ...p, pet_type: e.target.value }))}
+                <select value={petModal.petType} onChange={e => setPetModal(p => ({ ...p, petType: e.target.value }))}
                   style={{ ...inputStyle, cursor: 'pointer' }}>
                   {PET_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
@@ -404,7 +480,7 @@ const UserProfilePage = () => {
               </div>
               <div>
                 <label style={labelStyle}>Fecha de Nacimiento</label>
-                <input type="date" value={petModal.birth_date || ''} onChange={e => setPetModal(p => ({ ...p, birth_date: e.target.value }))}
+                <input type="date" value={petModal.birthDate || ''} onChange={e => setPetModal(p => ({ ...p, birthDate: e.target.value }))}
                   style={inputStyle} max={new Date().toISOString().split('T')[0]} />
               </div>
               <div>

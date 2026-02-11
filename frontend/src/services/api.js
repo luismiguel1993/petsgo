@@ -136,6 +136,13 @@ export const updatePet = (id, data) =>
 export const deletePet = (id) =>
   api.delete(`/pets/${id}`);
 
+/** Subir foto de mascota */
+export const uploadPetPhoto = (file) => {
+  const fd = new FormData();
+  fd.append('photo', file);
+  return api.post('/pets/upload-photo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+
 // ==========================================
 // CLIENTE AUTENTICADO
 // ==========================================
