@@ -1990,7 +1990,19 @@ class PetsGo_Core {
                         <div class="petsgo-field" style="flex:1;"><label>Raza</label><input type="text" id="pm-breed" placeholder="Ej: Labrador, Siamés..."></div>
                         <div class="petsgo-field" style="width:160px;"><label>Fecha Nacimiento</label><input type="date" id="pm-birth"></div>
                     </div>
-                    <div class="petsgo-field"><label>URL Foto</label><input type="url" id="pm-photo" placeholder="https://..."></div>
+                    <div class="petsgo-field"><label>Foto</label>
+                        <div id="pm-photo-wrap" style="display:flex;align-items:center;gap:14px;margin-bottom:4px;">
+                            <div id="pm-photo-preview" style="width:64px;height:64px;border-radius:12px;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f9fafb;flex-shrink:0;">
+                                <span style="font-size:24px;">📷</span>
+                            </div>
+                            <div>
+                                <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="pm-photo-btn">📁 Seleccionar foto</button>
+                                <button type="button" class="petsgo-btn petsgo-btn-danger petsgo-btn-sm" id="pm-photo-clear" style="display:none;margin-left:6px;">🗑️ Quitar</button>
+                                <p style="font-size:11px;color:#999;margin:4px 0 0;">JPG, PNG, WebP. O pega una URL abajo.</p>
+                            </div>
+                        </div>
+                        <input type="text" id="pm-photo" placeholder="https://... (o usa el botón de arriba)" style="font-size:12px;">
+                    </div>
                     <div class="petsgo-field"><label>Notas</label><textarea id="pm-notes" rows="2" style="width:100%;"></textarea></div>
                     <div style="display:flex;gap:8px;margin-top:12px;">
                         <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="pm-save">💾 Guardar</button>
@@ -2054,7 +2066,27 @@ class PetsGo_Core {
                     $('#pet-list').html(html);
                 });
             }
-            function resetPetModal(){$('#pm-id').val(0);$('#pm-type').val('perro');$('#pm-name,#pm-breed,#pm-photo,#pm-notes').val('');$('#pm-birth').val('');$('#pet-modal-title').text('🐾 Nueva Mascota');}
+            function resetPetModal(){$('#pm-id').val(0);$('#pm-type').val('perro');$('#pm-name,#pm-breed,#pm-photo,#pm-notes').val('');$('#pm-birth').val('');$('#pet-modal-title').text('🐾 Nueva Mascota');updatePhotoPreview('');}
+            function updatePhotoPreview(url){
+                if(url){$('#pm-photo-preview').html('<img src="'+url+'" style="width:100%;height:100%;object-fit:cover;">');$('#pm-photo-clear').show();}
+                else{$('#pm-photo-preview').html('<span style="font-size:24px;">📷</span>');$('#pm-photo-clear').hide();}
+            }
+            $('#pm-photo').on('input change',function(){updatePhotoPreview($(this).val());});
+            $('#pm-photo-clear').on('click',function(){$('#pm-photo').val('');updatePhotoPreview('');});
+            // WordPress Media Uploader
+            var petMediaFrame;
+            $('#pm-photo-btn').on('click',function(e){
+                e.preventDefault();
+                if(petMediaFrame){petMediaFrame.open();return;}
+                petMediaFrame=wp.media({title:'Seleccionar foto de mascota',button:{text:'Usar esta foto'},multiple:false,library:{type:'image'}});
+                petMediaFrame.on('select',function(){
+                    var att=petMediaFrame.state().get('selection').first().toJSON();
+                    var url=att.sizes&&att.sizes.medium?att.sizes.medium.url:att.url;
+                    $('#pm-photo').val(url);
+                    updatePhotoPreview(url);
+                });
+                petMediaFrame.open();
+            });
             $('#pet-add-btn').on('click',function(){resetPetModal();$('#pet-modal').slideDown(200);});
             $('#pm-cancel').on('click',function(){$('#pet-modal').slideUp(200);});
             $(document).on('click','.pet-edit',function(){
@@ -2062,6 +2094,7 @@ class PetsGo_Core {
                 $('#pm-id').val(p.id);$('#pm-type').val(p.pet_type);$('#pm-name').val(p.name);
                 $('#pm-breed').val(p.breed);$('#pm-birth').val(p.birth_date||'');
                 $('#pm-photo').val(p.photo_url);$('#pm-notes').val(p.notes||'');
+                updatePhotoPreview(p.photo_url||'');
                 $('#pet-modal-title').text('✏️ Editar: '+p.name);
                 $('#pet-modal').slideDown(200);
             });
@@ -3145,7 +3178,42 @@ Dashboard con analíticas"></textarea>
 
         $upload_dir = wp_upload_dir();
         $pdf_path = $upload_dir['basedir'] . '/' . $inv->pdf_path;
-        if (!file_exists($pdf_path)) wp_die('Archivo PDF no encontrado');
+
+        // If PDF file doesn't exist, regenerate it on-the-fly
+        if (!file_exists($pdf_path)) {
+            $order = $wpdb->get_row($wpdb->prepare("SELECT o.*, v.store_name, v.rut AS vendor_rut, v.address AS vendor_address, v.phone AS vendor_phone, v.email AS vendor_email, v.contact_phone, v.social_facebook, v.social_instagram, v.social_whatsapp, v.social_website, v.invoice_logo_id FROM {$wpdb->prefix}petsgo_orders o JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id WHERE o.id=%d", $inv->order_id));
+            $customer = get_userdata($wpdb->get_var($wpdb->prepare("SELECT customer_id FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $inv->order_id)));
+            if ($order) {
+                $order_items = $this->get_order_items($inv->order_id);
+                $items = $this->build_items_array($order_items, $order);
+                $grand = $order->total_amount + ($order->delivery_fee ?? 0);
+                require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
+                $pdf_gen = new PetsGo_Invoice_PDF();
+                $vendor_data = [
+                    'store_name' => $order->store_name,
+                    'rut' => $order->vendor_rut,
+                    'address' => $order->vendor_address,
+                    'phone' => $order->vendor_phone,
+                    'email' => $order->vendor_email,
+                    'contact_phone' => $order->contact_phone,
+                    'social_facebook' => $order->social_facebook,
+                    'social_instagram' => $order->social_instagram,
+                    'social_whatsapp' => $order->social_whatsapp,
+                    'social_website' => $order->social_website,
+                    'logo_url' => $order->invoice_logo_id ? wp_get_attachment_url($order->invoice_logo_id) : '',
+                ];
+                $invoice_data = [
+                    'invoice_number' => $inv->invoice_number,
+                    'date' => date('d/m/Y H:i', strtotime($inv->created_at)),
+                    'customer_name' => $customer ? $customer->display_name : 'N/A',
+                    'customer_email' => $customer ? $customer->user_email : '',
+                ];
+                $qr_url = site_url('/wp-json/petsgo/v1/invoice/validate/' . $inv->qr_token);
+                $pdf_gen->generate($vendor_data, $invoice_data, $items, $grand, $qr_url, $inv->qr_token, $pdf_path);
+            }
+        }
+
+        if (!file_exists($pdf_path)) wp_die('No se pudo generar el archivo PDF');
 
         $this->audit('invoice_download', 'invoice', $id, $inv->invoice_number);
 
