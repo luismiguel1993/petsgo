@@ -3275,12 +3275,13 @@ Dashboard con analíticas"></textarea>
         $qr_token = 'demo-' . wp_generate_password(16, false);
         $qr_url   = site_url('/wp-json/petsgo/v1/invoice/validate/' . $qr_token);
 
-        // Generate to temp file
-        $tmp = wp_tempnam('petsgo_demo_invoice_') . '.pdf';
+        // Generate to temp file (use PHP tempnam for compatibility)
+        $tmp = tempnam(sys_get_temp_dir(), 'petsgo_demo_invoice_');
+        if ($tmp && substr($tmp, -4) !== '.pdf') $tmp .= '.pdf';
         $pdf_gen = new PetsGo_Invoice_PDF();
         $pdf_gen->generate($vendor_data, $invoice_data, $items, $grand, $qr_url, $qr_token, $tmp);
 
-        if (!file_exists($tmp)) wp_die('No se pudo generar el PDF demo');
+        if (!file_exists($tmp) || filesize($tmp) < 1000) wp_die('No se pudo generar el PDF demo');
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="' . $invoice_data['invoice_number'] . '.pdf"');
