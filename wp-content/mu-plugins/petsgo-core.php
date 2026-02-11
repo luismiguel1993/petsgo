@@ -3237,6 +3237,11 @@ Dashboard con analíticas"></textarea>
 
         require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
 
+        // Demo vendor logo
+        $upload_dir = wp_upload_dir();
+        $demo_logo = $upload_dir['basedir'] . '/demo-vendor-logo.png';
+        $demo_logo_url = file_exists($demo_logo) ? $upload_dir['baseurl'] . '/demo-vendor-logo.png' : '';
+
         $vendor_data = [
             'store_name'       => 'Mundo Animal (Demo)',
             'rut'              => '76.123.456-7',
@@ -3248,7 +3253,7 @@ Dashboard con analíticas"></textarea>
             'social_instagram' => '@mundoanimal',
             'social_whatsapp'  => '+56912345678',
             'social_website'   => 'www.mundoanimal.cl',
-            'logo_url'         => '',
+            'logo_url'         => $demo_logo_url,
             'delivery_fee'     => 2990,
         ];
 

@@ -96,39 +96,52 @@ class PetsGo_Invoice_PDF extends FPDF {
     // HEADER: Logo PetsGo (izq) + Logo Tienda (der)
     // ========================
     private function buildHeader() {
-        // Fondo blanco para el header (logo color se ve bien)
-        $this->SetFillColor(255, 255, 255);
-        $this->Rect(0, 0, 210, 36, 'F');
+        $logoH  = 18;  // altura fija para ambos logos (mm)
+        $hdrH   = 28;  // altura total del header
+        $logoY  = ($hdrH - $logoH) / 2 + 1; // centrado vertical
 
-        // Logo PetsGo color (izquierda) — mismo del frontend
+        // Fondo blanco
+        $this->SetFillColor(255, 255, 255);
+        $this->Rect(0, 0, 210, $hdrH, 'F');
+
+        // Logo PetsGo color (izquierda)
         $petsgo_logo = $this->findLogo('petsgo');
         if ($petsgo_logo) {
-            $this->Image($petsgo_logo, 15, 6, 50, 0);
+            $this->Image($petsgo_logo, 15, $logoY, 0, $logoH);
         } else {
-            $this->SetXY(15, 10);
-            $this->SetFont('Arial', 'B', 22);
+            $this->SetXY(15, $logoY);
+            $this->SetFont('Arial', 'B', 16);
             $this->SetTextColor($this->primary[0], $this->primary[1], $this->primary[2]);
-            $this->Cell(60, 10, 'PetsGo', 0, 0, 'L');
+            $this->Cell(60, $logoH, 'PetsGo', 0, 0, 'L');
         }
 
-        // Logo Tienda (derecha)
+        // Logo Tienda (derecha) — mismo tamaño que PetsGo
         $vendor_logo = $this->findVendorLogo();
         if ($vendor_logo) {
-            $this->Image($vendor_logo, 150, 6, 45, 0);
+            // Calcular ancho proporcional a la altura fija para alinear a la derecha
+            $imgSize = @getimagesize($vendor_logo);
+            if ($imgSize && $imgSize[1] > 0) {
+                $ratio = $imgSize[0] / $imgSize[1];
+                $logoW = $logoH * $ratio;
+            } else {
+                $logoW = $logoH; // cuadrado por defecto
+            }
+            $logoX = 195 - $logoW; // alineado al margen derecho
+            $this->Image($vendor_logo, $logoX, $logoY, $logoW, $logoH);
         } else {
-            $this->SetXY(100, 10);
-            $this->SetFont('Arial', 'B', 14);
+            $this->SetXY(100, $logoY);
+            $this->SetFont('Arial', 'B', 13);
             $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-            $this->Cell(95, 10, $this->utf8($this->vendor_data->store_name ?? ''), 0, 0, 'R');
+            $this->Cell(95, $logoH, $this->utf8($this->vendor_data->store_name ?? ''), 0, 0, 'R');
         }
 
         // Barra decorativa: azul PetsGo + franja amarilla
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
-        $this->Rect(0, 36, 210, 3, 'F');
+        $this->Rect(0, $hdrH, 210, 2.5, 'F');
         $this->SetFillColor($this->secondary[0], $this->secondary[1], $this->secondary[2]);
-        $this->Rect(0, 39, 210, 1.5, 'F');
+        $this->Rect(0, $hdrH + 2.5, 210, 1, 'F');
 
-        $this->SetY(45);
+        $this->SetY($hdrH + 6);
     }
 
     private function findLogo($type) {
@@ -385,7 +398,7 @@ class PetsGo_Invoice_PDF extends FPDF {
 
         $this->SetFont('Arial', '', 7);
         $this->SetTextColor(150, 150, 150);
-        $this->Cell(0, 3, $this->utf8('Documento generado electrónicamente por PetsGo Marketplace — www.petsgo.cl'), 0, 1, 'C');
-        $this->Cell(0, 3, $this->utf8('Este documento es una boleta de venta válida. Verifique escaneando el código QR.'), 0, 1, 'C');
+        $this->Cell(0, 3, $this->utf8('Documento generado electronicamente por PetsGo Marketplace - www.petsgo.cl'), 0, 1, 'C');
+        $this->Cell(0, 3, $this->utf8('Este documento es una boleta de venta valida. Verifique escaneando el codigo QR.'), 0, 1, 'C');
     }
 }
