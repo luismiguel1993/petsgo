@@ -53,6 +53,7 @@ class PetsGo_Core {
             'petsgo_save_vendor_invoice_config',
             'petsgo_dashboard_data',
             'petsgo_save_settings',
+            'petsgo_preview_email',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -405,6 +406,9 @@ class PetsGo_Core {
 
         // Configuración — solo admin
         add_submenu_page('petsgo-dashboard', 'Configuración', '⚙️ Configuración', $cap_admin, 'petsgo-settings', [$this, 'page_settings']);
+
+        // Preview Emails — hidden page (solo admin)
+        add_submenu_page(null, 'Preview Emails', '', $cap_admin, 'petsgo-email-preview', [$this, 'page_email_preview']);
     }
 
     // ============================================================
@@ -488,10 +492,10 @@ class PetsGo_Core {
         .petsgo-preview-card .preview-body .preview-stock{font-size:12px;margin-top:6px}
         .petsgo-loader{display:none}.petsgo-loader.active{display:inline-block}
         .petsgo-role-tag{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
-        .petsgo-role-tag.admin{background:#00A8E8;color:#fff}
+        .petsgo-role-tag.administrator{background:linear-gradient(135deg,#00A8E8,#0077b6);color:#fff;box-shadow:0 1px 3px rgba(0,168,232,.35)}
         .petsgo-role-tag.vendor{background:#FFC400;color:#2F3A40}
         .petsgo-role-tag.rider{background:#6f42c1;color:#fff}
-        .petsgo-role-tag.customer{background:#e2e3e5;color:#383d41}
+        .petsgo-role-tag.subscriber{background:linear-gradient(135deg,#28a745,#20894d);color:#fff;box-shadow:0 1px 3px rgba(40,167,69,.35)}
         .petsgo-role-tag.support{background:#17a2b8;color:#fff}
         .petsgo-info-bar{background:#e3f5fc;border-left:4px solid #00A8E8;padding:10px 16px;margin:10px 0;border-radius:0 6px 6px 0;font-size:13px;color:#004085}
         /* ── Multi-select Checklist ── */
@@ -3347,6 +3351,7 @@ Dashboard con analíticas"></textarea>
             <!-- Save button -->
             <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
                 <button type="submit" class="petsgo-btn petsgo-btn-primary" style="padding:10px 32px;font-size:15px;">💾 Guardar Configuración</button>
+                <a href="<?php echo admin_url('admin.php?page=petsgo-email-preview'); ?>" class="petsgo-btn petsgo-btn-warning" style="padding:10px 24px;font-size:15px;">📧 Preview Correos</a>
                 <span class="petsgo-loader" id="ps-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <div id="ps-msg" style="display:none;"></div>
             </div>
@@ -3452,6 +3457,132 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_settings', $settings);
         $this->audit('settings_update', 'settings', 0, 'Configuración actualizada');
         wp_send_json_success('✅ Configuración guardada correctamente.');
+    }
+
+    // ============================================================
+    // PREVIEW EMAILS — Vista previa HTML de correos
+    // ============================================================
+    public function petsgo_preview_email() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        $type = sanitize_text_field($_POST['email_type'] ?? 'stock_zero');
+
+        switch ($type) {
+            case 'stock_low':
+                $html = $this->stock_email_html('Patitas Chile', 'Royal Canin Adulto 3kg', 3, false, 'patitas@demo.cl');
+                break;
+            case 'stock_zero':
+                $html = $this->stock_email_html('Mundo Animal', 'Collar Antipulgas Premium', 0, true, 'mundoanimal@demo.cl');
+                break;
+            case 'invoice':
+            default:
+                $inv = 'BOL-MA-20260211-001';
+                $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>Maria Gonzalez</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 24px;">Gracias por tu compra en <strong>Pets Happy Store</strong>. Tu boleta ha sido generada exitosamente.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:12px 18px;font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.5px;" colspan="2">Detalle de tu compra</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;width:130px;border-top:1px solid #f0f0f0;">N&ordm; Boleta</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;font-weight:700;">' . esc_html($inv) . '</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Total</td>
+          <td style="padding:12px 18px;font-size:16px;color:#00A8E8;border-top:1px solid #f0f0f0;font-weight:700;">$24.990</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Tienda</td>
+          <td style="padding:12px 18px;font-size:14px;color:#333;border-top:1px solid #f0f0f0;">Pets Happy Store</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha</td>
+          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+        </tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:24px;">
+        <tr>
+          <td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
+            <p style="margin:0;font-size:13px;color:#00718a;line-height:1.6;">
+              &#128206; Adjuntamos tu boleta en formato PDF. Tambi&eacute;n puedes verificar su validez escaneando el c&oacute;digo QR incluido en el documento.
+            </p>
+          </td>
+        </tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificaci&oacute;n autom&aacute;tica de compra de PetsGo.<br>
+        Se envi&oacute; a <span style="color:#888;">maria@demo.cl</span> por ser el correo de tu cuenta.
+      </p>';
+                $html = $this->email_wrap($inner, 'Boleta ' . $inv . ' por $24.990 en Pets Happy Store');
+                break;
+        }
+        wp_send_json_success(['html' => $html]);
+    }
+
+    public function page_email_preview() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📧 Vista Previa de Correos</h1>
+            <p class="petsgo-info-bar">Previsualiza cómo se ven los correos que envía PetsGo. Estos usan la configuración actual (logo, colores, datos empresa).</p>
+
+            <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+                <button type="button" class="petsgo-btn petsgo-btn-primary ep-tab active" data-type="invoice">🧾 Boleta / Factura</button>
+                <button type="button" class="petsgo-btn petsgo-btn-warning ep-tab" data-type="stock_zero">🚫 Stock Agotado</button>
+                <button type="button" class="petsgo-btn petsgo-btn-warning ep-tab" data-type="stock_low">⚠️ Stock Bajo</button>
+                <span class="petsgo-loader" id="ep-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+                <a href="<?php echo admin_url('admin.php?page=petsgo-settings'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">⚙️ Editar Configuración</a>
+            </div>
+
+            <!-- Subject / Preheader info -->
+            <div id="ep-info" style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:12px 18px;margin-bottom:16px;display:none;">
+                <table style="width:100%;font-size:13px;color:#555;">
+                    <tr><td style="font-weight:700;width:100px;padding:2px 0;">De:</td><td id="ep-from" style="padding:2px 0;"></td></tr>
+                    <tr><td style="font-weight:700;padding:2px 0;">Para:</td><td id="ep-to" style="padding:2px 0;"></td></tr>
+                    <tr><td style="font-weight:700;padding:2px 0;">BCC:</td><td id="ep-bcc" style="padding:2px 0;"></td></tr>
+                    <tr><td style="font-weight:700;padding:2px 0;">Asunto:</td><td id="ep-subject" style="padding:2px 0;font-weight:600;color:#333;"></td></tr>
+                </table>
+            </div>
+
+            <!-- Preview iframe -->
+            <div style="border:1px solid #dee2e6;border-radius:8px;overflow:hidden;background:#fff;">
+                <div style="background:#f1f3f5;padding:8px 16px;border-bottom:1px solid #dee2e6;display:flex;align-items:center;gap:8px;">
+                    <span style="width:12px;height:12px;border-radius:50%;background:#ff5f56;display:inline-block;"></span>
+                    <span style="width:12px;height:12px;border-radius:50%;background:#ffbd2e;display:inline-block;"></span>
+                    <span style="width:12px;height:12px;border-radius:50%;background:#27c93f;display:inline-block;"></span>
+                    <span style="flex:1;text-align:center;font-size:12px;color:#888;" id="ep-title">Vista previa del correo</span>
+                </div>
+                <iframe id="ep-frame" style="width:100%;height:750px;border:none;background:#f4f6f8;"></iframe>
+            </div>
+        </div>
+        <script>
+        jQuery(function($){
+            var meta = {
+                invoice:    {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>, vendedor@tienda.cl',subject:'PetsGo — Tu Boleta BOL-MA-20260211-001',title:'Correo de boleta / factura'},
+                stock_zero: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'mundoanimal@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⚠️ PetsGo — Producto sin stock: Collar Antipulgas Premium',title:'Alerta stock agotado (0 uds)'},
+                stock_low:  {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⚠️ PetsGo — Stock bajo: Royal Canin Adulto 3kg (3 uds)',title:'Alerta stock bajo'}
+            };
+            function loadPreview(type){
+                $('#ep-loader').addClass('active');
+                var m=meta[type]||meta.invoice;
+                $('#ep-from').text(m.from);$('#ep-to').text(m.to);$('#ep-bcc').text(m.bcc);$('#ep-subject').text(m.subject);$('#ep-title').text(m.title);$('#ep-info').show();
+                PG.post('petsgo_preview_email',{email_type:type},function(r){
+                    $('#ep-loader').removeClass('active');
+                    if(!r.success)return;
+                    var frame=$('#ep-frame')[0];
+                    var doc=frame.contentDocument||frame.contentWindow.document;
+                    doc.open();doc.write(r.data.html);doc.close();
+                });
+            }
+            $('.ep-tab').on('click',function(){
+                $('.ep-tab').removeClass('active');$(this).addClass('active');
+                loadPreview($(this).data('type'));
+            });
+            loadPreview('invoice');
+        });
+        </script>
+        <?php
     }
 
     // ============================================================
