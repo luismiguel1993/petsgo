@@ -21,6 +21,8 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem('petsgo_token');
   if (token) {
     config.headers['Authorization'] = `Bearer ${token}`;
+    // Custom header as fallback — Apache sometimes strips Authorization
+    config.headers['X-PetsGo-Token'] = token;
   }
   return config;
 });

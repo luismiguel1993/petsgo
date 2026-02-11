@@ -29,16 +29,17 @@ const cardStyle = {
 };
 
 const MyOrdersPage = () => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
   useEffect(() => {
+    if (authLoading) return;
     if (!user) { navigate('/login'); return; }
     loadOrders();
-  }, [user, navigate]);
+  }, [user, authLoading, navigate]);
 
   const loadOrders = async () => {
     try {

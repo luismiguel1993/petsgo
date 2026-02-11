@@ -35,7 +35,7 @@ const calcAge = (birthDate) => {
 };
 
 const UserProfilePage = () => {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [pets, setPets] = useState([]);
@@ -81,9 +81,10 @@ const UserProfilePage = () => {
   }, [navigate]);
 
   useEffect(() => {
+    if (authLoading) return; // Wait for AuthContext to finish hydrating
     if (!user) { navigate('/login'); return; }
     fetchData();
-  }, [user, navigate, fetchData]);
+  }, [user, authLoading, navigate, fetchData]);
 
   const startEdit = () => {
     setEditing(true);

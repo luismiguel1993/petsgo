@@ -4232,20 +4232,30 @@ Dashboard con analíticas"></textarea>
      */
     public function resolve_api_token($user_id) {
         if ($user_id) return $user_id; // Already authenticated
-        $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
-        if (!$auth && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
-        // Apache/WAMP fallback: apache_request_headers() survives mod_rewrite
-        if (!$auth && function_exists('apache_request_headers')) {
-            $headers = apache_request_headers();
-            $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+        $token = '';
+        // Method 1: Custom header (never stripped by Apache)
+        $custom = isset($_SERVER['HTTP_X_PETSGO_TOKEN']) ? trim($_SERVER['HTTP_X_PETSGO_TOKEN']) : '';
+        if ($custom && preg_match('/^petsgo_[a-f0-9]{64}$/', $custom)) {
+            $token = $custom;
         }
-        if (!$auth && function_exists('getallheaders')) {
-            foreach (getallheaders() as $k => $v) {
-                if (strtolower($k) === 'authorization') { $auth = $v; break; }
+        // Method 2: Standard Authorization header
+        if (!$token) {
+            $auth = isset($_SERVER['HTTP_AUTHORIZATION']) ? $_SERVER['HTTP_AUTHORIZATION'] : '';
+            if (!$auth && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) $auth = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+            if (!$auth && function_exists('apache_request_headers')) {
+                $headers = apache_request_headers();
+                $auth = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+            }
+            if (!$auth && function_exists('getallheaders')) {
+                foreach (getallheaders() as $k => $v) {
+                    if (strtolower($k) === 'authorization') { $auth = $v; break; }
+                }
+            }
+            if (preg_match('/^Bearer\s+(petsgo_[a-f0-9]{64})$/i', $auth, $m)) {
+                $token = $m[1];
             }
         }
-        if (!preg_match('/^Bearer\s+(petsgo_[a-f0-9]{64})$/i', $auth, $m)) return $user_id;
-        $token = $m[1];
+        if (!$token) return $user_id;
         global $wpdb;
         $uid = $wpdb->get_var($wpdb->prepare(
             "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key='petsgo_api_token' AND meta_value=%s LIMIT 1",
