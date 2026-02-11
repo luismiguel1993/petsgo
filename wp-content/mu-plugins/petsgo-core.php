@@ -52,6 +52,7 @@ class PetsGo_Core {
             'petsgo_search_audit_log',
             'petsgo_save_vendor_invoice_config',
             'petsgo_dashboard_data',
+            'petsgo_save_settings',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -105,10 +106,10 @@ class PetsGo_Core {
 
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: PetsGo Notificaciones <notificaciones@petsgo.cl>',
-            'Reply-To: PetsGo Soporte <contacto@petsgo.cl>',
-            'Bcc: contacto@petsgo.cl',
-            'List-Unsubscribe: <mailto:contacto@petsgo.cl?subject=Desuscribir%20alertas%20stock>',
+            'From: ' . $this->pg_setting('company_name','PetsGo') . ' Notificaciones <' . $this->pg_setting('company_from_email','notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name','PetsGo') . ' Soporte <' . $this->pg_setting('company_email','contacto@petsgo.cl') . '>',
+            'Bcc: ' . $this->pg_setting('company_bcc_email','contacto@petsgo.cl'),
+            'List-Unsubscribe: <mailto:' . $this->pg_setting('company_email','contacto@petsgo.cl') . '?subject=Desuscribir%20alertas%20stock>',
             'X-Mailer: PetsGo/1.0',
         ];
 
@@ -127,9 +128,20 @@ class PetsGo_Core {
      * Plantilla base de email corporativo PetsGo (anti-spam compliant)
      */
     private function email_wrap($inner_html, $preheader = '') {
-        $logo_url = $this->get_email_logo_url();
+        $logo_id  = intval($this->pg_setting('logo_id', 0));
+        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : $this->get_email_logo_url();
         $year     = date('Y');
-        $site_url = home_url();
+        $site_url = $this->pg_setting('company_website', home_url());
+        $name     = $this->pg_setting('company_name', 'PetsGo');
+        $tagline  = $this->pg_setting('company_tagline', 'Marketplace de mascotas');
+        $address  = $this->pg_setting('company_address', 'Santiago, Chile');
+        $email    = $this->pg_setting('company_email', 'contacto@petsgo.cl');
+        $unsub    = $this->pg_setting('company_email', 'contacto@petsgo.cl');
+        $primary  = $this->pg_setting('color_primary', '#00A8E8');
+        $secondary= $this->pg_setting('color_secondary', '#FFC400');
+        $dark     = $this->pg_setting('color_dark', '#2F3A40');
+        $ig       = $this->pg_setting('social_instagram', 'https://www.instagram.com/petsgo.cl');
+        $fb       = $this->pg_setting('social_facebook', 'https://www.facebook.com/petsgo.cl');
 
         return '<!DOCTYPE html>
 <html lang="es" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
@@ -163,9 +175,9 @@ class PetsGo_Core {
 
   <!-- HEADER -->
   <tr>
-    <td style="background:linear-gradient(135deg,#00A8E8 0%,#0090c7 100%);padding:28px 32px;text-align:center;border-radius:12px 12px 0 0;">
-      <img src="' . esc_url($logo_url) . '" alt="PetsGo" width="160" style="display:block;margin:0 auto;max-width:160px;height:auto;">
-      <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:10px 0 0;letter-spacing:0.5px;">Marketplace de mascotas</p>
+    <td style="background:linear-gradient(135deg,' . esc_attr($primary) . ' 0%,#0090c7 100%);padding:28px 32px;text-align:center;border-radius:12px 12px 0 0;">
+      <img src="' . esc_url($logo_url) . '" alt="' . esc_attr($name) . '" width="160" style="display:block;margin:0 auto;max-width:160px;height:auto;">
+      <p style="color:rgba(255,255,255,0.85);font-size:12px;margin:10px 0 0;letter-spacing:0.5px;">' . esc_html($tagline) . '</p>
     </td>
   </tr>
 
@@ -178,25 +190,25 @@ class PetsGo_Core {
 
   <!-- FOOTER -->
   <tr>
-    <td style="background-color:#2F3A40;padding:24px 32px;border-radius:0 0 12px 12px;text-align:center;">
-      <p style="color:#ffffff;font-size:13px;margin:0 0 6px;font-weight:600;">PetsGo</p>
+    <td style="background-color:' . esc_attr($dark) . ';padding:24px 32px;border-radius:0 0 12px 12px;text-align:center;">
+      <p style="color:#ffffff;font-size:13px;margin:0 0 6px;font-weight:600;">' . esc_html($name) . '</p>
       <p style="color:rgba(255,255,255,0.6);font-size:11px;margin:0 0 12px;line-height:1.5;">
-        Marketplace de mascotas &middot; Santiago, Chile<br>
-        <a href="mailto:contacto@petsgo.cl" style="color:#FFC400;text-decoration:none;">contacto@petsgo.cl</a>
+        ' . esc_html($tagline) . ' &middot; ' . esc_html($address) . '<br>
+        <a href="mailto:' . esc_attr($email) . '" style="color:' . esc_attr($secondary) . ';text-decoration:none;">' . esc_html($email) . '</a>
       </p>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
         <tr>
-          <td style="padding:0 6px;"><a href="https://www.instagram.com/petsgo.cl" style="color:#FFC400;font-size:12px;text-decoration:none;">Instagram</a></td>
+          <td style="padding:0 6px;"><a href="' . esc_url($ig) . '" style="color:' . esc_attr($secondary) . ';font-size:12px;text-decoration:none;">Instagram</a></td>
           <td style="color:rgba(255,255,255,0.3);font-size:12px;">&middot;</td>
-          <td style="padding:0 6px;"><a href="https://www.facebook.com/petsgo.cl" style="color:#FFC400;font-size:12px;text-decoration:none;">Facebook</a></td>
+          <td style="padding:0 6px;"><a href="' . esc_url($fb) . '" style="color:' . esc_attr($secondary) . ';font-size:12px;text-decoration:none;">Facebook</a></td>
           <td style="color:rgba(255,255,255,0.3);font-size:12px;">&middot;</td>
-          <td style="padding:0 6px;"><a href="' . esc_url($site_url) . '" style="color:#FFC400;font-size:12px;text-decoration:none;">petsgo.cl</a></td>
+          <td style="padding:0 6px;"><a href="' . esc_url($site_url) . '" style="color:' . esc_attr($secondary) . ';font-size:12px;text-decoration:none;">' . esc_html(str_replace(['https://','http://'],'',$site_url)) . '</a></td>
         </tr>
       </table>
       <p style="color:rgba(255,255,255,0.35);font-size:10px;margin:14px 0 0;line-height:1.5;">
-        &copy; ' . $year . ' PetsGo SpA. Todos los derechos reservados.<br>
-        Recibes este correo porque eres tienda registrada en PetsGo.<br>
-        <a href="mailto:contacto@petsgo.cl?subject=Desuscribir%20alertas%20stock" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Desuscribirse de alertas de inventario</a>
+        &copy; ' . $year . ' ' . esc_html($name) . '. Todos los derechos reservados.<br>
+        Recibes este correo porque eres usuario registrado en ' . esc_html($name) . '.<br>
+        <a href="mailto:' . esc_attr($unsub) . '?subject=Desuscribir" style="color:rgba(255,255,255,0.5);text-decoration:underline;">Desuscribirse de notificaciones</a>
       </p>
     </td>
   </tr>
@@ -293,6 +305,40 @@ class PetsGo_Core {
     }
 
     // ============================================================
+    // SETTINGS HELPER — lee opciones de petsgo_settings
+    // ============================================================
+    public function pg_setting($key, $default = '') {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = get_option('petsgo_settings', []);
+        }
+        return isset($cache[$key]) && $cache[$key] !== '' ? $cache[$key] : $default;
+    }
+
+    private function pg_defaults() {
+        return [
+            'company_name'      => 'PetsGo',
+            'company_tagline'   => 'Marketplace de mascotas',
+            'company_rut'       => '77.123.456-7',
+            'company_address'   => 'Santiago, Chile',
+            'company_phone'     => '+56 9 1234 5678',
+            'company_email'     => 'contacto@petsgo.cl',
+            'company_bcc_email' => 'contacto@petsgo.cl',
+            'company_from_email'=> 'notificaciones@petsgo.cl',
+            'company_website'   => 'https://petsgo.cl',
+            'social_instagram'  => 'https://www.instagram.com/petsgo.cl',
+            'social_facebook'   => 'https://www.facebook.com/petsgo.cl',
+            'social_whatsapp'   => '+56912345678',
+            'color_primary'     => '#00A8E8',
+            'color_secondary'   => '#FFC400',
+            'color_dark'        => '#2F3A40',
+            'color_success'     => '#28a745',
+            'color_danger'      => '#dc3545',
+            'logo_id'           => '',
+        ];
+    }
+
+    // ============================================================
     // HELPERS: Rol y Vendor del usuario actual
     // ============================================================
     private function is_admin() {
@@ -356,6 +402,9 @@ class PetsGo_Core {
 
         // Auditoría — solo admin
         add_submenu_page('petsgo-dashboard', 'Auditoría', 'Auditoría', $cap_admin, 'petsgo-audit', [$this, 'page_audit_log']);
+
+        // Configuración — solo admin
+        add_submenu_page('petsgo-dashboard', 'Configuración', '⚙️ Configuración', $cap_admin, 'petsgo-settings', [$this, 'page_settings']);
     }
 
     // ============================================================
@@ -3148,14 +3197,14 @@ Dashboard con analíticas"></textarea>
 
         $body = $this->email_wrap($inner, $pretext);
 
-        $bcc = ['contacto@petsgo.cl'];
+        $bcc = [$this->pg_setting('company_bcc_email','contacto@petsgo.cl')];
         if (!empty($order->vendor_email)) $bcc[] = $order->vendor_email;
 
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
-            'From: PetsGo <notificaciones@petsgo.cl>',
-            'Reply-To: PetsGo Soporte <contacto@petsgo.cl>',
-            'List-Unsubscribe: <mailto:contacto@petsgo.cl?subject=Desuscribir>',
+            'From: ' . $this->pg_setting('company_name','PetsGo') . ' <' . $this->pg_setting('company_from_email','notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name','PetsGo') . ' Soporte <' . $this->pg_setting('company_email','contacto@petsgo.cl') . '>',
+            'List-Unsubscribe: <mailto:' . $this->pg_setting('company_email','contacto@petsgo.cl') . '?subject=Desuscribir>',
             'X-Mailer: PetsGo/1.0',
         ];
         foreach ($bcc as $b) { $headers[] = 'Bcc: ' . $b; }
@@ -3164,6 +3213,245 @@ Dashboard con analíticas"></textarea>
         if (file_exists($pdf_path)) $attachments[] = $pdf_path;
 
         wp_mail($to, $subject, $body, $headers, $attachments);
+    }
+
+    // ============================================================
+    // CONFIGURACIÓN PETSGO — Admin settings page
+    // ============================================================
+    public function page_settings() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $s = get_option('petsgo_settings', []);
+        $d = $this->pg_defaults();
+        $v = function($key) use ($s, $d) { return esc_attr($s[$key] ?? $d[$key] ?? ''); };
+        $logo_id  = intval($s['logo_id'] ?? 0);
+        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>⚙️ Configuración PetsGo</h1>
+            <p class="petsgo-info-bar">Desde aquí puedes configurar toda la información corporativa de PetsGo. Estos datos se usan en correos, boletas, panel y frontend.</p>
+
+            <form id="pg-settings-form" novalidate>
+            <div class="petsgo-form-grid" style="grid-template-columns:1fr 1fr;max-width:1100px;">
+
+                <!-- ===== DATOS EMPRESA ===== -->
+                <div class="petsgo-form-section">
+                    <h3>🏢 Datos de la Empresa</h3>
+                    <div class="petsgo-field"><label>Nombre empresa</label><input type="text" id="ps-name" value="<?php echo $v('company_name'); ?>" maxlength="100"></div>
+                    <div class="petsgo-field"><label>Slogan / Tagline</label><input type="text" id="ps-tagline" value="<?php echo $v('company_tagline'); ?>" maxlength="150"></div>
+                    <div class="petsgo-field"><label>RUT empresa</label><input type="text" id="ps-rut" value="<?php echo $v('company_rut'); ?>" maxlength="20" placeholder="77.123.456-7"></div>
+                    <div class="petsgo-field"><label>Dirección</label><input type="text" id="ps-address" value="<?php echo $v('company_address'); ?>" maxlength="255"></div>
+                    <div class="petsgo-field"><label>Teléfono</label><input type="text" id="ps-phone" value="<?php echo $v('company_phone'); ?>" maxlength="30" placeholder="+56 9 1234 5678"></div>
+                    <div class="petsgo-field"><label>Sitio web</label><input type="url" id="ps-website" value="<?php echo $v('company_website'); ?>" placeholder="https://petsgo.cl"></div>
+
+                    <h3 style="margin-top:24px;">📧 Correo Electrónico</h3>
+                    <div class="petsgo-field">
+                        <label>Email de contacto</label>
+                        <input type="email" id="ps-email" value="<?php echo $v('company_email'); ?>">
+                        <div class="field-hint">Se muestra en correos y boletas como contacto principal.</div>
+                    </div>
+                    <div class="petsgo-field">
+                        <label>Email BCC (copia oculta)</label>
+                        <input type="email" id="ps-bcc" value="<?php echo $v('company_bcc_email'); ?>">
+                        <div class="field-hint">Todos los correos enviados por PetsGo incluirán este email en copia oculta.</div>
+                    </div>
+                    <div class="petsgo-field">
+                        <label>Email remitente (From)</label>
+                        <input type="email" id="ps-from" value="<?php echo $v('company_from_email'); ?>">
+                        <div class="field-hint">Dirección que aparece como remitente en los correos enviados.</div>
+                    </div>
+                </div>
+
+                <!-- ===== IDENTIDAD VISUAL ===== -->
+                <div class="petsgo-form-section">
+                    <h3>🎨 Identidad Visual</h3>
+
+                    <div class="petsgo-field">
+                        <label>Logo principal</label>
+                        <div style="display:flex;gap:12px;align-items:center;">
+                            <div id="ps-logo-preview" style="width:160px;height:80px;border:2px dashed #ccc;border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#fafafa;cursor:pointer;" onclick="pgSelectLogo()">
+                                <?php if ($logo_url): ?>
+                                    <img src="<?php echo esc_url($logo_url); ?>" style="max-width:100%;max-height:100%;object-fit:contain;">
+                                <?php else: ?>
+                                    <span style="color:#aaa;font-size:12px;">Click para subir</span>
+                                <?php endif; ?>
+                            </div>
+                            <input type="hidden" id="ps-logo-id" value="<?php echo $logo_id; ?>">
+                            <div>
+                                <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgSelectLogo()">📁 Seleccionar</button>
+                                <?php if ($logo_id): ?>
+                                <button type="button" class="petsgo-btn petsgo-btn-danger petsgo-btn-sm" onclick="pgRemoveLogo()" style="margin-top:4px;">✕ Quitar</button>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="field-hint">Se usa en cabecera de correos y boletas. Recomendado: PNG transparente, 320×160px.</div>
+                    </div>
+
+                    <h3 style="margin-top:24px;">🎨 Paleta de Colores</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="petsgo-field">
+                            <label>Primario</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="color" id="ps-color-primary" value="<?php echo $v('color_primary'); ?>" style="width:44px;height:36px;padding:2px;border:1px solid #ccc;border-radius:6px;cursor:pointer;">
+                                <input type="text" id="ps-color-primary-hex" value="<?php echo $v('color_primary'); ?>" maxlength="7" style="width:90px;font-family:monospace;" oninput="document.getElementById('ps-color-primary').value=this.value">
+                            </div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Secundario</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="color" id="ps-color-secondary" value="<?php echo $v('color_secondary'); ?>" style="width:44px;height:36px;padding:2px;border:1px solid #ccc;border-radius:6px;cursor:pointer;">
+                                <input type="text" id="ps-color-secondary-hex" value="<?php echo $v('color_secondary'); ?>" maxlength="7" style="width:90px;font-family:monospace;" oninput="document.getElementById('ps-color-secondary').value=this.value">
+                            </div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Oscuro</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="color" id="ps-color-dark" value="<?php echo $v('color_dark'); ?>" style="width:44px;height:36px;padding:2px;border:1px solid #ccc;border-radius:6px;cursor:pointer;">
+                                <input type="text" id="ps-color-dark-hex" value="<?php echo $v('color_dark'); ?>" maxlength="7" style="width:90px;font-family:monospace;" oninput="document.getElementById('ps-color-dark').value=this.value">
+                            </div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Éxito</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="color" id="ps-color-success" value="<?php echo $v('color_success'); ?>" style="width:44px;height:36px;padding:2px;border:1px solid #ccc;border-radius:6px;cursor:pointer;">
+                                <input type="text" id="ps-color-success-hex" value="<?php echo $v('color_success'); ?>" maxlength="7" style="width:90px;font-family:monospace;" oninput="document.getElementById('ps-color-success').value=this.value">
+                            </div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Peligro</label>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="color" id="ps-color-danger" value="<?php echo $v('color_danger'); ?>" style="width:44px;height:36px;padding:2px;border:1px solid #ccc;border-radius:6px;cursor:pointer;">
+                                <input type="text" id="ps-color-danger-hex" value="<?php echo $v('color_danger'); ?>" maxlength="7" style="width:90px;font-family:monospace;" oninput="document.getElementById('ps-color-danger').value=this.value">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Preview -->
+                    <div style="margin-top:20px;padding:16px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef;">
+                        <p style="font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px;margin:0 0 10px;">Vista previa paleta</p>
+                        <div id="ps-palette-preview" style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <div style="width:60px;height:40px;border-radius:6px;background:<?php echo $v('color_primary'); ?>;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">Primary</div>
+                            <div style="width:60px;height:40px;border-radius:6px;background:<?php echo $v('color_secondary'); ?>;display:flex;align-items:center;justify-content:center;color:#2F3A40;font-size:10px;font-weight:700;">Second</div>
+                            <div style="width:60px;height:40px;border-radius:6px;background:<?php echo $v('color_dark'); ?>;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">Dark</div>
+                            <div style="width:60px;height:40px;border-radius:6px;background:<?php echo $v('color_success'); ?>;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">Success</div>
+                            <div style="width:60px;height:40px;border-radius:6px;background:<?php echo $v('color_danger'); ?>;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;">Danger</div>
+                        </div>
+                    </div>
+
+                    <h3 style="margin-top:24px;">🌐 Redes Sociales</h3>
+                    <div class="petsgo-field"><label>Instagram URL</label><input type="url" id="ps-instagram" value="<?php echo $v('social_instagram'); ?>" placeholder="https://www.instagram.com/petsgo.cl"></div>
+                    <div class="petsgo-field"><label>Facebook URL</label><input type="url" id="ps-facebook" value="<?php echo $v('social_facebook'); ?>" placeholder="https://www.facebook.com/petsgo.cl"></div>
+                    <div class="petsgo-field"><label>WhatsApp</label><input type="text" id="ps-whatsapp" value="<?php echo $v('social_whatsapp'); ?>" placeholder="+56912345678"></div>
+                </div>
+            </div>
+
+            <!-- Save button -->
+            <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
+                <button type="submit" class="petsgo-btn petsgo-btn-primary" style="padding:10px 32px;font-size:15px;">💾 Guardar Configuración</button>
+                <span class="petsgo-loader" id="ps-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+                <div id="ps-msg" style="display:none;"></div>
+            </div>
+            </form>
+        </div>
+
+        <script>
+        jQuery(function($){
+            // Color picker sync
+            ['primary','secondary','dark','success','danger'].forEach(function(c){
+                $('#ps-color-'+c).on('input',function(){
+                    $('#ps-color-'+c+'-hex').val($(this).val());
+                    updatePalette();
+                });
+                $('#ps-color-'+c+'-hex').on('input',function(){
+                    var v=$(this).val();
+                    if(/^#[0-9A-Fa-f]{6}$/.test(v)) $('#ps-color-'+c).val(v);
+                    updatePalette();
+                });
+            });
+            function updatePalette(){
+                var divs=$('#ps-palette-preview > div');
+                divs.eq(0).css('background',$('#ps-color-primary').val());
+                divs.eq(1).css('background',$('#ps-color-secondary').val());
+                divs.eq(2).css('background',$('#ps-color-dark').val());
+                divs.eq(3).css('background',$('#ps-color-success').val());
+                divs.eq(4).css('background',$('#ps-color-danger').val());
+            }
+
+            // Logo selector
+            window.pgSelectLogo = function(){
+                var frame = wp.media({title:'Seleccionar Logo PetsGo',library:{type:'image'},multiple:false});
+                frame.on('select',function(){
+                    var att=frame.state().get('selection').first().toJSON();
+                    $('#ps-logo-id').val(att.id);
+                    $('#ps-logo-preview').html('<img src="'+att.url+'" style="max-width:100%;max-height:100%;object-fit:contain;">');
+                });
+                frame.open();
+            };
+            window.pgRemoveLogo = function(){
+                $('#ps-logo-id').val('');
+                $('#ps-logo-preview').html('<span style="color:#aaa;font-size:12px;">Click para subir</span>');
+            };
+
+            // Save
+            $('#pg-settings-form').on('submit',function(e){
+                e.preventDefault();
+                $('#ps-loader').addClass('active');$('#ps-msg').hide();
+                PG.post('petsgo_save_settings',{
+                    company_name:$('#ps-name').val(),
+                    company_tagline:$('#ps-tagline').val(),
+                    company_rut:$('#ps-rut').val(),
+                    company_address:$('#ps-address').val(),
+                    company_phone:$('#ps-phone').val(),
+                    company_email:$('#ps-email').val(),
+                    company_bcc_email:$('#ps-bcc').val(),
+                    company_from_email:$('#ps-from').val(),
+                    company_website:$('#ps-website').val(),
+                    social_instagram:$('#ps-instagram').val(),
+                    social_facebook:$('#ps-facebook').val(),
+                    social_whatsapp:$('#ps-whatsapp').val(),
+                    color_primary:$('#ps-color-primary').val(),
+                    color_secondary:$('#ps-color-secondary').val(),
+                    color_dark:$('#ps-color-dark').val(),
+                    color_success:$('#ps-color-success').val(),
+                    color_danger:$('#ps-color-danger').val(),
+                    logo_id:$('#ps-logo-id').val()
+                },function(r){
+                    $('#ps-loader').removeClass('active');
+                    var c=r.success?'#d4edda':'#f8d7da',t=r.success?'#155724':'#721c24';
+                    $('#ps-msg').html(r.data||'Error').css({display:'inline-block',background:c,color:t,padding:'8px 16px',borderRadius:'6px',fontSize:'13px',fontWeight:'600'});
+                    if(r.success) setTimeout(function(){$('#ps-msg').fadeOut();},3000);
+                });
+            });
+        });
+        </script>
+        <?php
+    }
+
+    public function petsgo_save_settings() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin puede configurar.');
+
+        $allowed = array_keys($this->pg_defaults());
+        $settings = get_option('petsgo_settings', []);
+
+        foreach ($allowed as $key) {
+            if (isset($_POST[$key])) {
+                if (strpos($key, 'email') !== false) {
+                    $settings[$key] = sanitize_email($_POST[$key]);
+                } elseif (strpos($key, 'color') !== false) {
+                    $settings[$key] = sanitize_hex_color($_POST[$key]) ?: '';
+                } elseif ($key === 'logo_id') {
+                    $settings[$key] = intval($_POST[$key]);
+                } elseif (strpos($key, 'social_') === 0 || strpos($key, 'website') !== false) {
+                    $settings[$key] = esc_url_raw($_POST[$key]);
+                } else {
+                    $settings[$key] = sanitize_text_field($_POST[$key]);
+                }
+            }
+        }
+
+        update_option('petsgo_settings', $settings);
+        $this->audit('settings_update', 'settings', 0, 'Configuración actualizada');
+        wp_send_json_success('✅ Configuración guardada correctamente.');
     }
 
     // ============================================================
