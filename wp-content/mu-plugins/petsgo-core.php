@@ -287,7 +287,8 @@ class PetsGo_Core {
     public function print_admin_js() {
         ?>
         <script>
-        var PG = {
+        (function($){
+        window.PG = {
             nonce: '<?php echo wp_create_nonce("petsgo_ajax"); ?>',
             adminUrl: '<?php echo admin_url("admin.php"); ?>',
             ajaxUrl: ajaxurl,
@@ -388,7 +389,6 @@ class PetsGo_Core {
             return {setData:function(d){data=d;page=1;if(cfg.onTotal)cfg.onTotal(d.length);render();},getData:function(){return data;}};
         };
         /* ── Multi-select Checklist Widget ── */
-        (function($){
             $.fn.pgChecklist=function(opts){
                 return this.each(function(){
                     var $sel=$(this).hide(),ph=opts&&opts.placeholder||'Todos';
@@ -499,9 +499,9 @@ class PetsGo_Core {
         .pg-filter-bar{background:#fff;border-radius:14px;padding:16px 20px;box-shadow:0 2px 12px rgba(0,0,0,.04);border:1px solid #f0f0f0;margin-bottom:24px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
         .pg-filter-bar .fg{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 180px}
         .pg-filter-bar .fg label{font-size:11px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.5px}
-        .pg-filter-bar .fg select,.pg-filter-bar .fg input{padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:Poppins,sans-serif;background:#fff;color:#333;width:100%;box-sizing:border-box}
-        .pg-filter-bar .fg select[multiple]{min-height:68px;padding:4px}
-        .pg-filter-bar .fg select[multiple] option{padding:4px 8px;border-radius:4px;margin:1px 0}
+        .pg-filter-bar .fg > select,.pg-filter-bar .fg > input{padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:Poppins,sans-serif;background:#fff;color:#333;width:100%;box-sizing:border-box}
+        .pg-filter-bar .fg > select[multiple]{min-height:68px;padding:4px}
+        .pg-filter-bar .fg > select[multiple] option{padding:4px 8px;border-radius:4px;margin:1px 0}
         .pg-filter-bar .filter-actions{display:flex;gap:8px;align-items:flex-end;flex:0 0 auto}
         .pg-filter-bar .fbtn{padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer;white-space:nowrap}
         .pg-filter-bar .fbtn.apply{background:#00A8E8;color:#fff}.pg-filter-bar .fbtn.apply:hover{background:#0090c5}
