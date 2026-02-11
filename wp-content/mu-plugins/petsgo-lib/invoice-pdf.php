@@ -62,10 +62,12 @@ class PetsGo_Invoice_PDF extends FPDF {
     }
 
     private function utf8($str) {
+        // Strip emojis/multibyte symbols that FPDF (ISO-8859-1) cannot render
+        $str = preg_replace('/[\x{1F000}-\x{1FFFF}|\x{2600}-\x{27BF}|\x{FE00}-\x{FEFF}]/u', '', $str);
         if (function_exists('mb_convert_encoding')) {
             return mb_convert_encoding($str, 'ISO-8859-1', 'UTF-8');
         }
-        return iconv('UTF-8', 'ISO-8859-1//TRANSLIT', $str);
+        return iconv('UTF-8', 'ISO-8859-1//TRANSLIT//IGNORE', $str);
     }
 
     public function build() {
@@ -100,15 +102,15 @@ class PetsGo_Invoice_PDF extends FPDF {
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->Rect(0, 0, 210, 38, 'F');
 
-        // Logo PetsGo (izquierda)
+        // Logo PetsGo (izquierda) — usar logo blanco sobre fondo azul
         $petsgo_logo = $this->findLogo('petsgo');
         if ($petsgo_logo) {
-            $this->Image($petsgo_logo, 15, 5, 45, 0);
+            $this->Image($petsgo_logo, 12, 4, 55, 0);
         } else {
             $this->SetXY(15, 10);
-            $this->SetFont('Arial', 'B', 20);
+            $this->SetFont('Arial', 'B', 22);
             $this->SetTextColor(255, 255, 255);
-            $this->Cell(60, 10, $this->utf8('🐾 PetsGo'), 0, 0, 'L');
+            $this->Cell(60, 10, 'PetsGo', 0, 0, 'L');
         }
 
         // Logo Tienda (derecha)
@@ -130,19 +132,24 @@ class PetsGo_Invoice_PDF extends FPDF {
     }
 
     private function findLogo($type) {
-        // Buscar logo PetsGo en los assets del proyecto
+        // Buscar logo PetsGo blanco (para fondo azul del header)
         $paths = [
+            ABSPATH . 'wp-content/uploads/petsgo-logo-blanco.png',
             ABSPATH . 'wp-content/uploads/petsgo-logo.png',
-            dirname(ABSPATH) . '/Petsgo_Diseño/PNG/Color/logo-petsgo.png',
         ];
         foreach ($paths as $p) {
             if (file_exists($p)) return $p;
         }
-        // Buscar en el directorio de diseño
-        $design_dir = ABSPATH . '../Petsgo_Diseño/PNG/Color/';
-        if (is_dir($design_dir)) {
-            $files = glob($design_dir . '*.png');
-            if (!empty($files)) return $files[0];
+        // Buscar en el directorio de diseño (blanco primero, luego color)
+        $design_dirs = [
+            ABSPATH . 'Petsgo_Diseño/PNG/Blanco/',
+            ABSPATH . 'Petsgo_Diseño/PNG/Color/',
+        ];
+        foreach ($design_dirs as $dir) {
+            if (is_dir($dir)) {
+                $files = glob($dir . '*.png');
+                if (!empty($files)) return $files[0];
+            }
         }
         return null;
     }
