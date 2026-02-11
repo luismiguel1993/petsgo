@@ -149,12 +149,12 @@ const RegisterPage = () => {
             )}
 
             {/* Nombre y Apellido */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Nombre *</label>
                 <input type="text" value={form.first_name} onChange={handleChange('first_name')} placeholder="Juan" required style={inputStyle} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Apellido *</label>
                 <input type="text" value={form.last_name} onChange={handleChange('last_name')} placeholder="Pérez" required style={inputStyle} />
               </div>
@@ -167,8 +167,8 @@ const RegisterPage = () => {
             </div>
 
             {/* Documento de identidad */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ width: '130px' }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '0 1 130px', minWidth: '110px' }}>
                 <label style={labelStyle}>Tipo Doc.</label>
                 <select value={form.id_type} onChange={handleChange('id_type')} style={{ ...inputStyle, cursor: 'pointer' }}>
                   <option value="rut">RUT</option>
@@ -193,8 +193,8 @@ const RegisterPage = () => {
             </div>
 
             {/* Teléfono y Fecha Nacimiento */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Teléfono *</label>
                 <input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="+569XXXXXXXX" required style={{
                   ...inputStyle,
@@ -202,7 +202,7 @@ const RegisterPage = () => {
                 }} />
                 <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>Formato: +569XXXXXXXX</p>
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Fecha Nacimiento</label>
                 <input type="date" value={form.birth_date} onChange={handleChange('birth_date')} style={inputStyle} max={new Date().toISOString().split('T')[0]} />
               </div>

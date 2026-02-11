@@ -30,14 +30,13 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Only redirect if we think the user should be logged in
-      // (token exists but server rejected it = session expired)
       const hadToken = localStorage.getItem('petsgo_token');
       if (hadToken) {
         localStorage.removeItem('petsgo_token');
         localStorage.removeItem('petsgo_nonce');
         localStorage.removeItem('petsgo_user');
-        // Don't hard redirect — let the component handle it
+        // Notify React state to clear user immediately
+        window.dispatchEvent(new Event('petsgo:session_expired'));
       }
     }
     return Promise.reject(error);

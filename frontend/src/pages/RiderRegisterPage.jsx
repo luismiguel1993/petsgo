@@ -136,12 +136,12 @@ const RiderRegisterPage = () => {
               <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', padding: '12px 16px', borderRadius: '12px', fontSize: '13px' }}>✅ {success}</div>
             )}
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Nombre *</label>
                 <input type="text" value={form.first_name} onChange={handleChange('first_name')} placeholder="Juan" required style={inputStyle} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Apellido *</label>
                 <input type="text" value={form.last_name} onChange={handleChange('last_name')} placeholder="Pérez" required style={inputStyle} />
               </div>
@@ -152,8 +152,8 @@ const RiderRegisterPage = () => {
               <input type="email" value={form.email} onChange={handleChange('email')} placeholder="tu@email.com" required style={inputStyle} />
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ width: '130px' }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '0 1 130px', minWidth: '110px' }}>
                 <label style={labelStyle}>Tipo Doc.</label>
                 <select value={form.id_type} onChange={handleChange('id_type')} style={{ ...inputStyle, cursor: 'pointer' }}>
                   <option value="rut">RUT</option>
@@ -170,13 +170,13 @@ const RiderRegisterPage = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Teléfono *</label>
                 <input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="+569XXXXXXXX" required
                   style={{ ...inputStyle, borderColor: form.phone ? (/^\+569\d{8}$/.test(form.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb' }} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Fecha Nacimiento</label>
                 <input type="date" value={form.birth_date} onChange={handleChange('birth_date')} style={inputStyle} max={new Date().toISOString().split('T')[0]} />
               </div>

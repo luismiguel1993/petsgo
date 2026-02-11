@@ -20,14 +20,24 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
       return;
     }
-    if (stored) {
+    if (stored && token) {
       try {
         setUser(JSON.parse(stored));
       } catch {
         localStorage.removeItem('petsgo_user');
       }
+    } else {
+      // No token = no session, even if user data exists
+      localStorage.removeItem('petsgo_user');
     }
     setLoading(false);
+  }, []);
+
+  // Listen for 401 session expiry from API interceptor
+  useEffect(() => {
+    const handler = () => { setUser(null); setLoggedOut(false); };
+    window.addEventListener('petsgo:session_expired', handler);
+    return () => window.removeEventListener('petsgo:session_expired', handler);
   }, []);
 
   const login = async (username, password) => {

@@ -204,7 +204,7 @@ const UserProfilePage = () => {
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
           {/* Profile Card */}
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -228,8 +228,8 @@ const UserProfilePage = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Nombre</label>
                   {editing ? (
                     <input value={editForm.first_name} onChange={e => setEditForm(p => ({ ...p, first_name: e.target.value }))} style={inputStyle} />
@@ -237,7 +237,7 @@ const UserProfilePage = () => {
                     <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.first_name || '—'}</p>
                   )}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Apellido</label>
                   {editing ? (
                     <input value={editForm.last_name} onChange={e => setEditForm(p => ({ ...p, last_name: e.target.value }))} style={inputStyle} />
@@ -252,8 +252,8 @@ const UserProfilePage = () => {
                 <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.email || user?.email}</p>
               </div>
 
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Teléfono</label>
                   {editing ? (
                     <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} style={inputStyle} />
@@ -261,7 +261,7 @@ const UserProfilePage = () => {
                     <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.phone || '—'}</p>
                   )}
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Documento</label>
                   <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>
                     {profile?.id_type ? `${profile.id_type.toUpperCase()}: ${profile.id_number}` : '—'}
@@ -395,19 +395,29 @@ const UserProfilePage = () => {
           alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
         }} onClick={() => setPetModal(null)}>
           <div style={{
-            background: '#fff', borderRadius: '20px', padding: '28px', width: '100%', maxWidth: '440px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+            background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '440px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40' }}>
+            {/* Modal header - always visible */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '20px 24px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0,
+            }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40', margin: 0 }}>
                 {petModal.id ? '✏️ Editar Mascota' : '➕ Nueva Mascota'}
               </h3>
-              <button onClick={() => setPetModal(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}>
-                <X size={20} />
+              <button onClick={() => setPetModal(null)} style={{
+                background: '#f3f4f6', border: 'none', color: '#6b7280', cursor: 'pointer',
+                borderRadius: '50%', width: '32px', height: '32px', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Modal body - scrollable */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
               {/* Photo upload */}
               <div>
@@ -496,17 +506,21 @@ const UserProfilePage = () => {
                   placeholder="Alergias, condiciones especiales..." rows={2}
                   style={{ ...inputStyle, resize: 'vertical', fontFamily: 'inherit' }} />
               </div>
+            </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
-                <button onClick={() => setPetModal(null)}
-                  style={{ flex: 1, padding: '12px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: '12px', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
-                  Cancelar
-                </button>
-                <button onClick={savePet} disabled={saving || !petModal.name?.trim()}
-                  style={{ flex: 1, ...btnPrimary, padding: '12px', fontSize: '14px', opacity: !petModal.name?.trim() ? 0.5 : 1 }}>
-                  {saving ? 'Guardando...' : (petModal.id ? 'Guardar' : 'Agregar')}
-                </button>
-              </div>
+            {/* Modal footer - always visible */}
+            <div style={{
+              display: 'flex', gap: '10px', padding: '16px 24px 20px',
+              borderTop: '1px solid #f0f0f0', flexShrink: 0,
+            }}>
+              <button onClick={() => setPetModal(null)}
+                style={{ flex: 1, padding: '12px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: '12px', fontWeight: 700, fontSize: '14px', cursor: 'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={savePet} disabled={saving || !petModal.name?.trim()}
+                style={{ flex: 1, ...btnPrimary, padding: '12px', fontSize: '14px', opacity: !petModal.name?.trim() ? 0.5 : 1 }}>
+                {saving ? 'Guardando...' : (petModal.id ? 'Guardar' : 'Agregar')}
+              </button>
             </div>
           </div>
         </div>
