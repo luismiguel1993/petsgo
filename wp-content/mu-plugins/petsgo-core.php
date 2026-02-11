@@ -62,6 +62,7 @@ class PetsGo_Core {
             'petsgo_search_leads',
             'petsgo_update_lead',
             'petsgo_download_demo_invoice',
+            'petsgo_download_demo_subscription',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -3296,6 +3297,59 @@ Dashboard con analíticas"></textarea>
         exit;
     }
 
+    /**
+     * Generate and download a demo subscription/plan PDF with sample data.
+     */
+    public function petsgo_download_demo_subscription() {
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'petsgo_ajax')) {
+            wp_die('Nonce inválido');
+        }
+        if (!$this->is_admin()) wp_die('Sin permisos');
+
+        require_once __DIR__ . '/petsgo-lib/subscription-pdf.php';
+
+        $vendor_data = [
+            'store_name'   => 'Patitas Chile (Demo)',
+            'rut'          => '76.987.654-3',
+            'email'        => 'contacto@patitaschile.cl',
+            'contact_name' => 'Andrea Muñoz',
+            'phone'        => '+56 9 5678 9012',
+            'address'      => 'Los Leones 456, Providencia, Santiago',
+        ];
+
+        $plan_data = [
+            'plan_name'      => 'Pro',
+            'monthly_price'  => 59990,
+            'billing_period' => 'Mensual',
+            'features'       => [
+                'Hasta 200 productos publicados',
+                'Panel de analiticas avanzado',
+                'Soporte prioritario 24/7',
+                'Integracion con redes sociales',
+                'Reportes mensuales de ventas',
+                'Badge de Tienda Verificada',
+            ],
+        ];
+
+        $invoice_number = 'SUB-PC-' . date('Ymd') . '-DEMO';
+        $date = date('d/m/Y H:i');
+
+        $tmp = tempnam(sys_get_temp_dir(), 'petsgo_demo_sub_');
+        if ($tmp && substr($tmp, -4) !== '.pdf') $tmp .= '.pdf';
+
+        $pdf_gen = new PetsGo_Subscription_PDF();
+        $pdf_gen->generate($vendor_data, $plan_data, $invoice_number, $date, $tmp);
+
+        if (!file_exists($tmp) || filesize($tmp) < 500) wp_die('No se pudo generar el PDF de suscripción demo');
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $invoice_number . '.pdf"');
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
+    }
+
     // ============================================================
     // AJAX HANDLERS — Audit Log
     // ============================================================
@@ -4248,12 +4302,20 @@ Dashboard con analíticas"></textarea>
                 <iframe id="ep-frame" style="width:100%;height:750px;border:none;background:#f4f6f8;"></iframe>
             </div>
 
-            <!-- Download demo PDF button (only for invoice tab) -->
+            <!-- Download demo PDF button (invoice tab) -->
             <div id="ep-pdf-download" style="margin-top:16px;">
                 <a href="<?php echo admin_url('admin-ajax.php?action=petsgo_download_demo_invoice&_wpnonce=' . wp_create_nonce('petsgo_ajax')); ?>" class="petsgo-btn petsgo-btn-success" target="_blank" style="font-size:15px;padding:10px 24px;">
                     📥 Descargar PDF de ejemplo (Boleta Demo)
                 </a>
                 <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de boleta con datos ficticios para verificar el diseño.</span>
+            </div>
+
+            <!-- Download demo subscription PDF button (vendor_welcome tab) -->
+            <div id="ep-pdf-subscription" style="margin-top:16px;display:none;">
+                <a href="<?php echo admin_url('admin-ajax.php?action=petsgo_download_demo_subscription&_wpnonce=' . wp_create_nonce('petsgo_ajax')); ?>" class="petsgo-btn petsgo-btn-success" target="_blank" style="font-size:15px;padding:10px 24px;background:#00A8E8;border-color:#00A8E8;">
+                    📥 Descargar PDF de ejemplo (Boleta Suscripcion)
+                </a>
+                <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de suscripcion de plan con datos ficticios para verificar el diseño.</span>
             </div>
         </div>
         <script>
@@ -4271,8 +4333,9 @@ Dashboard con analíticas"></textarea>
                 $('#ep-loader').addClass('active');
                 var m=meta[type]||meta.invoice;
                 $('#ep-from').text(m.from);$('#ep-to').text(m.to);$('#ep-bcc').text(m.bcc);$('#ep-subject').text(m.subject);$('#ep-title').text(m.title);$('#ep-info').show();
-                // Show/hide PDF download button (only for invoice tab)
+                // Show/hide PDF download buttons based on tab type
                 if(type==='invoice'){$('#ep-pdf-download').show();}else{$('#ep-pdf-download').hide();}
+                if(type==='vendor_welcome'){$('#ep-pdf-subscription').show();}else{$('#ep-pdf-subscription').hide();}
                 PG.post('petsgo_preview_email',{email_type:type},function(r){
                     $('#ep-loader').removeClass('active');
                     if(!r.success)return;
