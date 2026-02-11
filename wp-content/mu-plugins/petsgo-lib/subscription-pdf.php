@@ -7,6 +7,7 @@
 if (!defined('ABSPATH')) exit;
 
 require_once __DIR__ . '/fpdf.php';
+require_once __DIR__ . '/qrcode.php';
 
 class PetsGo_Subscription_PDF extends FPDF {
 
@@ -14,6 +15,7 @@ class PetsGo_Subscription_PDF extends FPDF {
     private $plan_data;
     private $invoice_number;
     private $date;
+    private $qr_token;
 
     // Colores PetsGo
     private $primary   = [0, 168, 232];   // #00A8E8
@@ -28,16 +30,19 @@ class PetsGo_Subscription_PDF extends FPDF {
      * Generate subscription/plan invoice PDF.
      *
      * @param array  $vendor_data   ['store_name','rut','address','phone','email','contact_name']
-     * @param array  $plan_data     ['plan_name','monthly_price','features'=>[...], 'billing_period']
+     * @param array  $plan_data     ['plan_name','monthly_price','features'=>[...], 'billing_period',
+     *                               'billing_months'=>12, 'free_months'=>2]
      * @param string $invoice_number  e.g. SUB-PC-20260211-001
      * @param string $date            e.g. 11/02/2026 15:30
+     * @param string $qr_token        UUID token for QR validation
      * @param string $pdf_path        Absolute path to write the PDF
      */
-    public function generate($vendor_data, $plan_data, $invoice_number, $date, $pdf_path) {
+    public function generate($vendor_data, $plan_data, $invoice_number, $date, $qr_token, $pdf_path) {
         $this->vendor_data    = (object) $vendor_data;
         $this->plan_data      = (object) $plan_data;
         $this->invoice_number = $invoice_number;
         $this->date           = $date;
+        $this->qr_token       = $qr_token;
 
         $this->AliasNbPages();
         $this->SetAutoPageBreak(true, 35);
@@ -48,6 +53,7 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->buildVendorInfo();
         $this->buildPlanDetail();
         $this->buildPaymentSummary();
+        $this->buildQRSection();
         $this->buildTerms();
 
         $dir = dirname($pdf_path);
@@ -198,28 +204,63 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
         $this->Cell(0, 7, $this->utf8('Detalle del Plan Contratado'), 0, 1, 'L');
 
-        // Tabla de detalle
+        // Tabla de detalle — encabezado
         $this->SetFont('Arial', 'B', 9);
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->SetTextColor(255, 255, 255);
 
-        $this->Cell(80, 7, $this->utf8('Concepto'), 1, 0, 'L', true);
-        $this->Cell(30, 7, $this->utf8('Periodo'), 1, 0, 'C', true);
-        $this->Cell(35, 7, 'Precio', 1, 0, 'R', true);
-        $this->Cell(35, 7, 'Total', 1, 1, 'R', true);
+        $this->Cell(60, 7, $this->utf8('Concepto'), 1, 0, 'L', true);
+        $this->Cell(25, 7, $this->utf8('Periodo'), 1, 0, 'C', true);
+        $this->Cell(25, 7, $this->utf8('Precio/Mes'), 1, 0, 'R', true);
+        $this->Cell(20, 7, $this->utf8('Meses'), 1, 0, 'C', true);
+        $this->Cell(25, 7, $this->utf8('Dcto.'), 1, 0, 'R', true);
+        $this->Cell(25, 7, 'Total', 1, 1, 'R', true);
 
         $this->SetFont('Arial', '', 9);
         $this->SetTextColor(50, 50, 50);
         $this->SetFillColor(255, 255, 255);
 
-        $plan_name = $this->plan_data->plan_name ?? 'Plan';
-        $price     = floatval($this->plan_data->monthly_price ?? 0);
-        $period    = $this->plan_data->billing_period ?? 'Mensual';
+        $plan_name     = $this->plan_data->plan_name ?? 'Plan';
+        $monthly_price = floatval($this->plan_data->monthly_price ?? 0);
+        $period        = $this->plan_data->billing_period ?? 'Mensual';
+        $billing_months= intval($this->plan_data->billing_months ?? 1);
+        $free_months   = intval($this->plan_data->free_months ?? 0);
 
-        $this->Cell(80, 7, $this->utf8('Plan ' . $plan_name . ' - PetsGo'), 1, 0, 'L');
-        $this->Cell(30, 7, $this->utf8($period), 1, 0, 'C');
-        $this->Cell(35, 7, '$' . number_format($price, 0, ',', '.'), 1, 0, 'R');
-        $this->Cell(35, 7, '$' . number_format($price, 0, ',', '.'), 1, 1, 'R');
+        // Calculate totals
+        $total_months  = max(1, $billing_months);
+        $charged_months= max(1, $total_months - $free_months);
+        $subtotal      = $monthly_price * $total_months;
+        $discount      = $monthly_price * $free_months;
+        $total         = $monthly_price * $charged_months;
+
+        // Row
+        $this->Cell(60, 7, $this->utf8('Plan ' . $plan_name . ' - PetsGo'), 1, 0, 'L');
+        $this->Cell(25, 7, $this->utf8($period), 1, 0, 'C');
+        $this->Cell(25, 7, '$' . number_format($monthly_price, 0, ',', '.'), 1, 0, 'R');
+        $this->Cell(20, 7, $total_months, 1, 0, 'C');
+
+        if ($discount > 0) {
+            $this->SetTextColor(220, 53, 69); // red for discount
+            $this->Cell(25, 7, '-$' . number_format($discount, 0, ',', '.'), 1, 0, 'R');
+            $this->SetTextColor(50, 50, 50);
+        } else {
+            $this->Cell(25, 7, '-', 1, 0, 'C');
+        }
+
+        $this->SetFont('Arial', 'B', 9);
+        $this->Cell(25, 7, '$' . number_format($total, 0, ',', '.'), 1, 1, 'R');
+
+        // Free months message
+        if ($free_months > 0) {
+            $this->Ln(2);
+            $this->SetFont('Arial', 'B', 9);
+            $this->SetTextColor(40, 167, 69); // green
+            $this->SetX(18);
+            $msg = $free_months == 1
+                ? 'Beneficio anual: 1 mes de gracia incluido. Paga ' . $charged_months . ' de ' . $total_months . ' meses.'
+                : 'Beneficio anual: ' . $free_months . ' meses de gracia incluidos. Paga ' . $charged_months . ' de ' . $total_months . ' meses.';
+            $this->Cell(0, 5, $this->utf8($msg), 0, 1);
+        }
 
         // Features del plan
         $features = $this->plan_data->features ?? [];
@@ -245,25 +286,49 @@ class PetsGo_Subscription_PDF extends FPDF {
     // RESUMEN DE PAGO
     // ========================
     private function buildPaymentSummary() {
-        $price = floatval($this->plan_data->monthly_price ?? 0);
-        $neto  = round($price / 1.19);
-        $iva   = $price - $neto;
+        $monthly_price  = floatval($this->plan_data->monthly_price ?? 0);
+        $billing_months = intval($this->plan_data->billing_months ?? 1);
+        $free_months    = intval($this->plan_data->free_months ?? 0);
+        $total_months   = max(1, $billing_months);
+        $charged_months = max(1, $total_months - $free_months);
+
+        $subtotal_bruto = $monthly_price * $total_months;
+        $descuento      = $monthly_price * $free_months;
+        $total_cobrar   = $monthly_price * $charged_months;
+        $neto           = round($total_cobrar / 1.19);
+        $iva            = $total_cobrar - $neto;
 
         $this->SetFont('Arial', 'B', 11);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
         $this->Cell(0, 7, $this->utf8('Resumen de Pago'), 0, 1, 'L');
 
-        $x = 110;
+        $x = 100;
 
         $this->SetFont('Arial', '', 9);
         $this->SetTextColor(80, 80, 80);
 
+        // Subtotal (months x price)
         $this->SetX($x);
-        $this->Cell(45, 6, 'Subtotal (Neto):', 0, 0, 'R');
+        $this->Cell(55, 6, $this->utf8($total_months . ' mes(es) x $' . number_format($monthly_price, 0, ',', '.') . ':'), 0, 0, 'R');
+        $this->Cell(35, 6, '$' . number_format($subtotal_bruto, 0, ',', '.'), 0, 1, 'R');
+
+        // Discount line (if annual)
+        if ($descuento > 0) {
+            $this->SetX($x);
+            $this->SetTextColor(220, 53, 69);
+            $this->Cell(55, 6, $this->utf8('Dcto. ' . $free_months . ' mes(es) gratis:'), 0, 0, 'R');
+            $this->Cell(35, 6, '-$' . number_format($descuento, 0, ',', '.'), 0, 1, 'R');
+            $this->SetTextColor(80, 80, 80);
+        }
+
+        // Neto
+        $this->SetX($x);
+        $this->Cell(55, 6, 'Subtotal (Neto):', 0, 0, 'R');
         $this->Cell(35, 6, '$' . number_format($neto, 0, ',', '.'), 0, 1, 'R');
 
+        // IVA
         $this->SetX($x);
-        $this->Cell(45, 6, 'IVA (19%):', 0, 0, 'R');
+        $this->Cell(55, 6, 'IVA (19%):', 0, 0, 'R');
         $this->Cell(35, 6, '$' . number_format($iva, 0, ',', '.'), 0, 1, 'R');
 
         // Total
@@ -271,8 +336,8 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->SetFont('Arial', 'B', 13);
         $this->SetFillColor($this->primary[0], $this->primary[1], $this->primary[2]);
         $this->SetTextColor(255, 255, 255);
-        $this->Cell(45, 9, 'TOTAL:', 0, 0, 'R', true);
-        $this->Cell(35, 9, '$' . number_format($price, 0, ',', '.'), 0, 1, 'R', true);
+        $this->Cell(55, 9, 'TOTAL:', 0, 0, 'R', true);
+        $this->Cell(35, 9, '$' . number_format($total_cobrar, 0, ',', '.'), 0, 1, 'R', true);
 
         $this->Ln(8);
     }
@@ -302,6 +367,46 @@ class PetsGo_Subscription_PDF extends FPDF {
             $this->MultiCell(170, 4, $this->utf8($term));
             $this->Ln(1);
         }
+    }
+
+    // ========================
+    // QR CODE VALIDATION
+    // ========================
+    private function buildQRSection() {
+        if (empty($this->qr_token)) return;
+
+        $validation_url = site_url('/wp-json/petsgo/v1/subscription/validate/' . $this->qr_token);
+
+        // Generate QR image
+        $qr_dir  = WP_CONTENT_DIR . '/uploads/petsgo-qr/';
+        $qr_file = $qr_dir . 'qr-' . $this->invoice_number . '.png';
+
+        if (!file_exists($qr_file)) {
+            if (!is_dir($qr_dir)) wp_mkdir_p($qr_dir);
+            SimpleQRCode::png($validation_url, $qr_file, 'L', 4, 1);
+        }
+
+        $y = $this->GetY();
+
+        // QR box
+        $this->SetDrawColor($this->primary[0], $this->primary[1], $this->primary[2]);
+        $this->SetFillColor(240, 250, 255);
+        $this->Rect(15, $y, 180, 42, 'DF');
+
+        if (file_exists($qr_file) && filesize($qr_file) > 100) {
+            $this->Image($qr_file, 20, $y + 3, 36, 36);
+        }
+
+        $this->SetXY(60, $y + 4);
+        $this->SetFont('Arial', 'B', 10);
+        $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
+        $this->Cell(130, 5, $this->utf8('Verificacion de Suscripcion'), 0, 2);
+
+        $this->SetFont('Arial', '', 8);
+        $this->SetTextColor(100, 100, 100);
+        $this->MultiCell(130, 4, $this->utf8("Escanee el codigo QR para verificar la autenticidad de esta boleta de suscripcion.\n\nToken: " . $this->qr_token . "\nBoleta: " . $this->invoice_number));
+
+        $this->SetY($y + 46);
     }
 
     // ========================

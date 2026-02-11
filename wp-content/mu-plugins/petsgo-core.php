@@ -400,6 +400,7 @@ class PetsGo_Core {
             'color_success'     => '#28a745',
             'color_danger'      => '#dc3545',
             'logo_id'           => '',
+            'plan_annual_free_months' => '2',
         ];
     }
 
@@ -3308,6 +3309,9 @@ Dashboard con analíticas"></textarea>
 
         require_once __DIR__ . '/petsgo-lib/subscription-pdf.php';
 
+        // Read parametrizable free months from settings
+        $free_months = intval($this->pg_setting('plan_annual_free_months', 2));
+
         $vendor_data = [
             'store_name'   => 'Patitas Chile (Demo)',
             'rut'          => '76.987.654-3',
@@ -3320,7 +3324,9 @@ Dashboard con analíticas"></textarea>
         $plan_data = [
             'plan_name'      => 'Pro',
             'monthly_price'  => 59990,
-            'billing_period' => 'Mensual',
+            'billing_period' => 'Anual',
+            'billing_months' => 12,
+            'free_months'    => $free_months,
             'features'       => [
                 'Hasta 200 productos publicados',
                 'Panel de analiticas avanzado',
@@ -3333,12 +3339,13 @@ Dashboard con analíticas"></textarea>
 
         $invoice_number = 'SUB-PC-' . date('Ymd') . '-DEMO';
         $date = date('d/m/Y H:i');
+        $qr_token = 'sub-demo-' . wp_generate_password(16, false);
 
         $tmp = tempnam(sys_get_temp_dir(), 'petsgo_demo_sub_');
         if ($tmp && substr($tmp, -4) !== '.pdf') $tmp .= '.pdf';
 
         $pdf_gen = new PetsGo_Subscription_PDF();
-        $pdf_gen->generate($vendor_data, $plan_data, $invoice_number, $date, $tmp);
+        $pdf_gen->generate($vendor_data, $plan_data, $invoice_number, $date, $qr_token, $tmp);
 
         if (!file_exists($tmp) || filesize($tmp) < 500) wp_die('No se pudo generar el PDF de suscripción demo');
 
@@ -3914,6 +3921,13 @@ Dashboard con analíticas"></textarea>
                     <div class="petsgo-field"><label>Instagram URL</label><input type="url" id="ps-instagram" value="<?php echo $v('social_instagram'); ?>" placeholder="https://www.instagram.com/petsgo.cl"></div>
                     <div class="petsgo-field"><label>Facebook URL</label><input type="url" id="ps-facebook" value="<?php echo $v('social_facebook'); ?>" placeholder="https://www.facebook.com/petsgo.cl"></div>
                     <div class="petsgo-field"><label>WhatsApp</label><input type="text" id="ps-whatsapp" value="<?php echo $v('social_whatsapp'); ?>" placeholder="+56912345678"></div>
+
+                    <h3 style="margin-top:24px;">📋 Suscripciones / Planes</h3>
+                    <div class="petsgo-field">
+                        <label>Meses de gracia (plan anual)</label>
+                        <input type="number" id="ps-annual-free" value="<?php echo $v('plan_annual_free_months'); ?>" min="0" max="6" style="width:80px;">
+                        <div class="field-hint">Cantidad de meses gratis al contratar un plan anual. Ej: 2 = paga 10 de 12 meses.</div>
+                    </div>
                 </div>
             </div>
 
@@ -3988,7 +4002,8 @@ Dashboard con analíticas"></textarea>
                     color_dark:$('#ps-color-dark').val(),
                     color_success:$('#ps-color-success').val(),
                     color_danger:$('#ps-color-danger').val(),
-                    logo_id:$('#ps-logo-id').val()
+                    logo_id:$('#ps-logo-id').val(),
+                    plan_annual_free_months:$('#ps-annual-free').val()
                 },function(r){
                     $('#ps-loader').removeClass('active');
                     var c=r.success?'#d4edda':'#f8d7da',t=r.success?'#155724':'#721c24';
@@ -4014,7 +4029,7 @@ Dashboard con analíticas"></textarea>
                     $settings[$key] = sanitize_email($_POST[$key]);
                 } elseif (strpos($key, 'color') !== false) {
                     $settings[$key] = sanitize_hex_color($_POST[$key]) ?: '';
-                } elseif ($key === 'logo_id') {
+                } elseif ($key === 'logo_id' || $key === 'plan_annual_free_months') {
                     $settings[$key] = intval($_POST[$key]);
                 } elseif (strpos($key, 'social_') === 0 || strpos($key, 'website') !== false) {
                     $settings[$key] = esc_url_raw($_POST[$key]);
