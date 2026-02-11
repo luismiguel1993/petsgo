@@ -61,6 +61,7 @@ class PetsGo_Core {
             'petsgo_delete_pet',
             'petsgo_search_leads',
             'petsgo_update_lead',
+            'petsgo_download_demo_invoice',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -3224,6 +3225,71 @@ Dashboard con analíticas"></textarea>
         exit;
     }
 
+    /**
+     * Generate and download a demo invoice PDF with sample data.
+     * Used from the email preview page for design verification.
+     */
+    public function petsgo_download_demo_invoice() {
+        if (!isset($_GET['_wpnonce']) || !wp_verify_nonce($_GET['_wpnonce'], 'petsgo_ajax')) {
+            wp_die('Nonce inválido');
+        }
+        if (!$this->is_admin()) wp_die('Sin permisos');
+
+        require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
+
+        $vendor_data = [
+            'store_name'       => 'Mundo Animal (Demo)',
+            'rut'              => '76.123.456-7',
+            'address'          => 'Av. Providencia 1234, Santiago',
+            'phone'            => '+56 9 1234 5678',
+            'email'            => 'ventas@mundoanimal.cl',
+            'contact_phone'    => '+56 9 8765 4321',
+            'social_facebook'  => 'facebook.com/mundoanimal',
+            'social_instagram' => '@mundoanimal',
+            'social_whatsapp'  => '+56912345678',
+            'social_website'   => 'www.mundoanimal.cl',
+            'logo_url'         => '',
+            'delivery_fee'     => 2990,
+        ];
+
+        $invoice_data = [
+            'invoice_number' => 'BOL-MA-' . date('Ymd') . '-DEMO',
+            'date'           => date('d/m/Y H:i'),
+            'customer_name'  => 'María González (Demo)',
+            'customer_email' => 'maria@demo.cl',
+            'customer_id'    => 0,
+            'order_id'       => 'DEMO',
+        ];
+
+        $items = [
+            ['name' => 'Royal Canin Medium Adult 15kg',   'qty' => 1, 'price' => 42990],
+            ['name' => 'Collar Antipulgas Premium Perro',  'qty' => 2, 'price' => 8990],
+            ['name' => 'Juguete Kong Classic Large',       'qty' => 1, 'price' => 15990],
+            ['name' => 'Snack Dentastix Pack x7',          'qty' => 3, 'price' => 4590],
+        ];
+
+        $grand = 0;
+        foreach ($items as $it) { $grand += $it['qty'] * $it['price']; }
+        $grand += $vendor_data['delivery_fee'];
+
+        $qr_token = 'demo-' . wp_generate_password(16, false);
+        $qr_url   = site_url('/wp-json/petsgo/v1/invoice/validate/' . $qr_token);
+
+        // Generate to temp file
+        $tmp = wp_tempnam('petsgo_demo_invoice_') . '.pdf';
+        $pdf_gen = new PetsGo_Invoice_PDF();
+        $pdf_gen->generate($vendor_data, $invoice_data, $items, $grand, $qr_url, $qr_token, $tmp);
+
+        if (!file_exists($tmp)) wp_die('No se pudo generar el PDF demo');
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $invoice_data['invoice_number'] . '.pdf"');
+        header('Content-Length: ' . filesize($tmp));
+        readfile($tmp);
+        @unlink($tmp);
+        exit;
+    }
+
     // ============================================================
     // AJAX HANDLERS — Audit Log
     // ============================================================
@@ -4175,6 +4241,14 @@ Dashboard con analíticas"></textarea>
                 </div>
                 <iframe id="ep-frame" style="width:100%;height:750px;border:none;background:#f4f6f8;"></iframe>
             </div>
+
+            <!-- Download demo PDF button (only for invoice tab) -->
+            <div id="ep-pdf-download" style="margin-top:16px;">
+                <a href="<?php echo admin_url('admin-ajax.php?action=petsgo_download_demo_invoice&_wpnonce=' . wp_create_nonce('petsgo_ajax')); ?>" class="petsgo-btn petsgo-btn-success" target="_blank" style="font-size:15px;padding:10px 24px;">
+                    📥 Descargar PDF de ejemplo (Boleta Demo)
+                </a>
+                <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de boleta con datos ficticios para verificar el diseño.</span>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -4191,6 +4265,8 @@ Dashboard con analíticas"></textarea>
                 $('#ep-loader').addClass('active');
                 var m=meta[type]||meta.invoice;
                 $('#ep-from').text(m.from);$('#ep-to').text(m.to);$('#ep-bcc').text(m.bcc);$('#ep-subject').text(m.subject);$('#ep-title').text(m.title);$('#ep-info').show();
+                // Show/hide PDF download button (only for invoice tab)
+                if(type==='invoice'){$('#ep-pdf-download').show();}else{$('#ep-pdf-download').hide();}
                 PG.post('petsgo_preview_email',{email_type:type},function(r){
                     $('#ep-loader').removeClass('active');
                     if(!r.success)return;
