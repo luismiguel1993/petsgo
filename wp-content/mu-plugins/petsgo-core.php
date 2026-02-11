@@ -3224,7 +3224,7 @@ Dashboard con analíticas"></textarea>
         $d = $this->pg_defaults();
         $v = function($key) use ($s, $d) { return esc_attr($s[$key] ?? $d[$key] ?? ''); };
         $logo_id  = intval($s['logo_id'] ?? 0);
-        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : $this->get_email_logo_url();
         ?>
         <div class="wrap petsgo-wrap">
             <h1>⚙️ Configuración PetsGo</h1>
