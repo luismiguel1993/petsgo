@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS `wp_petsgo_vendors` (
     `phone` varchar(50) DEFAULT NULL,
     `email` varchar(100) DEFAULT NULL,
     `plan_id` int(11) DEFAULT 1,
+    `subscription_start` DATE DEFAULT NULL,
+    `subscription_end` DATE DEFAULT NULL,
     `sales_commission` decimal(5,2) DEFAULT 10.00, -- Porcentaje para PetsGo
     `delivery_fee_cut` decimal(5,2) DEFAULT 5.00,  -- Porcentaje para PetsGo por despacho
     `status` varchar(20) DEFAULT 'pending', -- pending, active, suspended

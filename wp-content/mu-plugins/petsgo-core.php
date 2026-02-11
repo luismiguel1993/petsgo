@@ -37,6 +37,9 @@ class PetsGo_Core {
 
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
+        add_action('init', [$this, 'ensure_subscription_columns']);
+        add_action('init', [$this, 'schedule_renewal_cron']);
+        add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
         add_filter('rest_authentication_errors', [$this, 'bypass_cookie_nonce_for_token'], 90);
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
@@ -976,6 +979,41 @@ class PetsGo_Core {
             </div>
             <?php endif; ?>
 
+            <?php if ($is_admin): ?>
+            <!-- Renewal Alerts -->
+            <?php
+            $renewal_vendors = $wpdb->get_results(
+                "SELECT v.id, v.store_name, v.email, v.subscription_end, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.subscription_end IS NOT NULL AND v.subscription_end <= DATE_ADD(CURDATE(), INTERVAL 10 DAY) AND v.status='active' ORDER BY v.subscription_end ASC"
+            );
+            if (!empty($renewal_vendors)): ?>
+            <div class="pg-section" style="border-left:4px solid #e65100;">
+                <h3>⏰ Alertas de Renovación de Suscripción</h3>
+                <p style="font-size:12px;color:#888;margin:0 0 12px;">Tiendas cuya suscripción vence en los próximos 10 días o ya venció.</p>
+                <table class="petsgo-table">
+                    <thead><tr><th>ID</th><th>Tienda</th><th>Plan</th><th>Email</th><th>Vencimiento</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($renewal_vendors as $rv):
+                        $diff = (int) round((strtotime($rv->subscription_end) - time()) / 86400);
+                        $color = $diff <= 0 ? '#dc3545' : ($diff <= 3 ? '#e65100' : ($diff <= 5 ? '#FFC400' : '#28a745'));
+                        $label = $diff <= 0 ? '⚠️ Vencida' : $diff . ' día' . ($diff > 1 ? 's' : '');
+                        $badge_bg = $diff <= 0 ? '#fce4ec' : ($diff <= 3 ? '#fff3e0' : '#fff8e1');
+                    ?>
+                    <tr>
+                        <td><?php echo $rv->id; ?></td>
+                        <td><strong><?php echo esc_html($rv->store_name); ?></strong></td>
+                        <td><span style="background:#e0f7fa;color:#00695c;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;"><?php echo esc_html($rv->plan_name ?: 'N/A'); ?></span></td>
+                        <td style="font-size:12px;"><?php echo esc_html($rv->email); ?></td>
+                        <td style="font-size:12px;"><?php echo date('d/m/Y', strtotime($rv->subscription_end)); ?></td>
+                        <td><span style="background:<?php echo $badge_bg; ?>;color:<?php echo $color; ?>;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;"><?php echo $label; ?></span></td>
+                        <td><a href="<?php echo admin_url('admin.php?page=petsgo-vendor-form&id=' . $rv->id); ?>" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️ Editar</a></td>
+                    </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+            <?php endif; ?>
+            <?php endif; ?>
+
             <!-- Recent Orders (always) -->
             <div id="dash-orders"><div class="pg-dash-loader">⏳ Cargando pedidos...</div></div>
 
@@ -1615,7 +1653,7 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pv-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-vendor-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nueva Tienda</a>
             </div>
-            <table class="petsgo-table"><thead id="pv-thead"><tr><th>ID</th><th>Tienda</th><th>RUT</th><th>Email</th><th>Teléfono</th><th>Comisión</th><th>Productos</th><th>Pedidos</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <table class="petsgo-table"><thead id="pv-thead"><tr><th>ID</th><th>Tienda</th><th>RUT</th><th>Email</th><th>Plan</th><th>Suscripción</th><th>Comisión</th><th>Productos</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="pv-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
@@ -1624,13 +1662,24 @@ class PetsGo_Core {
             $('#pv-filter-status').pgChecklist({placeholder:'Todos los estados'});
             var tbl=PG.table({
                 thead:'#pv-thead',body:'#pv-body',perPage:25,defaultSort:'id',defaultDir:'desc',
-                columns:['id','store_name','rut','email','phone','sales_commission','total_products','total_orders','status','_actions'],
+                columns:['id','store_name','rut','email','plan_name','subscription_end','sales_commission','total_products','status','_actions'],
                 emptyMsg:'Sin resultados.',
                 onTotal:function(n){$('#pv-total').text(n);},
                 renderRow:function(v){
                     var r='<tr><td>'+v.id+'</td><td><strong>'+PG.esc(v.store_name)+'</strong></td><td>'+PG.esc(v.rut)+'</td>';
-                    r+='<td>'+PG.esc(v.email)+'</td><td>'+PG.esc(v.phone)+'</td><td>'+v.sales_commission+'%</td>';
-                    r+='<td>'+v.total_products+'</td><td>'+v.total_orders+'</td>';
+                    r+='<td>'+PG.esc(v.email)+'</td>';
+                    r+='<td><span style="background:#e0f7fa;color:#00695c;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">'+(PG.esc(v.plan_name)||'—')+'</span></td>';
+                    // Subscription dates with color coding
+                    var subHtml='—';
+                    if(v.subscription_start&&v.subscription_end){
+                        var end=new Date(v.subscription_end);var now=new Date();var diff=Math.ceil((end-now)/(86400000));
+                        var color=diff<=0?'#dc3545':diff<=10?'#e65100':'#2e7d32';
+                        var label=diff<=0?'Vencida':'Activa';
+                        subHtml='<div style="font-size:11px;line-height:1.4;"><div>'+PG.fdate(v.subscription_start)+' — '+PG.fdate(v.subscription_end)+'</div><span style="color:'+color+';font-weight:600;">'+label+(diff>0?' ('+diff+' días)':' ⚠️')+'</span></div>';
+                    }
+                    r+='<td>'+subHtml+'</td>';
+                    r+='<td>'+v.sales_commission+'%</td>';
+                    r+='<td>'+v.total_products+'</td>';
                     r+='<td>'+PG.badge(v.status)+'</td>';
                     r+='<td><a href="'+PG.adminUrl+'?page=petsgo-vendor-form&id='+v.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm" title="Editar">✏️</a> ';
                     r+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&vendor_id='+v.id+'" class="petsgo-btn petsgo-btn-sm" style="background:#00A8E8;color:#fff;" title="Config Boleta">🧾</a> ';
@@ -1722,6 +1771,8 @@ class PetsGo_Core {
                             <?php $plans = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions ORDER BY monthly_price"); foreach($plans as $pl): ?>
                             <option value="<?php echo $pl->id; ?>" <?php selected(($vendor->plan_id ?? 1), $pl->id); ?>><?php echo esc_html($pl->plan_name); ?></option>
                             <?php endforeach; ?></select></div>
+                        <div class="petsgo-field"><label>Inicio suscripción</label><input type="date" id="vf-sub-start" value="<?php echo esc_attr($vendor->subscription_start ?? ''); ?>"></div>
+                        <div class="petsgo-field"><label>Fin suscripción</label><input type="date" id="vf-sub-end" value="<?php echo esc_attr($vendor->subscription_end ?? ''); ?>"></div>
                         <div class="petsgo-field"><label>Estado</label><select id="vf-status">
                             <option value="active" <?php selected(($vendor->status ?? 'pending'), 'active'); ?>>Activa</option>
                             <option value="pending" <?php selected(($vendor->status ?? 'pending'), 'pending'); ?>>Pendiente</option>
@@ -1765,7 +1816,9 @@ class PetsGo_Core {
                 PG.post('petsgo_save_vendor',{
                     id:$('#vf-id').val(),store_name:$('#vf-name').val(),rut:$('#vf-rut').val(),email:$('#vf-email').val(),
                     phone:$('#vf-phone').val(),region:$('#vf-region').val(),comuna:$('#vf-comuna').val(),address:$('#vf-address').val(),
-                    user_id:$('#vf-user').val(),sales_commission:$('#vf-commission').val(),plan_id:$('#vf-plan').val(),status:$('#vf-status').val()
+                    user_id:$('#vf-user').val(),sales_commission:$('#vf-commission').val(),plan_id:$('#vf-plan').val(),
+                    subscription_start:$('#vf-sub-start').val(),subscription_end:$('#vf-sub-end').val(),
+                    status:$('#vf-status').val()
                 },function(r){
                     $('#vf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
@@ -2476,7 +2529,7 @@ Dashboard con analíticas"></textarea>
         $search = sanitize_text_field($_POST['search'] ?? '');
         $status_raw = sanitize_text_field($_POST['status'] ?? '');
         $statuses = array_filter(array_map('sanitize_text_field', explode(',', $status_raw)));
-        $sql = "SELECT v.*, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id=v.id) AS total_products, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=v.id) AS total_orders FROM {$wpdb->prefix}petsgo_vendors v WHERE 1=1";
+        $sql = "SELECT v.*, s.plan_name, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id=v.id) AS total_products, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=v.id) AS total_orders FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE 1=1";
         $args = [];
         if($search){$sql.=" AND v.store_name LIKE %s";$args[]='%'.$wpdb->esc_like($search).'%';}
         if($statuses){$phs=implode(',',array_fill(0,count($statuses),'%s'));$sql.=" AND v.status IN ($phs)";$args=array_merge($args,$statuses);}
@@ -2490,7 +2543,7 @@ Dashboard con analíticas"></textarea>
         if(!$this->is_admin()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id=intval($_POST['id']??0);
-        $data=['store_name'=>$this->san('store_name'),'rut'=>$this->san('rut'),'email'=>sanitize_email($_POST['email']??''),'phone'=>$this->san('phone'),'region'=>$this->san('region'),'comuna'=>$this->san('comuna'),'address'=>sanitize_textarea_field($_POST['address']??''),'user_id'=>intval($_POST['user_id']??0),'sales_commission'=>floatval($_POST['sales_commission']??10),'plan_id'=>intval($_POST['plan_id']??1),'status'=>$this->san('status')];
+        $data=['store_name'=>$this->san('store_name'),'rut'=>$this->san('rut'),'email'=>sanitize_email($_POST['email']??''),'phone'=>$this->san('phone'),'region'=>$this->san('region'),'comuna'=>$this->san('comuna'),'address'=>sanitize_textarea_field($_POST['address']??''),'user_id'=>intval($_POST['user_id']??0),'sales_commission'=>floatval($_POST['sales_commission']??10),'plan_id'=>intval($_POST['plan_id']??1),'subscription_start'=>sanitize_text_field($_POST['subscription_start']??'') ?: null,'subscription_end'=>sanitize_text_field($_POST['subscription_end']??'') ?: null,'status'=>$this->san('status')];
         $errors=[];
         if(!$data['store_name'])$errors[]='Nombre obligatorio';if(!$data['rut'])$errors[]='RUT obligatorio';
         if(!$data['email'])$errors[]='Email obligatorio';if(!$data['user_id'])$errors[]='Usuario obligatorio';
@@ -3327,11 +3380,13 @@ Dashboard con analíticas"></textarea>
             'billing_period' => 'Anual',
             'billing_months' => 12,
             'free_months'    => $free_months,
+            'start_date'     => date('d/m/Y'),
+            'end_date'       => date('d/m/Y', strtotime('+1 year')),
             'features'       => [
                 'Hasta 200 productos publicados',
-                'Panel de analiticas avanzado',
+                'Panel de analíticas avanzado',
                 'Soporte prioritario 24/7',
-                'Integracion con redes sociales',
+                'Integración con redes sociales',
                 'Reportes mensuales de ventas',
                 'Badge de Tienda Verificada',
             ],
@@ -4239,6 +4294,76 @@ Dashboard con analíticas"></textarea>
                 $html = $this->email_wrap($inner_vw, '¡Bienvenida a PetsGo, Patitas Chile!');
                 break;
 
+            case 'subscription_payment':
+                $free_m = intval($this->pg_setting('plan_annual_free_months', 2));
+                $charged = 12 - $free_m;
+                $monthly = 59990;
+                $total_sub = $monthly * $charged;
+                $neto_sub = round($total_sub / 1.19);
+                $iva_sub = $total_sub - $neto_sub;
+                $start_sub = date('d/m/Y');
+                $end_sub = date('d/m/Y', strtotime('+1 year'));
+
+                $inner_sp = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola equipo de <strong>Patitas Chile</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Confirmamos que hemos recibido el pago de tu suscripci&oacute;n al <strong>Plan Pro</strong> de PetsGo.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#e0f7fa;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#00695c;font-weight:700;">💳 Detalle del pago</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:4px 0;font-weight:600;width:140px;">Plan:</td><td style="padding:4px 0;"><strong style="color:#00A8E8;">Pro</strong></td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Per&iacute;odo:</td><td style="padding:4px 0;">Anual (12 meses)</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Precio mensual:</td><td style="padding:4px 0;">$' . number_format($monthly, 0, ',', '.') . '</td></tr>' .
+            ($free_m > 0 ? '
+            <tr><td style="padding:4px 0;font-weight:600;">Beneficio:</td><td style="padding:4px 0;color:#28a745;font-weight:600;">' . $free_m . ' mes(es) de gracia</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Meses cobrados:</td><td style="padding:4px 0;">' . $charged . ' de 12</td></tr>' : '') . '
+            <tr><td style="padding:4px 0;font-weight:600;">Neto:</td><td style="padding:4px 0;">$' . number_format($neto_sub, 0, ',', '.') . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">IVA (19%):</td><td style="padding:4px 0;">$' . number_format($iva_sub, 0, ',', '.') . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:700;font-size:15px;color:#00A8E8;">Total:</td><td style="padding:4px 0;font-weight:700;font-size:15px;color:#00A8E8;">$' . number_format($total_sub, 0, ',', '.') . '</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:16px 20px;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:3px 0;font-weight:600;width:140px;">📅 Vigencia desde:</td><td style="padding:3px 0;"><strong style="color:#333;">' . $start_sub . '</strong></td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">📅 Vigencia hasta:</td><td style="padding:3px 0;"><strong style="color:#333;">' . $end_sub . '</strong></td></tr>
+            <tr><td style="padding:3px 0;font-weight:600;">N&ordm; Boleta:</td><td style="padding:3px 0;">SUB-PC-' . date('Ymd') . '-001</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
+          <p style="margin:0;font-size:13px;color:#00718a;line-height:1.6;">
+            📎 Adjuntamos tu boleta de suscripci&oacute;n en formato PDF. Tambi&eacute;n puedes verificar su validez escaneando el c&oacute;digo QR incluido en el documento.
+          </p>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(admin_url('admin.php?page=petsgo-dashboard')) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir al Panel de Tienda</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">patitas@demo.cl</span> como confirmaci&oacute;n de pago de suscripci&oacute;n en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_sp, 'Confirmación de pago — Plan Pro por $' . number_format($total_sub, 0, ',', '.'));
+                break;
+
+            case 'renewal_reminder':
+                $demo_vendor = (object) [
+                    'store_name'        => 'Patitas Chile',
+                    'plan_name'         => 'Pro',
+                    'email'             => 'patitas@demo.cl',
+                    'subscription_end'  => date('Y-m-d', strtotime('+5 days')),
+                ];
+                $html = $this->renewal_reminder_email_html($demo_vendor, 5);
+                break;
+
             case 'lead_thankyou':
                 $inner_lt = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>Andrea Muñoz</strong>,</p>
@@ -4291,6 +4416,8 @@ Dashboard con analíticas"></textarea>
                 <button type="button" class="petsgo-btn ep-tab" data-type="customer_welcome" style="background:#e3f2fd;color:#1565c0;border-color:#90caf9;">👤 Bienvenida Cliente</button>
                 <button type="button" class="petsgo-btn ep-tab" data-type="rider_welcome" style="background:#fff8e1;color:#e65100;border-color:#ffe082;">🚴 Bienvenida Rider</button>
                 <button type="button" class="petsgo-btn ep-tab" data-type="vendor_welcome" style="background:#e8f5e9;color:#2e7d32;border-color:#a5d6a7;">🏪 Bienvenida Tienda</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="subscription_payment" style="background:#e0f7fa;color:#00695c;border-color:#80deea;">💳 Pago Suscripción</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="renewal_reminder" style="background:#fff3e0;color:#e65100;border-color:#ffcc80;">⏰ Recordatorio Renovación</button>
                 <button type="button" class="petsgo-btn ep-tab" data-type="lead_thankyou" style="background:#fce4ec;color:#c62828;border-color:#ef9a9a;">📩 Gracias Lead</button>
                 <span class="petsgo-loader" id="ep-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-settings'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">⚙️ Editar Configuración</a>
@@ -4342,6 +4469,8 @@ Dashboard con analíticas"></textarea>
                 customer_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'',subject:'¡Bienvenida a PetsGo! 🐾',title:'Bienvenida nuevo cliente'},
                 rider_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'carlos@demo.cl',bcc:'',subject:'¡Bienvenido al equipo Rider de PetsGo! 🚴',title:'Bienvenida nuevo rider'},
                 vendor_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'¡Bienvenida a PetsGo, Patitas Chile! 🏪',title:'Bienvenida nueva tienda'},
+                subscription_payment: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'PetsGo — Confirmación de pago Plan Pro 💳',title:'Confirmación pago suscripción'},
+                renewal_reminder: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⏰ PetsGo — Tu suscripción vence en 5 días',title:'Recordatorio de renovación'},
                 lead_thankyou: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'andrea@petparadise.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'Gracias por tu interés en PetsGo 🏪',title:'Gracias por tu interés (lead)'}
             };
             function loadPreview(type){
@@ -4350,7 +4479,7 @@ Dashboard con analíticas"></textarea>
                 $('#ep-from').text(m.from);$('#ep-to').text(m.to);$('#ep-bcc').text(m.bcc);$('#ep-subject').text(m.subject);$('#ep-title').text(m.title);$('#ep-info').show();
                 // Show/hide PDF download buttons based on tab type
                 if(type==='invoice'){$('#ep-pdf-download').show();}else{$('#ep-pdf-download').hide();}
-                if(type==='vendor_welcome'){$('#ep-pdf-subscription').show();}else{$('#ep-pdf-subscription').hide();}
+                if(type==='vendor_welcome'||type==='subscription_payment'){$('#ep-pdf-subscription').show();}else{$('#ep-pdf-subscription').hide();}
                 PG.post('petsgo_preview_email',{email_type:type},function(r){
                     $('#ep-loader').removeClass('active');
                     if(!r.success)return;
@@ -4376,6 +4505,149 @@ Dashboard con analíticas"></textarea>
         add_role('petsgo_vendor', 'Tienda (Vendor)', ['read'=>true,'upload_files'=>true,'manage_inventory'=>true]);
         add_role('petsgo_rider', 'Delivery (Rider)', ['read'=>true,'manage_deliveries'=>true]);
         add_role('petsgo_support', 'Soporte', ['read'=>true,'moderate_comments'=>true,'manage_support_tickets'=>true]);
+    }
+
+    /**
+     * Ensure subscription_start / subscription_end columns exist in vendors table.
+     * Runs once, stores flag in options.
+     */
+    public function ensure_subscription_columns() {
+        if (get_option('petsgo_vendor_sub_cols', false)) return;
+        global $wpdb;
+        $table = $wpdb->prefix . 'petsgo_vendors';
+        $cols = $wpdb->get_col("SHOW COLUMNS FROM {$table}", 0);
+        if (!in_array('subscription_start', $cols)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN subscription_start DATE DEFAULT NULL AFTER plan_id");
+        }
+        if (!in_array('subscription_end', $cols)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN subscription_end DATE DEFAULT NULL AFTER subscription_start");
+        }
+        update_option('petsgo_vendor_sub_cols', true);
+    }
+
+    /**
+     * Schedule daily cron for subscription renewal reminders.
+     */
+    public function schedule_renewal_cron() {
+        if (!wp_next_scheduled('petsgo_check_renewals')) {
+            wp_schedule_event(time(), 'daily', 'petsgo_check_renewals');
+        }
+    }
+
+    /**
+     * Process renewal reminders: send email to vendors whose subscription expires in 10, 5, 3, or 1 day(s).
+     * Also stores alerts in wp_options for admin dashboard display.
+     */
+    public function process_renewal_reminders() {
+        global $wpdb;
+        $reminder_days = [10, 5, 3, 1];
+        $alerts = [];
+
+        foreach ($reminder_days as $days) {
+            $target_date = date('Y-m-d', strtotime("+{$days} days"));
+            $vendors = $wpdb->get_results($wpdb->prepare(
+                "SELECT v.*, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.subscription_end = %s AND v.status = 'active'",
+                $target_date
+            ));
+
+            foreach ($vendors as $vendor) {
+                // Build reminder email
+                $html = $this->renewal_reminder_email_html($vendor, $days);
+                $subject = "⏰ PetsGo — Tu suscripción vence en {$days} día" . ($days > 1 ? 's' : '');
+                $headers = ['Content-Type: text/html; charset=UTF-8'];
+                $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+                $from_name  = $this->pg_setting('company_name', 'PetsGo');
+                $headers[]  = "From: {$from_name} <{$from_email}>";
+                $bcc = $this->pg_setting('company_bcc_email', '');
+                if ($bcc) $headers[] = "Bcc: {$bcc}";
+
+                wp_mail($vendor->email, $subject, $html, $headers);
+
+                $alerts[] = [
+                    'vendor_id'   => $vendor->id,
+                    'store_name'  => $vendor->store_name,
+                    'plan_name'   => $vendor->plan_name ?? 'N/A',
+                    'email'       => $vendor->email,
+                    'days_left'   => $days,
+                    'end_date'    => $vendor->subscription_end,
+                    'sent_at'     => current_time('mysql'),
+                ];
+
+                $this->audit('renewal_reminder', 'vendor', $vendor->id, "Recordatorio {$days} día(s): {$vendor->store_name}");
+            }
+        }
+
+        // Also check already expired (0 or negative days)
+        $expired = $wpdb->get_results(
+            "SELECT v.*, s.plan_name FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->prefix}petsgo_subscriptions s ON v.plan_id=s.id WHERE v.subscription_end < CURDATE() AND v.subscription_end IS NOT NULL AND v.status = 'active'"
+        );
+        foreach ($expired as $vendor) {
+            $diff = (int) round((strtotime($vendor->subscription_end) - time()) / 86400);
+            $alerts[] = [
+                'vendor_id'   => $vendor->id,
+                'store_name'  => $vendor->store_name,
+                'plan_name'   => $vendor->plan_name ?? 'N/A',
+                'email'       => $vendor->email,
+                'days_left'   => $diff,
+                'end_date'    => $vendor->subscription_end,
+                'sent_at'     => current_time('mysql'),
+            ];
+        }
+
+        // Store alerts for admin dashboard
+        if (!empty($alerts)) {
+            $existing = get_option('petsgo_renewal_alerts', []);
+            $existing = array_merge($existing, $alerts);
+            // Keep only last 100 alerts
+            $existing = array_slice($existing, -100);
+            update_option('petsgo_renewal_alerts', $existing);
+        }
+    }
+
+    /**
+     * Build renewal reminder email HTML.
+     */
+    private function renewal_reminder_email_html($vendor, $days) {
+        $urgency_color = $days <= 1 ? '#dc3545' : ($days <= 3 ? '#e65100' : '#FFC400');
+        $urgency_bg    = $days <= 1 ? '#fce4ec' : ($days <= 3 ? '#fff3e0' : '#fff8e1');
+        $urgency_icon  = $days <= 1 ? '🚨' : ($days <= 3 ? '⚠️' : '⏰');
+        $plan_name     = $vendor->plan_name ?? 'N/A';
+        $end_date      = date('d/m/Y', strtotime($vendor->subscription_end));
+
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola equipo de <strong>' . esc_html($vendor->store_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que tu suscripci&oacute;n al plan <strong style="color:#00A8E8;">' . esc_html($plan_name) . '</strong> est&aacute; pr&oacute;xima a vencer.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:' . $urgency_bg . ';border-left:4px solid ' . $urgency_color . ';border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 8px;font-size:18px;font-weight:700;color:' . $urgency_color . ';">' . $urgency_icon . ' Quedan ' . $days . ' d&iacute;a' . ($days > 1 ? 's' : '') . ' para renovar</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:4px 0;font-weight:600;width:140px;">Plan actual:</td><td style="padding:4px 0;"><strong>' . esc_html($plan_name) . '</strong></td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Fecha de vencimiento:</td><td style="padding:4px 0;font-weight:700;color:' . $urgency_color . ';">' . $end_date . '</td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Tienda:</td><td style="padding:4px 0;">' . esc_html($vendor->store_name) . '</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:8px;padding:16px 18px;">
+          <p style="margin:0;font-size:13px;color:#00718a;line-height:1.6;">
+            &#128161; <strong>&iquest;Qu&eacute; pasa si no renuevo?</strong><br>
+            Tu tienda seguir&aacute; visible pero no podr&aacute;s publicar nuevos productos ni recibir pedidos. Renueva y sigue vendiendo sin interrupciones.
+          </p>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(admin_url('admin.php?page=petsgo-dashboard')) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Renovar Suscripci&oacute;n</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($vendor->email) . '</span> como recordatorio de renovaci&oacute;n de suscripci&oacute;n en PetsGo.
+      </p>';
+
+        return $this->email_wrap($inner, $urgency_icon . ' Tu suscripción vence en ' . $days . ' día' . ($days > 1 ? 's' : ''));
     }
 
     // ============================================================

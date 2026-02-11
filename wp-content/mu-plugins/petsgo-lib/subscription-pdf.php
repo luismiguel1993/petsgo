@@ -1,7 +1,7 @@
 <?php
 /**
  * PetsGo Subscription / Plan Invoice PDF Generator
- * Genera boleta de suscripcion/contratacion de plan para tiendas.
+ * Genera boleta de suscripción/contratación de plan para tiendas.
  * Header: fondo celeste PetsGo con logo blanco centrado.
  */
 if (!defined('ABSPATH')) exit;
@@ -31,7 +31,8 @@ class PetsGo_Subscription_PDF extends FPDF {
      *
      * @param array  $vendor_data   ['store_name','rut','address','phone','email','contact_name']
      * @param array  $plan_data     ['plan_name','monthly_price','features'=>[...], 'billing_period',
-     *                               'billing_months'=>12, 'free_months'=>2]
+     *                               'billing_months'=>12, 'free_months'=>2,
+     *                               'start_date'=>'11/02/2026', 'end_date'=>'11/02/2027']
      * @param string $invoice_number  e.g. SUB-PC-20260211-001
      * @param string $date            e.g. 11/02/2026 15:30
      * @param string $qr_token        UUID token for QR validation
@@ -71,7 +72,7 @@ class PetsGo_Subscription_PDF extends FPDF {
     }
 
     // ========================
-    // HEADER: Fondo celeste con logo PetsGo blanco centrado
+    // HEADER: Fondo celeste con logo PetsGo blanco + datos empresa
     // ========================
     function Header() {
         $hdrH = 34;
@@ -104,21 +105,25 @@ class PetsGo_Subscription_PDF extends FPDF {
             $this->Cell(60, 14, 'PetsGo', 0, 0, 'L');
         }
 
-        // Datos empresa PetsGo (derecha, alineados)
+        // Datos empresa PetsGo (derecha, cada dato en línea separada)
         $dataX = 110;
         $this->SetTextColor(255, 255, 255);
 
-        $this->SetXY($dataX, 6);
+        $this->SetXY($dataX, 4);
         $this->SetFont('Arial', 'B', 11);
-        $this->Cell(90, 5, $this->utf8('PetsGo Marketplace'), 0, 2, 'R');
+        $this->Cell(90, 4.5, $this->utf8('PetsGo Marketplace'), 0, 2, 'R');
 
-        $this->SetFont('Arial', '', 7.5);
+        $this->SetFont('Arial', '', 7);
         $this->SetX($dataX);
-        $this->Cell(90, 4, $this->utf8('RUT: 77.123.456-7'), 0, 2, 'R');
+        $this->Cell(90, 3.5, $this->utf8('RUT: 77.123.456-7'), 0, 2, 'R');
         $this->SetX($dataX);
-        $this->Cell(90, 4, $this->utf8('+56 9 1234 5678  |  contacto@petsgo.cl'), 0, 2, 'R');
+        $this->Cell(90, 3.5, $this->utf8('Teléfono: +56 9 1234 5678'), 0, 2, 'R');
         $this->SetX($dataX);
-        $this->Cell(90, 4, $this->utf8('www.petsgo.cl  |  Santiago, Chile'), 0, 2, 'R');
+        $this->Cell(90, 3.5, $this->utf8('Email: contacto@petsgo.cl'), 0, 2, 'R');
+        $this->SetX($dataX);
+        $this->Cell(90, 3.5, $this->utf8('Web: www.petsgo.cl'), 0, 2, 'R');
+        $this->SetX($dataX);
+        $this->Cell(90, 3.5, $this->utf8('Santiago, Chile'), 0, 2, 'R');
 
         // Franja amarilla
         $this->SetFillColor($this->secondary[0], $this->secondary[1], $this->secondary[2]);
@@ -128,7 +133,7 @@ class PetsGo_Subscription_PDF extends FPDF {
     }
 
     // ========================
-    // FOOTER: Pie de pagina estandar
+    // FOOTER: Pie de página estándar
     // ========================
     function Footer() {
         $this->SetY(-18);
@@ -141,11 +146,11 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->SetFont('Arial', '', 6.5);
         $this->SetTextColor(150, 150, 150);
         $this->Cell(0, 3, $this->utf8('PetsGo Marketplace - www.petsgo.cl - contacto@petsgo.cl'), 0, 1, 'C');
-        $this->Cell(0, 3, $this->utf8('Documento de suscripcion generado electronicamente - Santiago, Chile'), 0, 1, 'C');
+        $this->Cell(0, 3, $this->utf8('Documento de suscripción generado electrónicamente - Santiago, Chile'), 0, 1, 'C');
 
         $this->SetFont('Arial', '', 6.5);
         $this->SetTextColor(160, 160, 160);
-        $this->Cell(0, 3, $this->utf8('Pagina ') . $this->PageNo() . '/{nb}', 0, 0, 'R');
+        $this->Cell(0, 3, $this->utf8('Página ') . $this->PageNo() . '/{nb}', 0, 0, 'R');
     }
 
     // ========================
@@ -154,7 +159,7 @@ class PetsGo_Subscription_PDF extends FPDF {
     private function buildTitle() {
         $this->SetFont('Arial', 'B', 14);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 7, $this->utf8('BOLETA DE SUSCRIPCION'), 0, 1, 'C');
+        $this->Cell(0, 7, $this->utf8('BOLETA DE SUSCRIPCIÓN'), 0, 1, 'C');
         $this->Ln(1);
 
         // Recuadro con numero y fecha
@@ -172,6 +177,16 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->Cell($bw - 6, 4, $this->utf8('Fecha: ') . $this->date, 0, 2, 'C');
 
         $this->SetY($by + 16);
+
+        // Vigencia de la suscripción
+        $start = $this->plan_data->start_date ?? '';
+        $end   = $this->plan_data->end_date ?? '';
+        if ($start && $end) {
+            $this->SetFont('Arial', '', 8);
+            $this->SetTextColor(80, 80, 80);
+            $this->Cell(0, 5, $this->utf8('Vigencia: ' . $start . '  —  ' . $end), 0, 1, 'C');
+            $this->Ln(1);
+        }
     }
 
     // ========================
@@ -281,7 +296,7 @@ class PetsGo_Subscription_PDF extends FPDF {
             $this->Ln(2);
             $this->SetFont('Arial', 'B', 8);
             $this->SetTextColor($this->primary[0], $this->primary[1], $this->primary[2]);
-            $this->Cell(0, 5, $this->utf8('Caracteristicas incluidas en el Plan ' . $plan_name . ':'), 0, 1);
+            $this->Cell(0, 5, $this->utf8('Características incluidas en el Plan ' . $plan_name . ':'), 0, 1);
 
             $this->SetFont('Arial', '', 8);
             $this->SetTextColor(80, 80, 80);
@@ -355,16 +370,16 @@ class PetsGo_Subscription_PDF extends FPDF {
     private function buildTerms() {
         $this->SetFont('Arial', 'B', 8);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(0, 5, $this->utf8('Terminos y Condiciones'), 0, 1);
+        $this->Cell(0, 5, $this->utf8('Términos y Condiciones'), 0, 1);
 
         $this->SetFont('Arial', '', 7);
         $this->SetTextColor(130, 130, 130);
 
         $terms = [
-            'La suscripcion se renueva automaticamente al final de cada periodo de facturacion.',
+            'La suscripción se renueva automáticamente al final de cada período de facturación.',
             'El cobro se realiza al inicio de cada ciclo. Puede cancelar en cualquier momento.',
             'Al cancelar, mantiene acceso hasta el final del periodo pagado.',
-            'PetsGo se reserva el derecho de modificar precios con 30 dias de anticipacion.',
+            'PetsGo se reserva el derecho de modificar precios con 30 días de anticipación.',
             'Para soporte: contacto@petsgo.cl | www.petsgo.cl',
         ];
 
@@ -406,11 +421,11 @@ class PetsGo_Subscription_PDF extends FPDF {
         $this->SetXY(44, $y + 3);
         $this->SetFont('Arial', 'B', 9);
         $this->SetTextColor($this->dark[0], $this->dark[1], $this->dark[2]);
-        $this->Cell(145, 4, $this->utf8('Verificacion de Suscripcion'), 0, 2);
+        $this->Cell(145, 4, $this->utf8('Verificación de Suscripción'), 0, 2);
 
         $this->SetFont('Arial', '', 7);
         $this->SetTextColor(100, 100, 100);
-        $this->MultiCell(145, 3.5, $this->utf8("Escanee el codigo QR para verificar la autenticidad de esta boleta.  Token: " . $this->qr_token . "  |  Boleta: " . $this->invoice_number));
+        $this->MultiCell(145, 3.5, $this->utf8("Escanee el código QR para verificar la autenticidad de esta boleta.  Token: " . $this->qr_token . "  |  Boleta: " . $this->invoice_number));
 
         $this->SetY($y + 29);
     }
