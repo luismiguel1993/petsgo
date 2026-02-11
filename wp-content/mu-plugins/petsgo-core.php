@@ -38,6 +38,7 @@ class PetsGo_Core {
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
         add_action('init', [$this, 'ensure_subscription_columns']);
+        add_action('init', [$this, 'ensure_rider_tables']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
@@ -66,6 +67,8 @@ class PetsGo_Core {
             'petsgo_update_lead',
             'petsgo_download_demo_invoice',
             'petsgo_download_demo_subscription',
+            'petsgo_search_rider_docs',
+            'petsgo_review_rider_doc',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -2226,7 +2229,15 @@ class PetsGo_Core {
         ?>
         <div class="wrap petsgo-wrap">
             <h1>🚴 Delivery (<span id="pd-total">...</span>)</h1>
+            <?php if ($is_admin): ?>
+            <div class="petsgo-tabs" style="margin-bottom:16px;">
+                <button class="petsgo-tab active" data-tab="pd-tab-deliveries" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';">📦 Entregas</button>
+                <button class="petsgo-tab" data-tab="pd-tab-riders" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadRiderDocs();">📋 Documentos Riders</button>
+                <button class="petsgo-tab" data-tab="pd-tab-ratings" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadRiderRatings();">⭐ Valoraciones</button>
+            </div>
+            <?php endif; ?>
             <?php if (!$is_admin): ?><div class="petsgo-info-bar">📌 Estás viendo solo tus entregas asignadas.</div><?php endif; ?>
+            <div id="pd-tab-deliveries" class="pd-tab-content">
             <div class="petsgo-search-bar">
                 <select id="pd-filter-status" multiple><option value="">Todos</option><option value="in_transit">En Tránsito</option><option value="delivered">Entregado</option><option value="pending">Pendiente</option><option value="preparing">Preparando</option><option value="ready">Listo</option><option value="cancelled">Cancelado</option></select>
                 <?php if ($is_admin): ?>
@@ -2239,6 +2250,28 @@ class PetsGo_Core {
             </div>
             <table class="petsgo-table"><thead id="pd-thead"><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
             <tbody id="pd-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
+            <?php if ($is_admin): ?>
+            <!-- Documentos Riders Tab -->
+            <div id="pd-tab-riders" class="pd-tab-content" style="display:none;">
+                <div class="petsgo-search-bar"><select id="pdr-filter-status"><option value="">Todos los estados</option><option value="pending">⏳ Pendientes</option><option value="approved">✅ Aprobados</option><option value="rejected">❌ Rechazados</option></select>
+                <button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="loadRiderDocs()">🔍 Buscar</button>
+                <span class="petsgo-loader" id="pdr-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span></div>
+                <table class="petsgo-table"><thead><tr><th>Rider</th><th>Vehículo</th><th>Documento</th><th>Archivo</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+                <tbody id="pdr-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+            </div>
+            <!-- Valoraciones Tab -->
+            <div id="pd-tab-ratings" class="pd-tab-content" style="display:none;">
+                <div class="petsgo-search-bar">
+                <select id="pdrt-filter-rider"><option value="">Todos los riders</option>
+                    <?php foreach ($riders as $r): ?><option value="<?php echo $r->ID; ?>"><?php echo esc_html($r->display_name); ?></option><?php endforeach; ?>
+                </select>
+                <button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="loadRiderRatings()">🔍 Buscar</button>
+                <span class="petsgo-loader" id="pdrt-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span></div>
+                <table class="petsgo-table"><thead><tr><th>Rider</th><th>Pedido #</th><th>Valoró</th><th>Tipo</th><th>⭐ Rating</th><th>Comentario</th><th>Fecha</th></tr></thead>
+                <tbody id="pdrt-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+            </div>
+            <?php endif; ?>
         </div>
         <script>
         jQuery(function($){
@@ -2281,6 +2314,63 @@ class PetsGo_Core {
                 PG.post('petsgo_save_rider_assignment',{order_id:id,rider_id:rid},function(r){if(r.success)load();else alert(r.data);});
             });
             load();
+            <?php if($is_admin): ?>
+            // === Rider Documents tab ===
+            window.loadRiderDocs=function(){
+                $('#pdr-loader').addClass('active');
+                PG.post('petsgo_search_rider_docs',{status:$('#pdr-filter-status').val()},function(r){
+                    $('#pdr-loader').removeClass('active');
+                    if(!r.success||!r.data.length){$('#pdr-body').html('<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Sin documentos.</td></tr>');return;}
+                    var h='';
+                    $.each(r.data,function(i,d){
+                        var docLabels={'license':'🪪 Licencia de conducir','vehicle_registration':'📄 Padrón vehículo','id_card':'🆔 Documento identidad'};
+                        var stBadge=d.status==='approved'?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">✅ Aprobado</span>':
+                            d.status==='rejected'?'<span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">❌ Rechazado</span>':
+                            '<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">⏳ Pendiente</span>';
+                        var vType=d.vehicle_type||'N/A';
+                        var vtIcon=vType==='moto'?'🏍️':vType==='auto'?'🚗':vType==='bicicleta'?'🚲':'🚶';
+                        h+='<tr><td>'+PG.esc(d.rider_name)+'</td><td>'+vtIcon+' '+PG.esc(vType)+'</td>';
+                        h+='<td>'+(docLabels[d.doc_type]||d.doc_type)+'</td>';
+                        h+='<td><a href="'+d.file_url+'" target="_blank" style="color:#00A8E8;font-weight:600;">📎 '+PG.esc(d.file_name||'Ver')+'</a></td>';
+                        h+='<td>'+stBadge+'</td><td>'+PG.fdate(d.uploaded_at)+'</td>';
+                        h+='<td>';
+                        if(d.status==='pending'){
+                            h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-success pdr-review" data-id="'+d.id+'" data-action="approved" title="Aprobar">✅</button> ';
+                            h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-danger pdr-review" data-id="'+d.id+'" data-action="rejected" title="Rechazar">❌</button>';
+                        } else {
+                            h+='<span style="color:#aaa;font-size:11px;">Revisado</span>';
+                        }
+                        h+='</td></tr>';
+                    });
+                    $('#pdr-body').html(h);
+                });
+            };
+            $(document).on('click','.pdr-review',function(){
+                var id=$(this).data('id'),action=$(this).data('action');
+                var notes='';
+                if(action==='rejected'){notes=prompt('Motivo del rechazo:');if(notes===null)return;}
+                PG.post('petsgo_review_rider_doc',{doc_id:id,status:action,notes:notes},function(r){
+                    if(r.success)loadRiderDocs();else alert(r.data);
+                });
+            });
+            // === Ratings tab ===
+            window.loadRiderRatings=function(){
+                $('#pdrt-loader').addClass('active');
+                PG.post('petsgo_search_rider_docs',{type:'ratings',rider_id:$('#pdrt-filter-rider').val()},function(r){
+                    $('#pdrt-loader').removeClass('active');
+                    if(!r.success||!r.data.length){$('#pdrt-body').html('<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Sin valoraciones.</td></tr>');return;}
+                    var h='';
+                    $.each(r.data,function(i,d){
+                        var stars='';for(var s=1;s<=5;s++)stars+=(s<=d.rating?'⭐':'☆');
+                        var raterLabel=d.rater_type==='vendor'?'🏪 Tienda':'👤 Cliente';
+                        h+='<tr><td>'+PG.esc(d.rider_name)+'</td><td>#'+d.order_id+'</td><td>'+PG.esc(d.rater_name)+'</td>';
+                        h+='<td>'+raterLabel+'</td><td>'+stars+' ('+d.rating+')</td>';
+                        h+='<td>'+PG.esc(d.comment||'Sin comentario')+'</td><td>'+PG.fdate(d.created_at)+'</td></tr>';
+                    });
+                    $('#pdrt-body').html(h);
+                });
+            };
+            <?php endif; ?>
         });
         </script>
         <?php
@@ -2835,6 +2925,85 @@ Dashboard con analíticas"></textarea>
         $wpdb->update("{$wpdb->prefix}petsgo_orders",['rider_id'=>$rider_id],['id'=>$order_id]);
         $this->audit('rider_assign','order',$order_id,'Rider ID: '.($rider_id??'none'));
         wp_send_json_success(['message'=>'Rider asignado']);
+    }
+
+    // --- RIDER DOCUMENTS (admin search + review) ---
+    public function petsgo_search_rider_docs() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin');
+        global $wpdb;
+
+        $type = sanitize_text_field($_POST['type'] ?? '');
+
+        // Ratings mode
+        if ($type === 'ratings') {
+            $sql = "SELECT dr.*, u.display_name AS rider_name, ru.display_name AS rater_name
+                    FROM {$wpdb->prefix}petsgo_delivery_ratings dr
+                    JOIN {$wpdb->users} u ON dr.rider_id = u.ID
+                    JOIN {$wpdb->users} ru ON dr.rater_id = ru.ID
+                    WHERE 1=1";
+            $args = [];
+            $rider_id = intval($_POST['rider_id'] ?? 0);
+            if ($rider_id) { $sql .= " AND dr.rider_id = %d"; $args[] = $rider_id; }
+            $sql .= " ORDER BY dr.created_at DESC LIMIT 200";
+            wp_send_json_success($args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql));
+            return;
+        }
+
+        // Documents mode
+        $sql = "SELECT rd.*, u.display_name AS rider_name, up.vehicle_type
+                FROM {$wpdb->prefix}petsgo_rider_documents rd
+                JOIN {$wpdb->users} u ON rd.rider_id = u.ID
+                LEFT JOIN {$wpdb->prefix}petsgo_user_profiles up ON rd.rider_id = up.user_id
+                WHERE 1=1";
+        $args = [];
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        if ($status) { $sql .= " AND rd.status = %s"; $args[] = $status; }
+        $sql .= " ORDER BY rd.uploaded_at DESC LIMIT 200";
+        wp_send_json_success($args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql));
+    }
+
+    public function petsgo_review_rider_doc() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin');
+        global $wpdb;
+        $doc_id = intval($_POST['doc_id'] ?? 0);
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $notes  = sanitize_textarea_field($_POST['notes'] ?? '');
+        if (!$doc_id || !in_array($status, ['approved', 'rejected'])) wp_send_json_error('Datos inválidos');
+
+        $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", [
+            'status'      => $status,
+            'admin_notes' => $notes,
+            'reviewed_by' => get_current_user_id(),
+            'reviewed_at' => current_time('mysql'),
+        ], ['id' => $doc_id]);
+
+        $doc = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_rider_documents WHERE id=%d", $doc_id));
+        $this->audit('review_rider_doc', 'rider_document', $doc_id, "Doc {$doc->doc_type} → {$status}" . ($notes ? " ({$notes})" : ''));
+
+        // Check if all required docs are approved — auto-approve rider
+        if ($status === 'approved' && $doc) {
+            $rider_id = $doc->rider_id;
+            $vehicle_type = get_user_meta($rider_id, 'petsgo_vehicle', true);
+            $needs_license = in_array($vehicle_type, ['moto', 'auto']);
+
+            $approved = $wpdb->get_col($wpdb->prepare(
+                "SELECT doc_type FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d AND status='approved'",
+                $rider_id
+            ));
+
+            $all_ok = true;
+            if ($needs_license && !in_array('license', $approved)) $all_ok = false;
+            if ($needs_license && !in_array('vehicle_registration', $approved)) $all_ok = false;
+
+            if ($all_ok && count($approved) >= ($needs_license ? 2 : 0)) {
+                update_user_meta($rider_id, 'petsgo_rider_status', 'approved');
+                $this->audit('rider_approved', 'user', $rider_id, 'Todos los documentos aprobados');
+            }
+        }
+
+        wp_send_json_success(['message' => 'Documento ' . ($status === 'approved' ? 'aprobado' : 'rechazado')]);
     }
 
     // --- PLANS ---
@@ -4546,7 +4715,7 @@ Dashboard con analíticas"></textarea>
     // ============================================================
     public function register_roles() {
         add_role('petsgo_vendor', 'Tienda (Vendor)', ['read'=>true,'upload_files'=>true,'manage_inventory'=>true]);
-        add_role('petsgo_rider', 'Delivery (Rider)', ['read'=>true,'manage_deliveries'=>true]);
+        add_role('petsgo_rider', 'Delivery (Rider)', ['read'=>true,'upload_files'=>true,'manage_deliveries'=>true]);
         add_role('petsgo_support', 'Soporte', ['read'=>true,'moderate_comments'=>true,'manage_support_tickets'=>true]);
     }
 
@@ -4566,6 +4735,68 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$table} ADD COLUMN subscription_end DATE DEFAULT NULL AFTER subscription_start");
         }
         update_option('petsgo_vendor_sub_cols', true);
+    }
+
+    /**
+     * Ensure rider documents, delivery ratings tables, and delivery_method column exist.
+     */
+    public function ensure_rider_tables() {
+        if (get_option('petsgo_rider_tables_v2', false)) return;
+        global $wpdb;
+        $charset = $wpdb->get_charset_collate();
+
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_rider_documents (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            rider_id bigint(20) NOT NULL,
+            doc_type varchar(50) NOT NULL,
+            file_url text NOT NULL,
+            file_name varchar(255) DEFAULT NULL,
+            status varchar(20) DEFAULT 'pending',
+            admin_notes text DEFAULT NULL,
+            reviewed_by bigint(20) DEFAULT NULL,
+            reviewed_at datetime DEFAULT NULL,
+            uploaded_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY rider_id (rider_id)
+        ) {$charset}");
+
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_delivery_ratings (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            order_id bigint(20) NOT NULL,
+            rider_id bigint(20) NOT NULL,
+            rater_type varchar(20) NOT NULL,
+            rater_id bigint(20) NOT NULL,
+            rating tinyint(1) NOT NULL DEFAULT 5,
+            comment text DEFAULT NULL,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_rating (order_id, rater_type),
+            KEY rider_id (rider_id),
+            KEY order_id (order_id)
+        ) {$charset}");
+
+        // Add delivery_method and shipping_address to orders
+        $cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_orders", 0);
+        if (!in_array('delivery_method', $cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN delivery_method varchar(20) DEFAULT 'delivery' AFTER delivery_fee");
+        }
+        if (!in_array('shipping_address', $cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN shipping_address text DEFAULT NULL AFTER delivery_method");
+        }
+
+        // Add vehicle_type to user_profiles
+        $pcols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_user_profiles", 0);
+        if (!in_array('vehicle_type', $pcols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN vehicle_type varchar(30) DEFAULT NULL AFTER phone");
+        }
+
+        // Update rider role to include upload_files
+        $role = get_role('petsgo_rider');
+        if ($role && !$role->has_cap('upload_files')) {
+            $role->add_cap('upload_files');
+        }
+
+        update_option('petsgo_rider_tables_v2', true);
     }
 
     /**
@@ -4735,6 +4966,15 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/invoice/validate/(?P<token>[a-f0-9\-]+)',['methods'=>'GET','callback'=>[$this,'api_validate_invoice'],'permission_callback'=>'__return_true']);
         // Vendor Lead (public)
         register_rest_route('petsgo/v1','/vendor-lead',['methods'=>'POST','callback'=>[$this,'api_submit_vendor_lead'],'permission_callback'=>'__return_true']);
+        // Rider
+        register_rest_route('petsgo/v1','/rider/documents',['methods'=>'GET','callback'=>[$this,'api_get_rider_documents'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/documents/upload',['methods'=>'POST','callback'=>[$this,'api_upload_rider_document'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/status',['methods'=>'GET','callback'=>[$this,'api_get_rider_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries',['methods'=>'GET','callback'=>[$this,'api_get_rider_deliveries'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_update_delivery_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        // Delivery ratings
+        register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/rate-rider',['methods'=>'POST','callback'=>[$this,'api_rate_rider'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/rider/ratings',['methods'=>'GET','callback'=>[$this,'api_get_rider_ratings'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
     }
 
     // --- API Productos ---
@@ -4989,6 +5229,7 @@ Dashboard con analíticas"></textarea>
         $id_number  = sanitize_text_field($p['id_number'] ?? '');
         $birth_date = sanitize_text_field($p['birth_date'] ?? '');
         $vehicle    = sanitize_text_field($p['vehicle'] ?? '');
+        $vehicle_type = sanitize_text_field($p['vehicle_type'] ?? '');
 
         if (!$first_name) $errors[] = 'Nombre es obligatorio';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
@@ -5036,6 +5277,11 @@ Dashboard con analíticas"></textarea>
         ], ['%d','%s','%s','%s','%s','%s','%s']);
 
         if ($vehicle) update_user_meta($uid, 'petsgo_vehicle', $vehicle);
+        if ($vehicle_type) {
+            update_user_meta($uid, 'petsgo_vehicle', $vehicle_type);
+            $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", ['vehicle_type' => $vehicle_type], ['user_id' => $uid]);
+        }
+        update_user_meta($uid, 'petsgo_rider_status', 'pending');
         $this->audit('register_rider', 'user', $uid, $display_name . ' (rider)');
 
         // Welcome email — Rider
@@ -5073,6 +5319,191 @@ Dashboard con analíticas"></textarea>
         @wp_mail($email, "¡Bienvenido al equipo Rider de {$company}! 🚴", $rider_html, $headers);
 
         return rest_ensure_response(['message' => 'Registro como Rider exitoso. Bienvenido a PetsGo.', 'username' => $username]);
+    }
+
+    // --- Rider Documents API ---
+    public function api_get_rider_documents() {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $docs = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d ORDER BY uploaded_at DESC", $uid
+        ));
+        $vehicle_type = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
+        $rider_status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending';
+        return rest_ensure_response(['documents' => $docs, 'vehicle_type' => $vehicle_type, 'rider_status' => $rider_status]);
+    }
+
+    public function api_upload_rider_document($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+
+        if (empty($_FILES['document'])) {
+            return new WP_Error('no_file', 'No se recibió ningún archivo', ['status' => 400]);
+        }
+        $doc_type = sanitize_text_field($_POST['doc_type'] ?? '');
+        if (!in_array($doc_type, ['license', 'vehicle_registration', 'id_card'])) {
+            return new WP_Error('invalid_type', 'Tipo de documento inválido', ['status' => 400]);
+        }
+
+        // Save vehicle type if provided
+        $vehicle_type = sanitize_text_field($_POST['vehicle_type'] ?? '');
+        if ($vehicle_type && in_array($vehicle_type, ['moto', 'auto', 'bicicleta'])) {
+            update_user_meta($uid, 'petsgo_vehicle', $vehicle_type);
+            $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", ['vehicle_type' => $vehicle_type], ['user_id' => $uid]);
+        }
+
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/image.php';
+        require_once ABSPATH . 'wp-admin/includes/media.php';
+
+        $allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        if (!in_array($_FILES['document']['type'], $allowed)) {
+            return new WP_Error('invalid_file', 'Solo se permiten archivos JPG, PNG, WebP o PDF', ['status' => 400]);
+        }
+        if ($_FILES['document']['size'] > 5 * 1024 * 1024) {
+            return new WP_Error('too_large', 'El archivo no puede superar 5 MB', ['status' => 400]);
+        }
+
+        $upload = wp_handle_upload($_FILES['document'], ['test_form' => false]);
+        if (isset($upload['error'])) {
+            return new WP_Error('upload_error', $upload['error'], ['status' => 500]);
+        }
+
+        // Delete previous doc of same type if exists
+        $wpdb->delete("{$wpdb->prefix}petsgo_rider_documents", ['rider_id' => $uid, 'doc_type' => $doc_type]);
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_rider_documents", [
+            'rider_id'  => $uid,
+            'doc_type'  => $doc_type,
+            'file_url'  => $upload['url'],
+            'file_name' => basename($upload['file']),
+            'status'    => 'pending',
+        ], ['%d', '%s', '%s', '%s', '%s']);
+
+        $this->audit('rider_doc_upload', 'rider_document', $wpdb->insert_id, "Tipo: {$doc_type}");
+        return rest_ensure_response(['message' => 'Documento subido exitosamente', 'id' => $wpdb->insert_id]);
+    }
+
+    public function api_get_rider_status() {
+        $uid = get_current_user_id();
+        global $wpdb;
+        $status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending';
+        $vehicle = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
+        $docs = $wpdb->get_results($wpdb->prepare(
+            "SELECT doc_type, status FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
+        ));
+        $pending_docs = array_filter($docs, fn($d) => $d->status === 'pending');
+        $rejected_docs = array_filter($docs, fn($d) => $d->status === 'rejected');
+
+        // Get rider average rating
+        $avg = $wpdb->get_var($wpdb->prepare(
+            "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
+        ));
+
+        return rest_ensure_response([
+            'rider_status'   => $status,
+            'vehicle_type'   => $vehicle,
+            'documents'      => $docs,
+            'pending_count'  => count($pending_docs),
+            'rejected_count' => count(array_values($rejected_docs)),
+            'average_rating' => $avg ? round(floatval($avg), 1) : null,
+        ]);
+    }
+
+    public function api_get_rider_deliveries() {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $deliveries = $wpdb->get_results($wpdb->prepare(
+            "SELECT o.*, v.store_name, u.display_name AS customer_name, o.shipping_address AS address
+             FROM {$wpdb->prefix}petsgo_orders o
+             JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+             JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.rider_id = %d AND o.delivery_method = 'delivery'
+             ORDER BY o.created_at DESC", $uid
+        ));
+        return rest_ensure_response($deliveries);
+    }
+
+    public function api_update_delivery_status($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request['id']);
+        $p = $request->get_json_params();
+        $new_status = sanitize_text_field($p['status'] ?? '');
+
+        $valid = ['ready_for_pickup', 'in_transit', 'delivered'];
+        if (!in_array($new_status, $valid)) return new WP_Error('invalid', 'Estado inválido', ['status' => 400]);
+
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND rider_id=%d", $order_id, $uid));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado o no asignado a ti', ['status' => 404]);
+
+        $wpdb->update("{$wpdb->prefix}petsgo_orders", ['status' => $new_status], ['id' => $order_id]);
+        $this->audit('delivery_status', 'order', $order_id, "Rider {$uid}: {$order->status} → {$new_status}");
+        return rest_ensure_response(['message' => 'Estado actualizado']);
+    }
+
+    // --- Delivery Ratings API ---
+    public function api_rate_rider($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request['id']);
+        $p = $request->get_json_params();
+        $rating  = intval($p['rating'] ?? 0);
+        $comment = sanitize_textarea_field($p['comment'] ?? '');
+
+        if ($rating < 1 || $rating > 5) return new WP_Error('invalid', 'Rating debe ser entre 1 y 5', ['status' => 400]);
+
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $order_id));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado', ['status' => 404]);
+        if (!$order->rider_id) return new WP_Error('no_rider', 'Este pedido no tiene rider asignado', ['status' => 400]);
+        if ($order->status !== 'delivered') return new WP_Error('not_delivered', 'Solo puedes valorar pedidos entregados', ['status' => 400]);
+
+        // Determine rater type
+        $user = wp_get_current_user();
+        $rater_type = null;
+        if ($order->customer_id == $uid) {
+            $rater_type = 'customer';
+        } elseif (in_array('petsgo_vendor', (array)$user->roles)) {
+            // Check if this vendor owns the order
+            $vendor_user = $wpdb->get_var($wpdb->prepare("SELECT user_id FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $order->vendor_id));
+            if ($vendor_user == $uid) $rater_type = 'vendor';
+        }
+        if (!$rater_type && current_user_can('administrator')) $rater_type = 'vendor'; // admin can rate as vendor
+
+        if (!$rater_type) return new WP_Error('unauthorized', 'No tienes permiso para valorar esta entrega', ['status' => 403]);
+
+        // Check duplicate
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE order_id=%d AND rater_type=%s", $order_id, $rater_type
+        ));
+        if ($exists) return new WP_Error('duplicate', 'Ya valoraste esta entrega', ['status' => 400]);
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_delivery_ratings", [
+            'order_id'   => $order_id,
+            'rider_id'   => $order->rider_id,
+            'rater_type' => $rater_type,
+            'rater_id'   => $uid,
+            'rating'     => $rating,
+            'comment'    => $comment,
+        ], ['%d', '%d', '%s', '%d', '%d', '%s']);
+
+        $this->audit('rate_rider', 'order', $order_id, "Rider {$order->rider_id}: {$rating}⭐ por {$rater_type}");
+        return rest_ensure_response(['message' => 'Valoración registrada. ¡Gracias!']);
+    }
+
+    public function api_get_rider_ratings() {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $ratings = $wpdb->get_results($wpdb->prepare(
+            "SELECT dr.*, u.display_name AS rater_name
+             FROM {$wpdb->prefix}petsgo_delivery_ratings dr
+             JOIN {$wpdb->users} u ON dr.rater_id = u.ID
+             WHERE dr.rider_id = %d ORDER BY dr.created_at DESC LIMIT 50", $uid
+        ));
+        $avg = $wpdb->get_var($wpdb->prepare(
+            "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
+        ));
+        return rest_ensure_response(['ratings' => $ratings, 'average' => $avg ? round(floatval($avg), 1) : null]);
     }
 
     // --- Forgot / Reset password ---
@@ -5335,7 +5766,12 @@ Dashboard con analíticas"></textarea>
         $vendor=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$p['vendor_id']));
         if(!$vendor) return new WP_Error('invalid','Vendedor no existe',['status'=>404]);
         $total=floatval($p['total']);$comm=round($total*(floatval($vendor->sales_commission)/100),2);$del=floatval($p['delivery_fee']??0);
-        $wpdb->insert("{$wpdb->prefix}petsgo_orders",['customer_id'=>$uid,'vendor_id'=>$p['vendor_id'],'total_amount'=>$total,'petsgo_commission'=>$comm,'delivery_fee'=>$del,'status'=>'pending'],['%d','%d','%f','%f','%f','%s']);
+        $delivery_method = sanitize_text_field($p['delivery_method'] ?? 'delivery');
+        if (!in_array($delivery_method, ['delivery', 'pickup'])) $delivery_method = 'delivery';
+        if ($delivery_method === 'pickup') $del = 0; // Retiro en tienda = sin costo envío
+        $shipping_address = sanitize_textarea_field($p['shipping_address'] ?? '');
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_orders",['customer_id'=>$uid,'vendor_id'=>$p['vendor_id'],'total_amount'=>$total,'petsgo_commission'=>$comm,'delivery_fee'=>$del,'delivery_method'=>$delivery_method,'shipping_address'=>$shipping_address,'status'=>'pending'],['%d','%d','%f','%f','%f','%s','%s','%s']);
         $order_id = $wpdb->insert_id;
         $this->audit('order_create', 'order', $order_id, 'Total: $'.number_format($total,0,',','.'));
 

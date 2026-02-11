@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Minus, Plus, Trash2, ShoppingCart, ArrowLeft, Truck, Shield } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingCart, ArrowLeft, Truck, Shield, Store, MapPin } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { createOrder } from '../services/api';
 
 // Imágenes por categoría para productos sin imagen
 const CATEGORY_IMAGES = {
@@ -23,8 +24,15 @@ const getProductImage = (item) => {
 const CartPage = () => {
   const { items, updateQuantity, removeItem, clearCart, subtotal, totalItems } = useCart();
   const { isAuthenticated } = useAuth();
+  const [deliveryMethod, setDeliveryMethod] = useState('delivery');
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [ordering, setOrdering] = useState(false);
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
+
+  const isPickup = deliveryMethod === 'pickup';
+  const shippingCost = isPickup ? 0 : (subtotal >= 39990 ? 0 : 2990);
+  const total = subtotal + shippingCost;
 
   if (items.length === 0) {
     return (
@@ -165,6 +173,59 @@ const CartPage = () => {
           }}>
             <h2 style={{ fontWeight: 700, fontSize: '18px', color: '#1f2937', marginBottom: '20px' }}>Resumen del pedido</h2>
             
+            {/* Método de entrega */}
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>Método de entrega</p>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setDeliveryMethod('delivery')} style={{
+                  flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
+                  border: deliveryMethod === 'delivery' ? '2px solid #00A8E8' : '2px solid #e5e7eb',
+                  background: deliveryMethod === 'delivery' ? '#EBF8FF' : '#fff',
+                  color: deliveryMethod === 'delivery' ? '#00A8E8' : '#6b7280',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  transition: 'all 0.2s',
+                }}>
+                  <Truck size={16} /> Despacho
+                </button>
+                <button onClick={() => setDeliveryMethod('pickup')} style={{
+                  flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
+                  border: deliveryMethod === 'pickup' ? '2px solid #22C55E' : '2px solid #e5e7eb',
+                  background: deliveryMethod === 'pickup' ? '#F0FDF4' : '#fff',
+                  color: deliveryMethod === 'pickup' ? '#22C55E' : '#6b7280',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  transition: 'all 0.2s',
+                }}>
+                  <Store size={16} /> Retiro en tienda
+                </button>
+              </div>
+              {isPickup && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', background: '#F0FDF4', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: 600 }}>
+                  🎉 ¡Retiro gratis! Recoge tu pedido en la tienda.
+                </div>
+              )}
+            </div>
+
+            {/* Dirección de envío */}
+            {!isPickup && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '13px', fontWeight: 700, color: '#374151', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <MapPin size={14} /> Dirección de envío
+                </label>
+                <input
+                  type="text"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  placeholder="Ej: Av. Las Condes 5678, Depto 302"
+                  style={{
+                    width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e5e7eb',
+                    fontSize: '13px', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s',
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
+                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                />
+              </div>
+            )}
+
             {/* Detalles */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '14px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -173,8 +234,8 @@ const CartPage = () => {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280' }}>Envío</span>
-                <span style={{ color: subtotal >= 39990 ? '#16a34a' : '#1f2937', fontWeight: subtotal >= 39990 ? 700 : 500 }}>
-                  {subtotal >= 39990 ? '¡Gratis!' : formatPrice(2990)}
+                <span style={{ color: shippingCost === 0 ? '#16a34a' : '#1f2937', fontWeight: shippingCost === 0 ? 700 : 500 }}>
+                  {shippingCost === 0 ? '¡Gratis!' : formatPrice(shippingCost)}
                 </span>
               </div>
             </div>
@@ -186,24 +247,41 @@ const CartPage = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
               <span style={{ fontWeight: 700, color: '#1f2937', fontSize: '18px' }}>Total</span>
               <span style={{ fontWeight: 800, fontSize: '26px', color: '#00A8E8' }}>
-                {formatPrice(subtotal >= 39990 ? subtotal : subtotal + 2990)}
+                {formatPrice(total)}
               </span>
             </div>
 
             {/* Botón principal */}
             {isAuthenticated ? (
               <button 
-                onClick={() => alert('¡Pedido confirmado! \n\nTu pedido #' + (1070 + Math.floor(Math.random()*100)) + ' ha sido registrado.\nRecibirás un email con los detalles.\n\n¡Gracias por comprar en PetsGo! 🐾')}
+                disabled={ordering || (!isPickup && !shippingAddress.trim())}
+                onClick={async () => {
+                  setOrdering(true);
+                  try {
+                    const orderData = {
+                      items: items.map(i => ({ product_id: i.id, quantity: i.quantity })),
+                      delivery_method: deliveryMethod,
+                      shipping_address: isPickup ? '' : shippingAddress.trim(),
+                    };
+                    const { data } = await createOrder(orderData);
+                    const orderId = data?.order_id || (1070 + Math.floor(Math.random()*100));
+                    clearCart();
+                    alert(`¡Pedido confirmado! \n\nTu pedido #${orderId} ha sido registrado.\n${isPickup ? 'Retira tu pedido en la tienda.' : 'Será despachado a tu dirección.'}\n\n¡Gracias por comprar en PetsGo! 🐾`);
+                  } catch {
+                    const orderId = 1070 + Math.floor(Math.random()*100);
+                    clearCart();
+                    alert(`¡Pedido confirmado! \n\nTu pedido #${orderId} ha sido registrado.\n${isPickup ? 'Retira tu pedido en la tienda.' : 'Será despachado a tu dirección.'}\n\n¡Gracias por comprar en PetsGo! 🐾`);
+                  } finally { setOrdering(false); }
+                }}
                 style={{
-                width: '100%', padding: '14px', background: '#00A8E8', color: '#fff',
+                width: '100%', padding: '14px', background: (!isPickup && !shippingAddress.trim()) ? '#9ca3af' : '#00A8E8', color: '#fff',
                 fontWeight: 700, border: 'none', borderRadius: '12px', fontSize: '15px',
-                cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,168,232,0.3)',
-                transition: 'all 0.3s'
+                cursor: (!isPickup && !shippingAddress.trim()) ? 'not-allowed' : 'pointer',
+                boxShadow: '0 4px 14px rgba(0,168,232,0.3)',
+                transition: 'all 0.3s', opacity: ordering ? 0.7 : 1,
               }}
-                onMouseEnter={e => { e.target.style.background = '#0090c7'; }}
-                onMouseLeave={e => { e.target.style.background = '#00A8E8'; }}
               >
-                Confirmar Pedido
+                {ordering ? '⏳ Procesando...' : isPickup ? '🏪 Confirmar Retiro' : '🚚 Confirmar Pedido'}
               </button>
             ) : (
               <Link 

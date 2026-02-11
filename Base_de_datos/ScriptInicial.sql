@@ -58,6 +58,38 @@ CREATE TABLE IF NOT EXISTS `wp_petsgo_orders` (
     KEY `rider_id` (`rider_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Documentos de Riders (licencia, padrón vehículo, etc.)
+CREATE TABLE IF NOT EXISTS `wp_petsgo_rider_documents` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `rider_id` bigint(20) NOT NULL,
+    `doc_type` varchar(50) NOT NULL, -- license, vehicle_registration, id_card
+    `file_url` text NOT NULL,
+    `file_name` varchar(255) DEFAULT NULL,
+    `status` varchar(20) DEFAULT 'pending', -- pending, approved, rejected
+    `admin_notes` text DEFAULT NULL,
+    `reviewed_by` bigint(20) DEFAULT NULL,
+    `reviewed_at` datetime DEFAULT NULL,
+    `uploaded_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `rider_id` (`rider_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Valoraciones de entregas (tienda y cliente final)
+CREATE TABLE IF NOT EXISTS `wp_petsgo_delivery_ratings` (
+    `id` bigint(20) NOT NULL AUTO_INCREMENT,
+    `order_id` bigint(20) NOT NULL,
+    `rider_id` bigint(20) NOT NULL,
+    `rater_type` varchar(20) NOT NULL, -- vendor, customer
+    `rater_id` bigint(20) NOT NULL,
+    `rating` tinyint(1) NOT NULL DEFAULT 5, -- 1-5
+    `comment` text DEFAULT NULL,
+    `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unique_rating` (`order_id`, `rater_type`),
+    KEY `rider_id` (`rider_id`),
+    KEY `order_id` (`order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Insertar planes iniciales de ejemplo
 INSERT IGNORE INTO `wp_petsgo_subscriptions` (plan_name, monthly_price) VALUES 
 ('Básico', 29990.00),

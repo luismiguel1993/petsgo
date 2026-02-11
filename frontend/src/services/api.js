@@ -148,8 +148,8 @@ export const uploadPetPhoto = (file) => {
 // ==========================================
 
 /** Crear pedido */
-export const createOrder = (vendorId, items, deliveryFee = 0) =>
-  api.post('/orders', { vendor_id: vendorId, items, delivery_fee: deliveryFee });
+export const createOrder = (orderData) =>
+  api.post('/orders', orderData);
 
 /** Mis pedidos */
 export const getMyOrders = () =>
@@ -198,6 +198,28 @@ export const getRiderDeliveries = () =>
 /** Actualizar estado de entrega */
 export const updateDeliveryStatus = (orderId, status) =>
   api.put(`/rider/deliveries/${orderId}/status`, { status });
+
+/** Documentos del rider */
+export const getRiderDocuments = () =>
+  api.get('/rider/documents');
+
+/** Subir documento rider */
+export const uploadRiderDocument = (formData) =>
+  api.post('/rider/documents/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+/** Estado del rider */
+export const getRiderStatus = () =>
+  api.get('/rider/status');
+
+/** Valoraciones del rider */
+export const getRiderRatings = () =>
+  api.get('/rider/ratings');
+
+/** Valorar un rider (desde cliente o vendor) */
+export const rateRider = (orderId, rating, comment) =>
+  api.post(`/orders/${orderId}/rate-rider`, { rating, comment });
 
 // ==========================================
 // ADMIN
