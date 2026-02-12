@@ -1,16 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Truck, Package, MapPin, CheckCircle2, Navigation, Upload, Star, Shield, AlertTriangle } from 'lucide-react';
+import {
+  Truck, Package, MapPin, CheckCircle2, Navigation, Upload, Star, Shield,
+  AlertTriangle, DollarSign, User, CreditCard, TrendingUp, Clock, Calendar,
+  ChevronRight, Banknote, Wallet, Eye, EyeOff, Save, RefreshCw,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
-  getRiderRatings, getRiderStatus,
+  getRiderRatings, getRiderStatus, getRiderProfile, updateRiderProfile, getRiderEarnings,
 } from '../services/api';
 
+/* ───── constants ───── */
 const STATUS_CONFIG = {
   ready_for_pickup: { label: 'Recoger', color: '#8B5CF6', next: 'in_transit', action: 'Iniciar Entrega' },
-  in_transit: { label: 'En camino', color: '#F97316', next: 'delivered', action: 'Marcar Entregado' },
-  delivered: { label: 'Entregado', color: '#22C55E', next: null, action: null },
+  in_transit:       { label: 'En camino', color: '#F97316', next: 'delivered', action: 'Marcar Entregado' },
+  delivered:        { label: 'Entregado', color: '#22C55E', next: null, action: null },
 };
 
 const DOC_TYPES = {
@@ -20,12 +25,20 @@ const DOC_TYPES = {
 };
 
 const VEHICLE_LABELS = {
-  bicicleta: '🚲 Bicicleta',
-  scooter: '🛵 Scooter',
-  moto: '🏍️ Moto',
-  auto: '🚗 Auto',
-  a_pie: '🚶 A pie',
+  bicicleta: '🚲 Bicicleta', scooter: '🛵 Scooter', moto: '🏍️ Moto', auto: '🚗 Auto', a_pie: '🚶 A pie',
 };
+
+const BANK_OPTIONS = [
+  'Banco de Chile', 'Banco Estado', 'Banco Santander', 'BCI', 'Banco Itaú',
+  'Scotiabank', 'Banco Falabella', 'Banco Ripley', 'Banco Security', 'Banco BICE',
+  'Banco Consorcio', 'Banco Internacional', 'MACH', 'Tenpo', 'Mercado Pago',
+];
+
+const ACCOUNT_TYPES = [
+  { value: 'corriente', label: 'Cuenta Corriente' },
+  { value: 'vista',     label: 'Cuenta Vista / RUT' },
+  { value: 'ahorro',    label: 'Cuenta de Ahorro' },
+];
 
 const DEMO_DELIVERIES = [
   { id: 1051, status: 'ready_for_pickup', store_name: 'PetShop Las Condes', customer_name: 'María López', address: 'Av. Las Condes 5678, Depto 302', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-10T08:30:00Z' },
@@ -33,45 +46,72 @@ const DEMO_DELIVERIES = [
   { id: 1048, status: 'delivered', store_name: 'Mundo Animal Centro', customer_name: 'Ana Torres', address: 'Av. Matta 890, Santiago', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-09T14:00:00Z' },
 ];
 
+/* ───── helpers ───── */
+const fmt = (v) => `$${parseInt(v || 0).toLocaleString('es-CL')}`;
+const fmtDate = (d) => d ? new Date(d).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+const fmtDateTime = (d) => d ? new Date(d).toLocaleString('es-CL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+const maskAccount = (n) => n ? '••••' + n.slice(-4) : '';
+
+/* ───── shared UI atoms ───── */
+const Card = ({ children, style }) => (
+  <div style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', ...style }}>{children}</div>
+);
+const StatBox = ({ label, value, sub, color, icon: Icon }) => (
+  <Card>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {Icon && <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={18} color={color} /></div>}
+      <div>
+        <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>{label}</span>
+        <p style={{ fontSize: 22, fontWeight: 900, color: color || '#2F3A40', margin: '2px 0 0' }}>{value}</p>
+        {sub && <span style={{ fontSize: 11, color: '#9ca3af' }}>{sub}</span>}
+      </div>
+    </div>
+  </Card>
+);
+
+/* ============================================================ */
 const RiderDashboard = () => {
   const { isAuthenticated, isRider, isAdmin, user } = useAuth();
-  const [tab, setTab] = useState('deliveries');
-  const [deliveries, setDeliveries] = useState([]);
+  const [tab, setTab] = useState('home');
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('active');
 
-  // Status state
+  /* ── rider status / onboarding ── */
   const [riderStatus, setRiderStatus] = useState(user?.rider_status || 'pending_email');
   const [vehicleType, setVehicleType] = useState(user?.vehicle_type || '');
   const [requiredDocs, setRequiredDocs] = useState(['id_card']);
   const [missingDocs, setMissingDocs] = useState([]);
 
-  // Docs state
+  /* ── profile ── */
+  const [profile, setProfile] = useState(null);
+  const [profileForm, setProfileForm] = useState({});
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileMsg, setProfileMsg] = useState('');
+  const [showAccount, setShowAccount] = useState(false);
+
+  /* ── deliveries ── */
+  const [deliveries, setDeliveries] = useState([]);
+  const [filter, setFilter] = useState('active');
+
+  /* ── documents ── */
   const [documents, setDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
   const fileInputRef = useRef(null);
   const [selectedDocType, setSelectedDocType] = useState('');
 
-  // Ratings state
+  /* ── ratings ── */
   const [ratings, setRatings] = useState([]);
   const [avgRating, setAvgRating] = useState(null);
 
-  // Profile data for matching
+  /* ── earnings ── */
+  const [earnings, setEarnings] = useState(null);
+
+  /* ── identity (from status) ── */
   const [idType, setIdType] = useState('');
   const [idNumber, setIdNumber] = useState('');
 
-  useEffect(() => {
-    loadStatus();
-  }, []);
-
-  useEffect(() => {
-    if (tab === 'deliveries' && riderStatus === 'approved') loadDeliveries();
-    else if (tab === 'documents') loadDocuments();
-    else if (tab === 'ratings' && riderStatus === 'approved') loadRatings();
-  }, [tab, riderStatus]);
-
-  const loadStatus = async () => {
+  /* ────────────── loaders ────────────── */
+  const loadStatus = useCallback(async () => {
     try {
       const { data } = await getRiderStatus();
       setRiderStatus(data.rider_status || 'pending_email');
@@ -82,62 +122,93 @@ const RiderDashboard = () => {
       setAvgRating(data.average_rating);
       setIdType(data.id_type || '');
       setIdNumber(data.id_number || '');
-      // Auto-switch to documents tab if pending_docs
       if (data.rider_status === 'pending_docs') setTab('documents');
-    } catch {
-      // keep defaults from user context
-    }
-  };
+    } catch { /* keep defaults */ }
+  }, []);
 
-  const loadDeliveries = async () => {
+  const loadProfile = useCallback(async () => {
+    try {
+      const { data } = await getRiderProfile();
+      setProfile(data);
+      setProfileForm({
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        phone: data.phone || '',
+        bankName: data.bankName || '',
+        bankAccountType: data.bankAccountType || '',
+        bankAccountNumber: data.bankAccountNumber || '',
+      });
+    } catch { /* keep defaults */ }
+  }, []);
+
+  const loadDeliveries = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getRiderDeliveries();
       const d = Array.isArray(data) ? data : [];
       setDeliveries(d.length > 0 ? d : DEMO_DELIVERIES);
-    } catch {
-      setDeliveries(DEMO_DELIVERIES);
-    } finally { setLoading(false); }
-  };
+    } catch { setDeliveries(DEMO_DELIVERIES); }
+    finally { setLoading(false); }
+  }, []);
 
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getRiderDocuments();
       setDocuments(data?.documents || []);
       setVehicleType(data?.vehicle_type || vehicleType);
       setRiderStatus(data?.rider_status || riderStatus);
-    } catch {
-      // keep defaults
-    } finally { setLoading(false); }
-  };
+    } catch { /* keep */ }
+    finally { setLoading(false); }
+  }, [vehicleType, riderStatus]);
 
-  const loadRatings = async () => {
+  const loadRatings = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await getRiderRatings();
       setRatings(data?.ratings || []);
       setAvgRating(data?.average || null);
-    } catch {
-      // keep defaults
-    } finally { setLoading(false); }
-  };
+    } catch { /* keep */ }
+    finally { setLoading(false); }
+  }, []);
 
+  const loadEarnings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await getRiderEarnings();
+      setEarnings(data);
+    } catch { setEarnings(null); }
+    finally { setLoading(false); }
+  }, []);
+
+  /* ── initial load ── */
+  useEffect(() => {
+    loadStatus();
+    loadProfile();
+  }, [loadStatus, loadProfile]);
+
+  /* ── tab-based loading ── */
+  useEffect(() => {
+    if (tab === 'home' && riderStatus === 'approved') { loadDeliveries(); loadEarnings(); }
+    else if (tab === 'deliveries' && riderStatus === 'approved') loadDeliveries();
+    else if (tab === 'documents') loadDocuments();
+    else if (tab === 'ratings' && riderStatus === 'approved') loadRatings();
+    else if (tab === 'earnings' && riderStatus === 'approved') loadEarnings();
+    else if (tab === 'profile') loadProfile();
+  }, [tab, riderStatus, loadDeliveries, loadDocuments, loadRatings, loadEarnings, loadProfile]);
+
+  /* ── auth guard ── */
   if (!isAuthenticated || (!isRider() && !isAdmin())) return <Navigate to="/login" />;
 
-  const formatPrice = (price) => `$${parseInt(price || 0).toLocaleString('es-CL')}`;
-
+  /* ────────────── handlers ────────────── */
   const handleStatusUpdate = async (orderId, newStatus) => {
-    try {
-      await updateDeliveryStatus(orderId, newStatus);
-      loadDeliveries();
-    } catch { alert('Error actualizando estado de entrega'); }
+    try { await updateDeliveryStatus(orderId, newStatus); loadDeliveries(); }
+    catch { alert('Error actualizando estado de entrega'); }
   };
 
   const handleDocUpload = async (docType) => {
     if (!fileInputRef.current?.files?.[0]) return;
-    setUploading(true);
-    setUploadMsg('');
+    setUploading(true); setUploadMsg('');
     try {
       const fd = new FormData();
       fd.append('document', fileInputRef.current.files[0]);
@@ -147,71 +218,62 @@ const RiderDashboard = () => {
       setUploadMsg('✅ Documento subido exitosamente');
       fileInputRef.current.value = '';
       setSelectedDocType('');
-      // Reload status to see if advanced to pending_review
-      await loadStatus();
-      loadDocuments();
+      await loadStatus(); loadDocuments();
     } catch (err) {
       setUploadMsg('❌ ' + (err.response?.data?.message || 'Error al subir documento'));
     } finally { setUploading(false); }
   };
 
+  const handleSaveProfile = async () => {
+    setSavingProfile(true); setProfileMsg('');
+    try {
+      await updateRiderProfile(profileForm);
+      setProfileMsg('✅ Perfil actualizado correctamente');
+      await loadProfile();
+    } catch (err) {
+      setProfileMsg('❌ ' + (err.response?.data?.message || 'Error al guardar'));
+    } finally { setSavingProfile(false); }
+  };
+
+  /* ── derived ── */
   const activeDeliveries = deliveries.filter((d) => d.status !== 'delivered');
   const completedDeliveries = deliveries.filter((d) => d.status === 'delivered');
   const displayedDeliveries = filter === 'active' ? activeDeliveries : completedDeliveries;
-
   const needsMotorDocs = ['moto', 'auto', 'scooter'].includes(vehicleType);
-  const getDocStatus = (docType) => {
-    const doc = documents.find(d => d.doc_type === docType);
-    return doc ? doc.status : 'missing';
-  };
+  const getDocStatus = (docType) => { const d = documents.find(x => x.doc_type === docType); return d ? d.status : 'missing'; };
+  const isApproved = riderStatus === 'approved';
 
-  const tabStyle = (t) => ({
-    padding: '10px 20px', borderRadius: 12, fontWeight: 700, fontSize: 14,
-    border: 'none', cursor: 'pointer', transition: 'all 0.2s',
-    background: tab === t ? '#F97316' : '#fff',
-    color: tab === t ? '#fff' : '#6b7280',
-    boxShadow: tab === t ? '0 4px 12px rgba(249,115,22,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
-  });
+  /* ────────────── tab styles ────────────── */
+  const tabBtn = (key, emoji, label) => (
+    <button key={key} onClick={() => setTab(key)} style={{
+      padding: '10px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13,
+      border: 'none', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap',
+      background: tab === key ? '#F97316' : '#fff',
+      color: tab === key ? '#fff' : '#6b7280',
+      boxShadow: tab === key ? '0 4px 12px rgba(249,115,22,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+    }}>
+      {emoji} {label}
+    </button>
+  );
 
-
-  // ============= STATUS BANNERS =============
+  /* ═══════════════ STATUS BANNER ═══════════════ */
   const StatusBanner = () => {
-    const configs = {
-      pending_email: {
-        bg: '#FEF3C7', border: '#FCD34D', icon: '📧', color: '#92400E',
-        title: 'Verifica tu correo electrónico',
-        desc: 'Revisa tu bandeja de entrada y usa el código de verificación para continuar.',
-      },
-      pending_docs: {
-        bg: '#FFF7ED', border: '#FDBA74', icon: '📋', color: '#9A3412',
-        title: 'Sube tus documentos',
-        desc: `Debes subir: ${requiredDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}`,
-      },
-      pending_review: {
-        bg: '#EFF6FF', border: '#93C5FD', icon: '⏳', color: '#1E40AF',
-        title: 'Documentos en revisión',
-        desc: 'El administrador está revisando tus documentos. Te notificaremos cuando sean aprobados.',
-      },
-      approved: {
-        bg: '#F0FDF4', border: '#86EFAC', icon: '✅', color: '#166534',
-        title: 'Cuenta aprobada',
-        desc: 'Puedes recibir y realizar entregas.',
-      },
+    const cfgs = {
+      pending_email: { bg: '#FEF3C7', border: '#FCD34D', icon: '📧', color: '#92400E', title: 'Verifica tu correo electrónico', desc: 'Revisa tu bandeja de entrada y usa el código de verificación.' },
+      pending_docs:  { bg: '#FFF7ED', border: '#FDBA74', icon: '📋', color: '#9A3412', title: 'Sube tus documentos', desc: `Pendientes: ${requiredDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}` },
+      pending_review:{ bg: '#EFF6FF', border: '#93C5FD', icon: '⏳', color: '#1E40AF', title: 'Documentos en revisión', desc: 'Te notificaremos cuando sean aprobados.' },
+      approved:      { bg: '#F0FDF4', border: '#86EFAC', icon: '✅', color: '#166534', title: 'Cuenta aprobada', desc: 'Puedes recibir y realizar entregas.' },
     };
-    const cfg = configs[riderStatus] || configs.pending_email;
-
+    const c = cfgs[riderStatus] || cfgs.pending_email;
     return (
-      <div style={{
-        background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: '14px',
-        padding: '16px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '14px',
-      }}>
-        <span style={{ fontSize: '32px' }}>{cfg.icon}</span>
+      <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 28 }}>{c.icon}</span>
         <div style={{ flex: 1 }}>
-          <strong style={{ color: cfg.color, fontSize: '14px' }}>{cfg.title}</strong>
-          <p style={{ fontSize: '12px', color: cfg.color, margin: '2px 0 0', opacity: 0.8 }}>{cfg.desc}</p>
+          <strong style={{ color: c.color, fontSize: 14 }}>{c.title}</strong>
+          <p style={{ fontSize: 12, color: c.color, margin: '2px 0 0', opacity: 0.8 }}>{c.desc}</p>
         </div>
         {riderStatus === 'pending_docs' && missingDocs.length > 0 && (
-          <span style={{ background: '#F97316', color: '#fff', padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 700 }}>
+          <span style={{ background: '#F97316', color: '#fff', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
             {missingDocs.length} pendiente{missingDocs.length > 1 ? 's' : ''}
           </span>
         )}
@@ -219,34 +281,26 @@ const RiderDashboard = () => {
     );
   };
 
-  // ============= STEP PROGRESS =============
+  /* ═══════════════ STEP PROGRESS ═══════════════ */
   const StepProgress = () => {
     const steps = [
       { key: 'pending_email', label: 'Registro', icon: '📝' },
-      { key: 'pending_docs', label: 'Email verificado', icon: '📧' },
-      { key: 'pending_review', label: 'Documentos', icon: '📋' },
+      { key: 'pending_docs', label: 'Email', icon: '📧' },
+      { key: 'pending_review', label: 'Docs', icon: '📋' },
       { key: 'approved', label: 'Aprobado', icon: '✅' },
     ];
-    const statusOrder = ['pending_email', 'pending_docs', 'pending_review', 'approved'];
-    const currentIdx = statusOrder.indexOf(riderStatus);
-
+    const order = ['pending_email', 'pending_docs', 'pending_review', 'approved'];
+    const ci = order.indexOf(riderStatus);
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: '20px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: 20, flexWrap: 'wrap' }}>
         {steps.map((s, i) => (
           <React.Fragment key={s.key}>
-            {i > 0 && <div style={{ width: '24px', height: '2px', background: i <= currentIdx ? '#F59E0B' : '#e5e7eb', flexShrink: 0 }} />}
-            <div style={{ textAlign: 'center', minWidth: '56px' }}>
-              <div style={{
-                width: '32px', height: '32px', borderRadius: '50%', margin: '0 auto 4px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
-                background: i <= currentIdx ? '#F59E0B' : '#f3f4f6',
-                color: i <= currentIdx ? '#fff' : '#9ca3af',
-                fontWeight: 900,
-                boxShadow: i === currentIdx ? '0 4px 12px rgba(245,158,11,0.3)' : 'none',
-              }}>
-                {i < currentIdx ? '✓' : s.icon}
+            {i > 0 && <div style={{ width: 24, height: 2, background: i <= ci ? '#F59E0B' : '#e5e7eb', flexShrink: 0 }} />}
+            <div style={{ textAlign: 'center', minWidth: 52 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', margin: '0 auto 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: i <= ci ? '#F59E0B' : '#f3f4f6', color: i <= ci ? '#fff' : '#9ca3af', fontWeight: 900, boxShadow: i === ci ? '0 4px 12px rgba(245,158,11,0.3)' : 'none' }}>
+                {i < ci ? '✓' : s.icon}
               </div>
-              <span style={{ fontSize: '9px', fontWeight: 700, color: i <= currentIdx ? '#F59E0B' : '#9ca3af' }}>{s.label}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: i <= ci ? '#F59E0B' : '#9ca3af' }}>{s.label}</span>
             </div>
           </React.Fragment>
         ))}
@@ -254,24 +308,66 @@ const RiderDashboard = () => {
     );
   };
 
+  /* ═══════════════ DELIVERY CARD (reused) ═══════════════ */
+  const DeliveryCard = ({ delivery }) => {
+    const cfg = STATUS_CONFIG[delivery.status] || { label: delivery.status, color: '#6B7280' };
+    return (
+      <Card style={{ border: `1px solid ${cfg.color}15` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>Pedido #{delivery.id}</span>
+            <p style={{ fontWeight: 700, color: '#2F3A40', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+              <Package size={14} color="#9ca3af" /> {delivery.store_name || 'Tienda PetsGo'}
+            </p>
+          </div>
+          <span style={{ padding: '4px 12px', borderRadius: 50, fontSize: 11, fontWeight: 700, background: cfg.color + '15', color: cfg.color }}>{cfg.label}</span>
+        </div>
+        {delivery.address && (
+          <p style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px' }}>
+            <MapPin size={14} color="#9ca3af" /> {delivery.address}
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280', marginBottom: cfg.next ? 12 : 0 }}>
+          <span>Total: <strong style={{ color: '#2F3A40' }}>{fmt(delivery.total_amount)}</strong></span>
+          <span>Delivery: <strong style={{ color: '#00A8E8' }}>{fmt(delivery.delivery_fee)}</strong></span>
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#b0b0b0' }}>{fmtDateTime(delivery.created_at)}</span>
+        </div>
+        {cfg.next && cfg.action && (
+          <button onClick={() => handleStatusUpdate(delivery.id, cfg.next)} style={{ width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', color: '#fff', cursor: 'pointer', background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 }}>
+            {cfg.next === 'in_transit' ? <Navigation size={16} /> : <CheckCircle2 size={16} />} {cfg.action}
+          </button>
+        )}
+      </Card>
+    );
+  };
+
+  /* ═══════════════════════════════════════════════
+     RENDER
+  ═══════════════════════════════════════════════ */
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '32px 16px' }}>
-      {/* Header */}
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 16px' }}>
+      {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ width: 48, height: 48, background: '#F97316', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Truck size={24} color="#fff" />
         </div>
-        <div>
-          <h2 style={{ fontSize: 24, fontWeight: 900, color: '#2F3A40', margin: 0 }}>Panel de Rider</h2>
-          <p style={{ fontSize: 13, color: '#9ca3af', fontWeight: 500, margin: 0 }}>
-            {vehicleType && <span style={{ marginRight: 6 }}>{VEHICLE_LABELS[vehicleType] || vehicleType}</span>}
-            {idNumber && <span style={{ color: '#d1d5db' }}>· Doc: {idNumber}</span>}
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 22, fontWeight: 900, color: '#2F3A40', margin: 0 }}>Panel de Rider</h2>
+          <p style={{ fontSize: 12, color: '#9ca3af', fontWeight: 500, margin: 0 }}>
+            {profile?.firstName ? `${profile.firstName} ${profile.lastName}` : user?.display_name}
+            {vehicleType && <span style={{ marginLeft: 6 }}>{VEHICLE_LABELS[vehicleType] || vehicleType}</span>}
           </p>
         </div>
         {avgRating && (
-          <div style={{ marginLeft: 'auto', background: '#FFF8E1', padding: '8px 16px', borderRadius: 12, textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color: '#F59E0B' }}>⭐ {avgRating}</div>
-            <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600 }}>Rating</div>
+          <div style={{ background: '#FFF8E1', padding: '8px 16px', borderRadius: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#F59E0B' }}>⭐ {avgRating}</div>
+            <div style={{ fontSize: 10, color: '#92400e', fontWeight: 600 }}>Rating</div>
+          </div>
+        )}
+        {isApproved && profile && (
+          <div style={{ background: '#E8F5E9', padding: '8px 16px', borderRadius: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 18, fontWeight: 900, color: '#2e7d32' }}>{fmt(profile.pendingBalance || 0)}</div>
+            <div style={{ fontSize: 10, color: '#2e7d32', fontWeight: 600 }}>Saldo</div>
           </div>
         )}
       </div>
@@ -279,30 +375,90 @@ const RiderDashboard = () => {
       <StepProgress />
       <StatusBanner />
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-        {riderStatus === 'approved' && (
-          <button onClick={() => setTab('deliveries')} style={tabStyle('deliveries')}>📦 Entregas</button>
-        )}
-        <button onClick={() => setTab('documents')} style={tabStyle('documents')}>📋 Documentos</button>
-        {riderStatus === 'approved' && (
-          <button onClick={() => setTab('ratings')} style={tabStyle('ratings')}>⭐ Valoraciones</button>
-        )}
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap', overflowX: 'auto' }}>
+        {isApproved && tabBtn('home', '🏠', 'Inicio')}
+        {isApproved && tabBtn('deliveries', '📦', 'Entregas')}
+        {isApproved && tabBtn('earnings', '💰', 'Ganancias')}
+        {tabBtn('documents', '📋', 'Documentos')}
+        {isApproved && tabBtn('ratings', '⭐', 'Valoraciones')}
+        {tabBtn('profile', '👤', 'Perfil')}
       </div>
 
-      {/* ===== TAB: ENTREGAS (only for approved riders) ===== */}
-      {tab === 'deliveries' && riderStatus === 'approved' && (
+      {/* ══════════════════════════════════════════════
+         TAB: INICIO (Dashboard Home)
+      ══════════════════════════════════════════════ */}
+      {tab === 'home' && isApproved && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+          {/* Quick stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
+            <StatBox label="Esta semana" value={fmt(profile?.weekEarned || 0)} sub={`${profile?.weekDeliveries || 0} entregas`} color="#F97316" icon={TrendingUp} />
+            <StatBox label="Saldo pendiente" value={fmt(profile?.pendingBalance || 0)} sub="Próximo pago semanal" color="#22C55E" icon={Wallet} />
+            <StatBox label="Total ganado" value={fmt(profile?.totalEarned || 0)} sub={`${profile?.totalDeliveries || 0} entregas totales`} color="#2F3A40" icon={DollarSign} />
+            <StatBox label="Rating" value={avgRating ? `⭐ ${avgRating}` : '—'} sub={`${profile?.totalRatings || 0} valoraciones`} color="#F59E0B" icon={Star} />
+          </div>
+
+          {/* Bank account notice */}
+          {!profile?.bankName && (
+            <Card style={{ borderLeft: '4px solid #F97316', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <CreditCard size={24} color="#F97316" />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ color: '#2F3A40', fontSize: 14 }}>Configura tu cuenta bancaria</strong>
+                  <p style={{ fontSize: 12, color: '#6b7280', margin: '2px 0 0' }}>Agrega tus datos bancarios para recibir tus pagos semanales.</p>
+                </div>
+                <button onClick={() => setTab('profile')} style={{ padding: '8px 16px', borderRadius: 10, background: '#F97316', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  Configurar <ChevronRight size={14} />
+                </button>
+              </div>
+            </Card>
+          )}
+
+          {/* Active deliveries */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>🚀 Entregas activas</h3>
+            <button onClick={() => setTab('deliveries')} style={{ fontSize: 12, color: '#F97316', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 2 }}>
+              Ver todas <ChevronRight size={14} />
+            </button>
+          </div>
+          {activeDeliveries.length === 0 ? (
+            <Card style={{ textAlign: 'center', padding: 40, marginBottom: 20 }}>
+              <Truck size={40} color="#d1d5db" style={{ marginBottom: 8 }} />
+              <p style={{ color: '#9ca3af', fontWeight: 700, margin: 0 }}>No tienes entregas pendientes</p>
+            </Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+              {activeDeliveries.slice(0, 3).map((d) => <DeliveryCard key={d.id} delivery={d} />)}
+            </div>
+          )}
+
+          {/* Recent completed */}
+          {completedDeliveries.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 12px' }}>✅ Entregas recientes</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {completedDeliveries.slice(0, 3).map((d) => <DeliveryCard key={d.id} delivery={d} />)}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════
+         TAB: ENTREGAS
+      ══════════════════════════════════════════════ */}
+      {tab === 'deliveries' && isApproved && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Pendientes', value: activeDeliveries.length, color: '#F97316' },
               { label: 'Completadas', value: completedDeliveries.length, color: '#22C55E' },
               { label: 'Total', value: deliveries.length, color: '#2F3A40' },
             ].map((s, i) => (
-              <div key={i} style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+              <Card key={i}>
                 <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>{s.label}</span>
                 <p style={{ fontSize: 28, fontWeight: 900, color: s.color, margin: '4px 0 0' }}>{s.value}</p>
-              </div>
+              </Card>
             ))}
           </div>
 
@@ -318,41 +474,111 @@ const RiderDashboard = () => {
           {loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Cargando entregas...</div>
           ) : displayedDeliveries.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <Card style={{ textAlign: 'center', padding: 60 }}>
               <Truck size={48} color="#d1d5db" style={{ marginBottom: 12 }} />
               <p style={{ color: '#9ca3af', fontWeight: 700 }}>{filter === 'active' ? 'No tienes entregas pendientes' : 'No hay entregas completadas'}</p>
-            </div>
+            </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {displayedDeliveries.map((delivery) => {
-                const cfg = STATUS_CONFIG[delivery.status] || { label: delivery.status, color: '#6B7280' };
-                return (
-                  <div key={delivery.id} style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                      <div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>Pedido #{delivery.id}</span>
-                        <p style={{ fontWeight: 700, color: '#2F3A40', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <Package size={14} color="#9ca3af" /> {delivery.store_name || 'Tienda PetsGo'}
-                        </p>
-                      </div>
-                      <span style={{ padding: '4px 12px', borderRadius: 50, fontSize: 11, fontWeight: 700, background: cfg.color + '15', color: cfg.color }}>{cfg.label}</span>
-                    </div>
-                    {delivery.address && (
-                      <p style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 8px' }}>
-                        <MapPin size={14} color="#9ca3af" /> {delivery.address}
+              {displayedDeliveries.map((d) => <DeliveryCard key={d.id} delivery={d} />)}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════
+         TAB: GANANCIAS
+      ══════════════════════════════════════════════ */}
+      {tab === 'earnings' && isApproved && (
+        <>
+          {/* Summary cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
+            <StatBox label="Total ganado" value={fmt(earnings?.totalEarned || 0)} color="#2F3A40" icon={DollarSign} />
+            <StatBox label="Total pagado" value={fmt(earnings?.totalPaid || 0)} color="#22C55E" icon={Banknote} />
+            <StatBox label="Saldo pendiente" value={fmt(earnings?.pendingBalance || 0)} color="#F97316" icon={Wallet} />
+          </div>
+
+          {/* Bank status */}
+          <Card style={{ marginBottom: 20, borderLeft: profile?.bankName ? '4px solid #22C55E' : '4px solid #F97316' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <CreditCard size={22} color={profile?.bankName ? '#22C55E' : '#F97316'} />
+              <div style={{ flex: 1 }}>
+                <strong style={{ fontSize: 13, color: '#2F3A40' }}>
+                  {profile?.bankName ? `${profile.bankName} · ${ACCOUNT_TYPES.find(t => t.value === profile.bankAccountType)?.label || profile.bankAccountType}` : 'Sin cuenta bancaria'}
+                </strong>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: '2px 0 0' }}>
+                  {profile?.bankName ? `Cuenta: ${maskAccount(profile.bankAccountNumber)} · Pagos semanales` : 'Configura tu cuenta para recibir pagos'}
+                </p>
+              </div>
+              {!profile?.bankName && (
+                <button onClick={() => setTab('profile')} style={{ fontSize: 12, color: '#F97316', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>Configurar →</button>
+              )}
+            </div>
+          </Card>
+
+          {/* Weekly breakdown */}
+          <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 12px' }}>📊 Ganancias semanales</h3>
+          {(!earnings?.weekly || earnings.weekly.length === 0) ? (
+            <Card style={{ textAlign: 'center', padding: 40, marginBottom: 24 }}>
+              <Calendar size={40} color="#d1d5db" style={{ marginBottom: 8 }} />
+              <p style={{ color: '#9ca3af', fontWeight: 700, margin: 0 }}>Aún no hay historial de ganancias</p>
+            </Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
+              {earnings.weekly.map((w, i) => (
+                <Card key={i}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <p style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>
+                        <Calendar size={14} color="#9ca3af" style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                        {fmtDate(w.week_start)} — {fmtDate(w.week_end)}
                       </p>
-                    )}
-                    <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280', marginBottom: cfg.next ? 12 : 0 }}>
-                      <span>Total: <strong style={{ color: '#2F3A40' }}>{formatPrice(delivery.total_amount)}</strong></span>
-                      <span>Delivery: <strong style={{ color: '#00A8E8' }}>{formatPrice(delivery.delivery_fee)}</strong></span>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{w.deliveries} entrega{w.deliveries != 1 ? 's' : ''}</span>
                     </div>
-                    {cfg.next && cfg.action && (
-                      <button onClick={() => handleStatusUpdate(delivery.id, cfg.next)} style={{ width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', color: '#fff', cursor: 'pointer', background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                        {cfg.next === 'in_transit' ? <Navigation size={16} /> : <CheckCircle2 size={16} />}
-                        {cfg.action}
-                      </button>
-                    )}
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ fontWeight: 900, color: '#22C55E', margin: 0, fontSize: 18 }}>{fmt(w.earned)}</p>
+                    </div>
                   </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Payouts history */}
+          <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 12px' }}>💸 Historial de pagos</h3>
+          {(!earnings?.payouts || earnings.payouts.length === 0) ? (
+            <Card style={{ textAlign: 'center', padding: 40 }}>
+              <Banknote size={40} color="#d1d5db" style={{ marginBottom: 8 }} />
+              <p style={{ color: '#9ca3af', fontWeight: 700, margin: 0 }}>No hay pagos registrados aún</p>
+              <p style={{ color: '#d1d5db', fontSize: 12, margin: '4px 0 0' }}>Los pagos se procesan semanalmente.</p>
+            </Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {earnings.payouts.map((p) => {
+                const statusColors = { paid: '#22C55E', pending: '#F97316', processing: '#3B82F6', failed: '#EF4444' };
+                const statusLabels = { paid: 'Pagado', pending: 'Pendiente', processing: 'Procesando', failed: 'Fallido' };
+                return (
+                  <Card key={p.id} style={{ border: `1px solid ${statusColors[p.status] || '#e5e7eb'}20` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <p style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>
+                          Período: {fmtDate(p.period_start)} — {fmtDate(p.period_end)}
+                        </p>
+                        <span style={{ fontSize: 12, color: '#6b7280' }}>
+                          {p.total_deliveries} entregas · {p.paid_at ? `Pagado: ${fmtDate(p.paid_at)}` : 'Sin pagar'}
+                        </span>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <p style={{ fontWeight: 900, color: statusColors[p.status] || '#2F3A40', margin: 0, fontSize: 18 }}>
+                          {fmt(p.net_amount)}
+                        </p>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: statusColors[p.status], background: (statusColors[p.status] || '#6b7280') + '15', padding: '2px 8px', borderRadius: 6 }}>
+                          {statusLabels[p.status] || p.status}
+                        </span>
+                      </div>
+                    </div>
+                    {p.notes && <p style={{ fontSize: 12, color: '#6b7280', margin: '8px 0 0', fontStyle: 'italic' }}>📝 {p.notes}</p>}
+                  </Card>
                 );
               })}
             </div>
@@ -360,26 +586,23 @@ const RiderDashboard = () => {
         </>
       )}
 
-      {/* ===== TAB: DOCUMENTOS ===== */}
+      {/* ══════════════════════════════════════════════
+         TAB: DOCUMENTOS
+      ══════════════════════════════════════════════ */}
       {tab === 'documents' && (
         <>
-          {/* Block uploads until email verified */}
           {riderStatus === 'pending_email' && (
-            <div style={{ background: '#FEF3C7', borderRadius: 16, padding: 32, textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <Card style={{ textAlign: 'center', padding: 32 }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
               <h3 style={{ fontWeight: 800, color: '#92400E', margin: '0 0 8px' }}>Verifica tu email primero</h3>
-              <p style={{ fontSize: 14, color: '#A16207', margin: 0 }}>
-                Debes verificar tu correo electrónico antes de poder subir documentos.
-                Revisa tu bandeja de entrada.
-              </p>
-            </div>
+              <p style={{ fontSize: 14, color: '#A16207', margin: 0 }}>Debes verificar tu correo electrónico antes de poder subir documentos.</p>
+            </Card>
           )}
 
-          {/* Document upload section (available from pending_docs) */}
           {['pending_docs', 'pending_review', 'approved'].includes(riderStatus) && (
             <>
               {/* Vehicle info */}
-              <div style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16 }}>
+              <Card style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div>
                     <h3 style={{ fontSize: 15, fontWeight: 800, color: '#2F3A40', margin: '0 0 4px' }}>Vehículo registrado</h3>
@@ -387,19 +610,15 @@ const RiderDashboard = () => {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Documento</span>
-                    <p style={{ fontWeight: 700, color: '#2F3A40', margin: '2px 0 0', fontSize: 14 }}>
-                      {idType?.toUpperCase()}: {idNumber || '—'}
-                    </p>
+                    <p style={{ fontWeight: 700, color: '#2F3A40', margin: '2px 0 0', fontSize: 14 }}>{idType?.toUpperCase()}: {idNumber || '—'}</p>
                   </div>
                 </div>
                 {needsMotorDocs && (
                   <div style={{ marginTop: 12, padding: '10px 16px', background: '#FFF3E0', borderRadius: 10, fontSize: 12, color: '#e65100', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Shield size={14} />
-                    Vehículo motorizado: se requiere <strong>licencia de conducir</strong> y <strong>padrón del vehículo</strong>.
-                    Los datos del documento deben coincidir con los registrados.
+                    <Shield size={14} /> Vehículo motorizado: se requiere <strong>licencia</strong> y <strong>padrón</strong>.
                   </div>
                 )}
-              </div>
+              </Card>
 
               {/* Document cards */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -410,11 +629,10 @@ const RiderDashboard = () => {
                   const doc = documents.find(d => d.doc_type === key);
                   const statusLabels = { approved: '✅ Aprobado', rejected: '❌ Rechazado', pending: '⏳ En revisión', missing: '📤 No subido' };
                   const statusBg = { approved: '#e8f5e9', rejected: '#fce4ec', pending: '#fff3e0', missing: '#f5f5f5' };
-                  const statusColors = { approved: '#2e7d32', rejected: '#c62828', pending: '#e65100', missing: '#9ca3af' };
-                  const canUpload = riderStatus === 'pending_docs' || (riderStatus === 'pending_review' && docStatus === 'rejected');
-
+                  const statusClr = { approved: '#2e7d32', rejected: '#c62828', pending: '#e65100', missing: '#9ca3af' };
+                  const canUp = riderStatus === 'pending_docs' || (riderStatus === 'pending_review' && docStatus === 'rejected');
                   return (
-                    <div key={key} style={{ background: '#fff', borderRadius: 16, padding: 20, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', border: `1px solid ${docStatus === 'rejected' ? '#ef9a9a' : missingDocs.includes(key) ? '#FDBA74' : '#f0f0f0'}` }}>
+                    <Card key={key} style={{ border: `1px solid ${docStatus === 'rejected' ? '#ef9a9a' : missingDocs.includes(key) ? '#FDBA74' : '#f0f0f0'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ fontSize: 24 }}>{dt.icon}</span>
@@ -423,66 +641,45 @@ const RiderDashboard = () => {
                             <span style={{ fontSize: 11, color: '#9ca3af' }}>{dt.description}</span>
                           </div>
                         </div>
-                        <span style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: statusBg[docStatus], color: statusColors[docStatus] }}>
-                          {statusLabels[docStatus]}
-                        </span>
+                        <span style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: statusBg[docStatus], color: statusClr[docStatus] }}>{statusLabels[docStatus]}</span>
                       </div>
-
                       {doc?.admin_notes && docStatus === 'rejected' && (
                         <div style={{ background: '#fce4ec', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c62828', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <AlertTriangle size={14} /> <strong>Motivo:</strong> {doc.admin_notes}
                         </div>
                       )}
-
-                      {/* Match warning for motorized docs */}
                       {key === 'id_card' && idNumber && (docStatus === 'missing' || docStatus === 'rejected') && (
                         <div style={{ background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#1E40AF', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Shield size={14} /> El documento debe corresponder a <strong>{idType?.toUpperCase()}: {idNumber}</strong>
                         </div>
                       )}
-
-                      {canUpload && (docStatus === 'missing' || docStatus === 'rejected') && (
+                      {canUp && (docStatus === 'missing' || docStatus === 'rejected') && (
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                           {selectedDocType === key ? (
                             <>
                               <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ flex: 1, fontSize: 13, minWidth: 150 }} />
-                              <button onClick={() => handleDocUpload(key)} disabled={uploading} style={{
-                                padding: '8px 20px', borderRadius: 10, background: '#F97316', color: '#fff',
-                                fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13,
-                                opacity: uploading ? 0.6 : 1,
-                              }}>
+                              <button onClick={() => handleDocUpload(key)} disabled={uploading} style={{ padding: '8px 20px', borderRadius: 10, background: '#F97316', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13, opacity: uploading ? 0.6 : 1 }}>
                                 {uploading ? '⏳ Subiendo...' : '📤 Subir'}
                               </button>
                               <button onClick={() => setSelectedDocType('')} style={{ padding: '8px 12px', borderRadius: 10, background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 13 }}>✕</button>
                             </>
                           ) : (
-                            <button onClick={() => setSelectedDocType(key)} style={{
-                              padding: '10px 20px', borderRadius: 10, background: '#FFF7ED', color: '#F97316',
-                              fontWeight: 700, border: '1px solid #F97316', cursor: 'pointer', fontSize: 13,
-                              display: 'flex', alignItems: 'center', gap: 6,
-                            }}>
+                            <button onClick={() => setSelectedDocType(key)} style={{ padding: '10px 20px', borderRadius: 10, background: '#FFF7ED', color: '#F97316', fontWeight: 700, border: '1px solid #F97316', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
                               <Upload size={14} /> {docStatus === 'rejected' ? 'Subir nuevo documento' : 'Subir documento'}
                             </button>
                           )}
                         </div>
                       )}
-
                       {doc?.file_url && docStatus !== 'rejected' && (
-                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#00A8E8', fontWeight: 600, textDecoration: 'none', marginTop: 8, display: 'inline-block' }}>
-                          📎 Ver documento subido
-                        </a>
+                        <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#00A8E8', fontWeight: 600, textDecoration: 'none', marginTop: 8, display: 'inline-block' }}>📎 Ver documento subido</a>
                       )}
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
-
               {uploadMsg && (
-                <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: uploadMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: uploadMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>
-                  {uploadMsg}
-                </div>
+                <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: uploadMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: uploadMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>{uploadMsg}</div>
               )}
-
               {riderStatus === 'pending_docs' && missingDocs.length > 0 && (
                 <div style={{ marginTop: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 12, padding: '14px 18px', fontSize: 13, color: '#9A3412' }}>
                   <strong>📋 Documentos pendientes:</strong> {missingDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}.
@@ -494,47 +691,177 @@ const RiderDashboard = () => {
         </>
       )}
 
-      {/* ===== TAB: VALORACIONES ===== */}
-      {tab === 'ratings' && riderStatus === 'approved' && (
+      {/* ══════════════════════════════════════════════
+         TAB: VALORACIONES
+      ══════════════════════════════════════════════ */}
+      {tab === 'ratings' && isApproved && (
         <>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 20, textAlign: 'center' }}>
+          <Card style={{ marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 48, fontWeight: 900, color: '#F59E0B' }}>⭐ {avgRating || '—'}</div>
             <p style={{ fontSize: 14, color: '#6b7280', fontWeight: 600, margin: '4px 0 0' }}>
               Rating promedio · {ratings.length} valoraci{ratings.length === 1 ? 'ón' : 'ones'}
             </p>
-          </div>
+          </Card>
 
           {loading ? (
             <div style={{ textAlign: 'center', padding: 60, color: '#9ca3af' }}>Cargando valoraciones...</div>
           ) : ratings.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <Card style={{ textAlign: 'center', padding: 60 }}>
               <Star size={48} color="#d1d5db" style={{ marginBottom: 12 }} />
               <p style={{ color: '#9ca3af', fontWeight: 700 }}>Aún no tienes valoraciones</p>
               <p style={{ color: '#d1d5db', fontSize: 13 }}>Las recibirás después de completar entregas.</p>
-            </div>
+            </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ratings.map((r) => {
                 const stars = Array.from({ length: 5 }, (_, i) => i < r.rating ? '⭐' : '☆').join('');
                 return (
-                  <div key={r.id} style={{ background: '#fff', borderRadius: 14, padding: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                  <Card key={r.id}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 20 }}>{r.rater_type === 'vendor' ? '🏪' : '👤'}</span>
                         <div>
                           <p style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>{r.rater_name}</p>
-                          <span style={{ fontSize: 11, color: '#9ca3af' }}>
-                            {r.rater_type === 'vendor' ? 'Tienda' : 'Cliente'} · Pedido #{r.order_id}
-                          </span>
+                          <span style={{ fontSize: 11, color: '#9ca3af' }}>{r.rater_type === 'vendor' ? 'Tienda' : 'Cliente'} · Pedido #{r.order_id}</span>
                         </div>
                       </div>
                       <span style={{ fontSize: 14 }}>{stars}</span>
                     </div>
                     {r.comment && <p style={{ fontSize: 13, color: '#555', margin: 0, lineHeight: 1.5, fontStyle: 'italic' }}>"{r.comment}"</p>}
-                  </div>
+                  </Card>
                 );
               })}
             </div>
+          )}
+        </>
+      )}
+
+      {/* ══════════════════════════════════════════════
+         TAB: PERFIL
+      ══════════════════════════════════════════════ */}
+      {tab === 'profile' && (
+        <>
+          {/* Personal info */}
+          <Card style={{ marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <User size={18} color="#F97316" /> Información personal
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Nombre</label>
+                <input value={profileForm.firstName || ''} onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
+                  placeholder="Nombre" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Apellido</label>
+                <input value={profileForm.lastName || ''} onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
+                  placeholder="Apellido" />
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Teléfono</label>
+                <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
+                  placeholder="+56 9 1234 5678" />
+              </div>
+            </div>
+            {/* Read-only info */}
+            <div style={{ marginTop: 16, padding: '12px 16px', background: '#f9fafb', borderRadius: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <div>
+                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Email</span>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{profile?.email || '—'}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Documento</span>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{idType?.toUpperCase()}: {idNumber || '—'}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Vehículo</span>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{VEHICLE_LABELS[vehicleType] || vehicleType || '—'}</p>
+                </div>
+                <div>
+                  <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Miembro desde</span>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{fmtDate(profile?.registeredAt)}</p>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Bank account */}
+          <Card style={{ marginBottom: 16, borderLeft: '4px solid #00A8E8' }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <CreditCard size={18} color="#00A8E8" /> Cuenta bancaria
+            </h3>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>Aquí recibirás tus pagos semanales. Asegúrate de ingresar datos válidos.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Banco</label>
+                <select value={profileForm.bankName || ''} onChange={e => setProfileForm({ ...profileForm, bankName: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Seleccionar banco...</option>
+                  {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Tipo de cuenta</label>
+                <select value={profileForm.bankAccountType || ''} onChange={e => setProfileForm({ ...profileForm, bankAccountType: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Seleccionar...</option>
+                  {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Número de cuenta</label>
+                <div style={{ position: 'relative' }}>
+                  <input type={showAccount ? 'text' : 'password'} value={profileForm.bankAccountNumber || ''}
+                    onChange={e => setProfileForm({ ...profileForm, bankAccountNumber: e.target.value })}
+                    style={{ width: '100%', padding: '10px 38px 10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
+                    placeholder="Ej: 000123456789" />
+                  <button onClick={() => setShowAccount(!showAccount)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+                    {showAccount ? <EyeOff size={16} color="#9ca3af" /> : <Eye size={16} color="#9ca3af" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Stats summary (read-only) */}
+          {isApproved && profile && (
+            <Card style={{ marginBottom: 16 }}>
+              <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <TrendingUp size={18} color="#22C55E" /> Resumen
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 12 }}>
+                {[
+                  { label: 'Entregas totales', value: profile.totalDeliveries, color: '#2F3A40' },
+                  { label: 'Total ganado', value: fmt(profile.totalEarned), color: '#22C55E' },
+                  { label: 'Saldo pendiente', value: fmt(profile.pendingBalance), color: '#F97316' },
+                  { label: 'Rating', value: profile.averageRating ? `⭐ ${profile.averageRating}` : '—', color: '#F59E0B' },
+                ].map((s, i) => (
+                  <div key={i} style={{ textAlign: 'center', padding: 12, background: '#f9fafb', borderRadius: 10 }}>
+                    <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>{s.label}</span>
+                    <p style={{ fontSize: 18, fontWeight: 900, color: s.color, margin: '4px 0 0' }}>{s.value}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Save button */}
+          <button onClick={handleSaveProfile} disabled={savingProfile} style={{
+            width: '100%', padding: 14, borderRadius: 14, fontWeight: 700, fontSize: 15,
+            border: 'none', cursor: 'pointer', color: '#fff',
+            background: savingProfile ? '#9ca3af' : 'linear-gradient(135deg, #F97316, #F59E0B)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            boxShadow: '0 4px 14px rgba(249,115,22,0.3)',
+          }}>
+            {savingProfile ? <><RefreshCw size={16} className="spin" /> Guardando...</> : <><Save size={16} /> Guardar cambios</>}
+          </button>
+
+          {profileMsg && (
+            <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: profileMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: profileMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>{profileMsg}</div>
           )}
         </>
       )}

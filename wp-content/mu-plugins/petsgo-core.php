@@ -4951,6 +4951,34 @@ Dashboard con analíticas"></textarea>
             $role->add_cap('upload_files');
         }
 
+        // Rider payouts table
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_rider_payouts (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            rider_id bigint(20) NOT NULL,
+            period_start date NOT NULL,
+            period_end date NOT NULL,
+            total_deliveries int DEFAULT 0,
+            total_earned decimal(10,2) DEFAULT 0,
+            total_tips decimal(10,2) DEFAULT 0,
+            total_deductions decimal(10,2) DEFAULT 0,
+            net_amount decimal(10,2) DEFAULT 0,
+            status varchar(20) DEFAULT 'pending',
+            paid_at datetime DEFAULT NULL,
+            notes text DEFAULT NULL,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY rider_id (rider_id),
+            KEY period (period_start, period_end)
+        ) {$charset}");
+
+        // Bank account columns in user_profiles
+        $pcols2 = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_user_profiles", 0);
+        if (!in_array('bank_name', $pcols2)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_name varchar(100) DEFAULT NULL AFTER vehicle_type");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_account_type varchar(30) DEFAULT NULL AFTER bank_name");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_account_number varchar(50) DEFAULT NULL AFTER bank_account_type");
+        }
+
         update_option('petsgo_rider_tables_v2', true);
     }
 
@@ -5129,6 +5157,10 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/rider/status',['methods'=>'GET','callback'=>[$this,'api_get_rider_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/deliveries',['methods'=>'GET','callback'=>[$this,'api_get_rider_deliveries'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_update_delivery_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        // Rider profile & earnings
+        register_rest_route('petsgo/v1','/rider/profile',['methods'=>'GET','callback'=>[$this,'api_get_rider_profile'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/profile',['methods'=>'PUT','callback'=>[$this,'api_update_rider_profile'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/earnings',['methods'=>'GET','callback'=>[$this,'api_get_rider_earnings'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         // Delivery ratings
         register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/rate-rider',['methods'=>'POST','callback'=>[$this,'api_rate_rider'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/rider/ratings',['methods'=>'GET','callback'=>[$this,'api_get_rider_ratings'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
@@ -5714,6 +5746,173 @@ Dashboard con analíticas"></textarea>
             'average_rating'  => $avg ? round(floatval($avg), 1) : null,
             'id_type'         => $profile->id_type ?? '',
             'id_number'       => $profile->id_number ?? '',
+        ]);
+    }
+
+    // --- Rider Profile (full) ---
+    public function api_get_rider_profile() {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $user = get_userdata($uid);
+        $profile = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+        $status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending_email';
+        $vehicle = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
+
+        // Stats
+        $total_deliveries = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
+        ));
+        $total_earned = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
+        ));
+        $avg_rating = $wpdb->get_var($wpdb->prepare(
+            "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
+        ));
+        $total_ratings = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
+        ));
+        // Current week earnings
+        $week_start = date('Y-m-d', strtotime('monday this week'));
+        $week_earned = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
+        ));
+        $week_deliveries = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
+        ));
+        // Pending balance (unpaid)
+        $last_payout_end = $wpdb->get_var($wpdb->prepare(
+            "SELECT MAX(period_end) FROM {$wpdb->prefix}petsgo_rider_payouts WHERE rider_id=%d AND status='paid'", $uid
+        ));
+        $pending_from = $last_payout_end ?: '2020-01-01';
+        $pending_balance = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at > %s", $uid, $pending_from
+        ));
+
+        $registered_at = $user->user_registered;
+
+        return rest_ensure_response([
+            'id'               => $uid,
+            'email'            => $user->user_email,
+            'displayName'      => $user->display_name,
+            'firstName'        => $profile->first_name ?? '',
+            'lastName'         => $profile->last_name ?? '',
+            'phone'            => $profile->phone ?? '',
+            'idType'           => $profile->id_type ?? '',
+            'idNumber'         => $profile->id_number ?? '',
+            'birthDate'        => $profile->birth_date ?? '',
+            'vehicleType'      => $vehicle,
+            'riderStatus'      => $status,
+            'registeredAt'     => $registered_at,
+            'avatarUrl'        => $profile->avatar_url ?? '',
+            // Bank
+            'bankName'         => $profile->bank_name ?? '',
+            'bankAccountType'  => $profile->bank_account_type ?? '',
+            'bankAccountNumber'=> $profile->bank_account_number ?? '',
+            // Stats
+            'totalDeliveries'  => $total_deliveries,
+            'totalEarned'      => $total_earned,
+            'averageRating'    => $avg_rating ? round(floatval($avg_rating), 1) : null,
+            'totalRatings'     => $total_ratings,
+            'weekEarned'       => $week_earned,
+            'weekDeliveries'   => $week_deliveries,
+            'pendingBalance'   => $pending_balance,
+        ]);
+    }
+
+    public function api_update_rider_profile($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $errors = [];
+
+        $first_name = sanitize_text_field($p['firstName'] ?? '');
+        $last_name  = sanitize_text_field($p['lastName'] ?? '');
+        $phone      = sanitize_text_field($p['phone'] ?? '');
+        $bank_name  = sanitize_text_field($p['bankName'] ?? '');
+        $bank_type  = sanitize_text_field($p['bankAccountType'] ?? '');
+        $bank_num   = sanitize_text_field($p['bankAccountNumber'] ?? '');
+
+        if ($first_name) wp_update_user(['ID' => $uid, 'first_name' => $first_name]);
+        if ($last_name) wp_update_user(['ID' => $uid, 'last_name' => $last_name]);
+        if ($first_name || $last_name) {
+            $dn = trim($first_name . ' ' . $last_name);
+            if ($dn) wp_update_user(['ID' => $uid, 'display_name' => $dn]);
+        }
+        if ($phone && !self::validate_chilean_phone($phone)) {
+            $errors[] = 'Tel' . chr(233) . 'fono chileno inv' . chr(225) . 'lido';
+        }
+        if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        $data = [];
+        if ($first_name) $data['first_name'] = $first_name;
+        if ($last_name) $data['last_name'] = $last_name;
+        if ($phone) $data['phone'] = self::normalize_phone($phone);
+        if ($bank_name !== '') $data['bank_name'] = $bank_name;
+        if ($bank_type !== '') $data['bank_account_type'] = $bank_type;
+        if ($bank_num !== '') $data['bank_account_number'] = $bank_num;
+
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+        if ($exists) {
+            $wpdb->update("{$wpdb->prefix}petsgo_user_profiles", $data, ['user_id' => $uid]);
+        } else {
+            $data['user_id'] = $uid;
+            $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles", $data);
+        }
+
+        $this->audit('rider_profile_update', 'user', $uid);
+        return rest_ensure_response(['message' => 'Perfil actualizado']);
+    }
+
+    // --- Rider Earnings & Payouts ---
+    public function api_get_rider_earnings() {
+        global $wpdb;
+        $uid = get_current_user_id();
+
+        // All delivered orders for this rider (history)
+        $deliveries = $wpdb->get_results($wpdb->prepare(
+            "SELECT o.id, o.total_amount, o.delivery_fee, o.status, o.created_at,
+                    v.store_name, u.display_name AS customer_name, o.shipping_address AS address
+             FROM {$wpdb->prefix}petsgo_orders o
+             JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+             JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.rider_id = %d
+             ORDER BY o.created_at DESC", $uid
+        ));
+
+        // Weekly earnings breakdown
+        $weekly = $wpdb->get_results($wpdb->prepare(
+            "SELECT YEARWEEK(created_at,1) as yw,
+                    MIN(DATE(created_at)) AS week_start,
+                    MAX(DATE(created_at)) AS week_end,
+                    COUNT(*) AS deliveries,
+                    SUM(delivery_fee) AS earned
+             FROM {$wpdb->prefix}petsgo_orders
+             WHERE rider_id=%d AND status='delivered'
+             GROUP BY YEARWEEK(created_at,1)
+             ORDER BY yw DESC
+             LIMIT 12", $uid
+        ));
+
+        // Payouts
+        $payouts = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_rider_payouts WHERE rider_id=%d ORDER BY period_end DESC LIMIT 20", $uid
+        ));
+
+        // Summary stats
+        $total_earned = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
+        ));
+        $total_paid = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(net_amount),0) FROM {$wpdb->prefix}petsgo_rider_payouts WHERE rider_id=%d AND status='paid'", $uid
+        ));
+
+        return rest_ensure_response([
+            'deliveries'   => $deliveries,
+            'weekly'       => $weekly,
+            'payouts'      => $payouts,
+            'totalEarned'  => $total_earned,
+            'totalPaid'    => $total_paid,
+            'pendingBalance' => $total_earned - $total_paid,
         ]);
     }
 

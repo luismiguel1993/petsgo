@@ -221,6 +221,18 @@ export const uploadRiderDocument = (formData) =>
 export const getRiderStatus = () =>
   api.get('/rider/status');
 
+/** Perfil completo del rider */
+export const getRiderProfile = () =>
+  api.get('/rider/profile');
+
+/** Actualizar perfil del rider (datos personales + banco) */
+export const updateRiderProfile = (data) =>
+  api.put('/rider/profile', data);
+
+/** Ganancias, payouts e historial financiero */
+export const getRiderEarnings = () =>
+  api.get('/rider/earnings');
+
 /** Valoraciones del rider */
 export const getRiderRatings = () =>
   api.get('/rider/ratings');
