@@ -6551,6 +6551,7 @@ Dashboard con analíticas"></textarea>
         $contact_name = sanitize_text_field($p['contactName'] ?? '');
         $email        = sanitize_email($p['email'] ?? '');
         $phone        = sanitize_text_field($p['phone'] ?? '');
+        $region       = sanitize_text_field($p['region'] ?? '');
         $comuna       = sanitize_text_field($p['comuna'] ?? '');
         $message      = sanitize_textarea_field($p['message'] ?? '');
         $plan         = sanitize_text_field($p['plan'] ?? '');
@@ -6568,14 +6569,23 @@ Dashboard con analíticas"></textarea>
         elseif (!self::validate_name($contact_name)) $errors[] = 'Nombre de contacto solo puede contener letras';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (!$phone) $errors[] = 'Teléfono es obligatorio';
+        if (!$region) $errors[] = 'Región es obligatoria';
+        if (!$comuna) $errors[] = 'Comuna es obligatoria';
 
         if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
+
+        // Ensure region column exists
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_leads LIKE 'region'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_leads ADD COLUMN region VARCHAR(100) DEFAULT '' AFTER phone");
+        }
 
         $wpdb->insert("{$wpdb->prefix}petsgo_leads", [
             'store_name'   => $store_name,
             'contact_name' => $contact_name,
             'email'        => $email,
             'phone'        => $phone,
+            'region'       => $region,
             'comuna'       => $comuna,
             'message'      => $message,
             'plan_name'    => $plan,
@@ -6597,6 +6607,7 @@ Dashboard con analíticas"></textarea>
             <tr><td style="padding:4px 0;font-weight:600;">Contacto:</td><td style="padding:4px 0;">' . esc_html($contact_name) . '</td></tr>
             <tr><td style="padding:4px 0;font-weight:600;">Email:</td><td style="padding:4px 0;">' . esc_html($email) . '</td></tr>
             <tr><td style="padding:4px 0;font-weight:600;">Teléfono:</td><td style="padding:4px 0;">' . esc_html($phone) . '</td></tr>' .
+            ($region ? '<tr><td style="padding:4px 0;font-weight:600;">Región:</td><td style="padding:4px 0;">' . esc_html($region) . '</td></tr>' : '') .
             ($comuna ? '<tr><td style="padding:4px 0;font-weight:600;">Comuna:</td><td style="padding:4px 0;">' . esc_html($comuna) . '</td></tr>' : '') .
             ($plan ? '<tr><td style="padding:4px 0;font-weight:600;">Plan:</td><td style="padding:4px 0;">' . esc_html($plan) . '</td></tr>' : '') . '
           </table>' .

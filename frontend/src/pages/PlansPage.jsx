@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Star, Crown, Store, Send, User, Mail, Phone, MapPin, Building2, MessageSquare, Sparkles } from 'lucide-react';
+import { Check, Star, Crown, Store, Send, User, Mail, Phone, MapPin, Building2, MessageSquare, Sparkles, ChevronDown } from 'lucide-react';
 import { getPlans, submitVendorLead } from '../services/api';
-import { formatPhoneDigits, buildFullPhone, sanitizeName, checkFormForSqlInjection, sanitizeInput } from '../utils/chile';
+import { REGIONES, getComunas, formatPhoneDigits, buildFullPhone, sanitizeName, checkFormForSqlInjection, sanitizeInput } from '../utils/chile';
 
 const DEMO_PLANS = [
   { id: 1, plan_name: 'Básico', monthly_price: 29990, is_featured: 0, features_json: '{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}' },
@@ -34,7 +34,7 @@ const PlansPage = () => {
   const [loading, setLoading] = useState(true);
   const [annualFreeMonths, setAnnualFreeMonths] = useState(2);
   const [formData, setFormData] = useState({
-    storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '',
+    storeName: '', contactName: '', email: '', phone: '', region: '', comuna: '', message: '', plan: '',
   });
   const [formSent, setFormSent] = useState(false);
   const [formError, setFormError] = useState('');
@@ -67,7 +67,7 @@ const PlansPage = () => {
       await submitVendorLead({ ...formData, phone: buildFullPhone(formData.phone) });
       setFormSent(true);
       setTimeout(() => setFormSent(false), 8000);
-      setFormData({ storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '' });
+      setFormData({ storeName: '', contactName: '', email: '', phone: '', region: '', comuna: '', message: '', plan: '' });
     } catch (err) {
       setFormError(err.response?.data?.message || 'Error al enviar el formulario. Intenta nuevamente.');
     } finally {
@@ -77,7 +77,8 @@ const PlansPage = () => {
 
   const handleChange = (field, value) => {
     if (field === 'contactName') value = sanitizeName(value);
-    if (field === 'storeName' || field === 'comuna' || field === 'message') value = sanitizeInput(value);
+    if (field === 'storeName' || field === 'message') value = sanitizeInput(value);
+    if (field === 'region') return setFormData(prev => ({ ...prev, region: value, comuna: '' }));
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -91,8 +92,18 @@ const PlansPage = () => {
     background: '#fff', color: '#374151', boxSizing: 'border-box',
   };
 
+  const selectStyle = {
+    ...inputStyle, cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none',
+    paddingRight: '40px', backgroundImage: 'none',
+  };
+
   const iconWrapStyle = {
     position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)',
+    color: '#9ca3af', pointerEvents: 'none',
+  };
+
+  const selectArrowStyle = {
+    position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
     color: '#9ca3af', pointerEvents: 'none',
   };
 
@@ -366,8 +377,8 @@ const PlansPage = () => {
                 <p style={{ fontSize: '14px', color: '#6b7280' }}>Te contactaremos en menos de 24 horas a tu email.</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><Building2 size={18} /></div>
                     <input
@@ -390,7 +401,7 @@ const PlansPage = () => {
                   </div>
                 </div>
 
-                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><Mail size={18} /></div>
                     <input
@@ -402,9 +413,9 @@ const PlansPage = () => {
                     />
                   </div>
                   <div style={{ position: 'relative' }}>
-                    <div style={iconWrapStyle}><Phone size={18} /></div>
+                    <div style={{ ...iconWrapStyle, left: '14px' }}><Phone size={18} /></div>
                     <div style={{ display: 'flex' }}>
-                      <span style={{ padding: '14px 10px 14px 46px', background: '#f3f4f6', borderRadius: '12px 0 0 12px', border: '2px solid #e5e7eb', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>+569</span>
+                      <span style={{ padding: '14px 10px 14px 46px', background: '#f3f4f6', borderRadius: '12px 0 0 12px', border: '2px solid #e5e7eb', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', lineHeight: '1.2' }}>+569</span>
                       <input
                         type="tel" required placeholder="XXXXXXXX" maxLength={8}
                         value={formData.phone} onChange={(e) => handleChange('phone', formatPhoneDigits(e.target.value))}
@@ -416,15 +427,36 @@ const PlansPage = () => {
                   </div>
                 </div>
 
-                <div style={{ position: 'relative' }}>
-                  <div style={iconWrapStyle}><MapPin size={18} /></div>
-                  <input
-                    type="text" required placeholder="Comuna (ej: Providencia, Las Condes)"
-                    value={formData.comuna} onChange={(e) => handleChange('comuna', e.target.value)}
-                    style={inputStyle}
-                    onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
-                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                  />
+                <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div style={{ position: 'relative' }}>
+                    <div style={iconWrapStyle}><MapPin size={18} /></div>
+                    <div style={selectArrowStyle}><ChevronDown size={16} /></div>
+                    <select
+                      required value={formData.region}
+                      onChange={(e) => handleChange('region', e.target.value)}
+                      style={{ ...selectStyle, color: formData.region ? '#374151' : '#9ca3af' }}
+                      onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
+                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                    >
+                      <option value="" disabled>Selecciona región...</option>
+                      {REGIONES.map(r => <option key={r} value={r} style={{ color: '#374151' }}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <div style={iconWrapStyle}><MapPin size={18} /></div>
+                    <div style={selectArrowStyle}><ChevronDown size={16} /></div>
+                    <select
+                      required value={formData.comuna}
+                      onChange={(e) => handleChange('comuna', e.target.value)}
+                      disabled={!formData.region}
+                      style={{ ...selectStyle, color: formData.comuna ? '#374151' : '#9ca3af', opacity: formData.region ? 1 : 0.6, cursor: formData.region ? 'pointer' : 'not-allowed' }}
+                      onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
+                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                    >
+                      <option value="" disabled>{formData.region ? 'Selecciona comuna...' : 'Primero selecciona región'}</option>
+                      {getComunas(formData.region).map(c => <option key={c} value={c} style={{ color: '#374151' }}>{c}</option>)}
+                    </select>
+                  </div>
                 </div>
 
                 <div style={{ position: 'relative' }}>
