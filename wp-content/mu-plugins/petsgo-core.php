@@ -33,12 +33,14 @@ add_action('rest_api_init', function() {
 // ============================================================
 class PetsGo_Core {
 
-    private $db_version = '3.0';
+    private $db_version = '4.0';
 
     public function __construct() {
         add_action('init', [$this, 'register_roles']);
         add_action('init', [$this, 'ensure_subscription_columns']);
         add_action('init', [$this, 'ensure_rider_tables']);
+        add_action('init', [$this, 'ensure_category_table']);
+        add_action('init', [$this, 'ensure_ticket_tables']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
@@ -69,6 +71,14 @@ class PetsGo_Core {
             'petsgo_download_demo_subscription',
             'petsgo_search_rider_docs',
             'petsgo_review_rider_doc',
+            'petsgo_search_categories',
+            'petsgo_save_category',
+            'petsgo_delete_category',
+            'petsgo_search_tickets',
+            'petsgo_update_ticket',
+            'petsgo_assign_ticket',
+            'petsgo_add_ticket_reply',
+            'petsgo_ticket_count',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -539,6 +549,12 @@ class PetsGo_Core {
 
         // Configuración — solo admin
         add_submenu_page('petsgo-dashboard', 'Configuración', '⚙️ Configuración', $cap_admin, 'petsgo-settings', [$this, 'page_settings']);
+
+        // Categorías — solo admin
+        add_submenu_page('petsgo-dashboard', 'Categorías', '📂 Categorías', $cap_admin, 'petsgo-categories', [$this, 'page_categories']);
+
+        // Tickets / Soporte — admin y soporte
+        add_submenu_page('petsgo-dashboard', 'Tickets', '🎫 Tickets', $cap_all, 'petsgo-tickets', [$this, 'page_tickets']);
 
         // Leads — solo admin
         add_submenu_page('petsgo-dashboard', 'Leads', '📩 Leads', $cap_admin, 'petsgo-leads', [$this, 'page_leads']);
@@ -5074,6 +5090,100 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_rider_tables_v2', true);
     }
 
+    // ============================================================
+    // CATEGORÍAS — Tabla parametrizable
+    // ============================================================
+    public function ensure_category_table() {
+        global $wpdb;
+        if (get_option('petsgo_categories_v1')) return;
+        $charset = $wpdb->get_charset_collate();
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_categories (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            name varchar(100) NOT NULL,
+            slug varchar(100) NOT NULL,
+            emoji varchar(20) DEFAULT '📦',
+            description varchar(255) DEFAULT '',
+            image_url varchar(500) DEFAULT '',
+            sort_order int DEFAULT 0,
+            is_active tinyint(1) DEFAULT 1,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY slug (slug)
+        ) {$charset}");
+
+        // Seed default categories
+        $defaults = [
+            ['Perros','Perros','🐕','Todo para tu perro','',1],
+            ['Gatos','Gatos','🐱','Todo para tu gato','',2],
+            ['Alimento','Alimento','🍖','Seco y húmedo','',3],
+            ['Snacks','Snacks','🦴','Premios y dental','',4],
+            ['Farmacia','Farmacia','💊','Antiparasitarios y salud','',5],
+            ['Accesorios','Accesorios','🎾','Juguetes y más','',6],
+            ['Higiene','Higiene','🧴','Shampoo y aseo','',7],
+            ['Camas','Camas','🛏️','Descanso ideal','',8],
+            ['Paseo','Paseo','🦮','Correas y arneses','',9],
+            ['Ropa','Ropa','🧥','Abrigos y disfraces','',10],
+            ['Ofertas','Ofertas','🔥','Los mejores descuentos','',11],
+            ['Nuevos','Nuevos','✨','Recién llegados','',12],
+        ];
+        foreach ($defaults as $c) {
+            $wpdb->insert("{$wpdb->prefix}petsgo_categories", [
+                'name' => $c[0], 'slug' => $c[1], 'emoji' => $c[2],
+                'description' => $c[3], 'image_url' => $c[4], 'sort_order' => $c[5], 'is_active' => 1,
+            ]);
+        }
+        update_option('petsgo_categories_v1', true);
+    }
+
+    // ============================================================
+    // TICKETS / SOPORTE — Tablas
+    // ============================================================
+    public function ensure_ticket_tables() {
+        global $wpdb;
+        if (get_option('petsgo_tickets_v1')) return;
+        $charset = $wpdb->get_charset_collate();
+
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_tickets (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            ticket_number varchar(20) NOT NULL,
+            user_id bigint(20) NOT NULL,
+            user_name varchar(100) DEFAULT '',
+            user_email varchar(100) DEFAULT '',
+            user_role varchar(30) DEFAULT 'cliente',
+            subject varchar(255) NOT NULL,
+            description text NOT NULL,
+            category varchar(50) DEFAULT 'general',
+            priority varchar(20) DEFAULT 'media',
+            status varchar(20) DEFAULT 'abierto',
+            assigned_to bigint(20) DEFAULT NULL,
+            assigned_name varchar(100) DEFAULT '',
+            resolved_at datetime DEFAULT NULL,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            updated_at timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY ticket_number (ticket_number),
+            KEY user_id (user_id),
+            KEY status (status),
+            KEY assigned_to (assigned_to)
+        ) {$charset}");
+
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_ticket_replies (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            ticket_id bigint(20) NOT NULL,
+            user_id bigint(20) NOT NULL,
+            user_name varchar(100) DEFAULT '',
+            user_role varchar(30) DEFAULT '',
+            message text NOT NULL,
+            is_internal tinyint(1) DEFAULT 0,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY ticket_id (ticket_id)
+        ) {$charset}");
+
+        update_option('petsgo_tickets_v1', true);
+    }
+
     /**
      * Schedule daily cron for subscription renewal reminders.
      */
@@ -5257,6 +5367,13 @@ Dashboard con analíticas"></textarea>
         // Delivery ratings
         register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/rate-rider',['methods'=>'POST','callback'=>[$this,'api_rate_rider'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/rider/ratings',['methods'=>'GET','callback'=>[$this,'api_get_rider_ratings'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        // Categories (public read)
+        register_rest_route('petsgo/v1','/categories',['methods'=>'GET','callback'=>[$this,'api_get_categories'],'permission_callback'=>'__return_true']);
+        // Tickets (logged in)
+        register_rest_route('petsgo/v1','/tickets',['methods'=>'GET','callback'=>[$this,'api_get_tickets'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/tickets',['methods'=>'POST','callback'=>[$this,'api_create_ticket'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/tickets/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_ticket_detail'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/tickets/(?P<id>\d+)/reply',['methods'=>'POST','callback'=>[$this,'api_add_ticket_reply_rest'],'permission_callback'=>function(){return is_user_logged_in();}]);
     }
 
     // --- API Productos ---
@@ -6819,6 +6936,662 @@ Dashboard con analíticas"></textarea>
         $lead = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_leads WHERE id=%d", $id));
         $this->audit('update_lead', 'lead', $id, ($lead->store_name ?? '') . ' → ' . $status);
         wp_send_json_success(['message' => 'Lead actualizado']);
+    }
+
+    // ============================================================
+    // REST API — Categorías (público)
+    // ============================================================
+    public function api_get_categories() {
+        global $wpdb;
+        $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_categories WHERE is_active=1 ORDER BY sort_order ASC, name ASC");
+        return rest_ensure_response(['data' => $rows]);
+    }
+
+    // ============================================================
+    // AJAX — Categorías (admin CRUD)
+    // ============================================================
+    public function petsgo_search_categories() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_categories ORDER BY sort_order ASC, name ASC");
+        wp_send_json_success($rows);
+    }
+
+    public function petsgo_save_category() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin puede gestionar categorías.');
+        global $wpdb;
+        $id   = intval($_POST['id'] ?? 0);
+        $data = [
+            'name'        => sanitize_text_field($_POST['name'] ?? ''),
+            'slug'        => sanitize_title($_POST['slug'] ?? $_POST['name'] ?? ''),
+            'emoji'       => sanitize_text_field($_POST['emoji'] ?? '📦'),
+            'description' => sanitize_text_field($_POST['description'] ?? ''),
+            'image_url'   => esc_url_raw($_POST['image_url'] ?? ''),
+            'sort_order'  => intval($_POST['sort_order'] ?? 0),
+            'is_active'   => intval($_POST['is_active'] ?? 1),
+        ];
+        if (empty($data['name'])) wp_send_json_error('El nombre es obligatorio.');
+        if ($id) {
+            $wpdb->update("{$wpdb->prefix}petsgo_categories", $data, ['id' => $id]);
+            $this->audit('update_category', 'category', $id, $data['name']);
+        } else {
+            $wpdb->insert("{$wpdb->prefix}petsgo_categories", $data);
+            $id = $wpdb->insert_id;
+            $this->audit('create_category', 'category', $id, $data['name']);
+        }
+        wp_send_json_success(['message' => 'Categoría guardada', 'id' => $id]);
+    }
+
+    public function petsgo_delete_category() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) wp_send_json_error('ID inválido');
+        $cat = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_categories WHERE id=%d", $id));
+        $wpdb->delete("{$wpdb->prefix}petsgo_categories", ['id' => $id]);
+        $this->audit('delete_category', 'category', $id, $cat->name ?? '');
+        wp_send_json_success(['message' => 'Categoría eliminada']);
+    }
+
+    // ============================================================
+    // ADMIN PAGE — Categorías
+    // ============================================================
+    public function page_categories() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📂 Categorías del Marketplace</h1>
+            <p>Gestiona las categorías de productos. Se muestran en el frontend (Header, HomePage, Categoría).</p>
+
+            <div style="display:flex;gap:12px;align-items:center;margin:16px 0;">
+                <button class="petsgo-btn petsgo-btn-primary" onclick="pgCatEdit(0)">➕ Nueva Categoría</button>
+                <span class="petsgo-loader" id="cat-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+            </div>
+
+            <table class="petsgo-table" id="cat-table">
+                <thead>
+                    <tr>
+                        <th>Orden</th><th>Emoji</th><th>Nombre</th><th>Slug</th><th>Descripción</th><th>Estado</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="cat-body"></tbody>
+            </table>
+
+            <!-- Modal -->
+            <div id="cat-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
+                <div style="background:#fff;border-radius:12px;padding:28px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto;">
+                    <h3 id="cat-modal-title" style="margin-top:0;">Nueva Categoría</h3>
+                    <input type="hidden" id="cat-id">
+                    <div class="petsgo-field"><label>Nombre *</label><input type="text" id="cat-name" maxlength="100" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;"></div>
+                    <div class="petsgo-field"><label>Slug (URL)</label><input type="text" id="cat-slug" maxlength="100" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;" placeholder="se genera automáticamente"></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="petsgo-field"><label>Emoji</label><input type="text" id="cat-emoji" maxlength="10" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;" value="📦"></div>
+                        <div class="petsgo-field"><label>Orden</label><input type="number" id="cat-order" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;" value="0"></div>
+                    </div>
+                    <div class="petsgo-field"><label>Descripción</label><input type="text" id="cat-desc" maxlength="255" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;"></div>
+                    <div class="petsgo-field"><label>URL Imagen</label><input type="url" id="cat-img" style="width:100%;padding:8px 12px;border:1px solid #ccc;border-radius:6px;" placeholder="https://..."></div>
+                    <div class="petsgo-field"><label><input type="checkbox" id="cat-active" checked> Activa</label></div>
+                    <div style="display:flex;gap:10px;margin-top:16px;">
+                        <button class="petsgo-btn petsgo-btn-primary" onclick="pgCatSave()">💾 Guardar</button>
+                        <button class="petsgo-btn" onclick="document.getElementById('cat-modal').style.display='none'" style="background:#eee;">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        jQuery(function($){
+            function loadCats(){
+                $('#cat-loader').addClass('active');
+                PG.post('petsgo_search_categories',{},function(r){
+                    $('#cat-loader').removeClass('active');
+                    if(!r.success) return;
+                    var html='';
+                    $.each(r.data,function(i,c){
+                        html+='<tr>';
+                        html+='<td>'+c.sort_order+'</td>';
+                        html+='<td style="font-size:24px;">'+c.emoji+'</td>';
+                        html+='<td><strong>'+c.name+'</strong></td>';
+                        html+='<td><code>'+c.slug+'</code></td>';
+                        html+='<td>'+c.description+'</td>';
+                        html+='<td><span class="petsgo-badge '+(c.is_active=='1'?'active':'inactive')+'">'+(c.is_active=='1'?'Activa':'Inactiva')+'</span></td>';
+                        html+='<td><button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgCatEdit('+c.id+')">✏️</button> ';
+                        html+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm" onclick="pgCatDel('+c.id+',\''+c.name+'\')">🗑️</button></td>';
+                        html+='</tr>';
+                    });
+                    $('#cat-body').html(html);
+                    window._pgCats = r.data;
+                });
+            }
+            loadCats();
+
+            window.pgCatEdit = function(id){
+                if(id){
+                    var c = (window._pgCats||[]).find(function(x){return x.id==id;});
+                    if(!c) return;
+                    $('#cat-id').val(c.id);$('#cat-name').val(c.name);$('#cat-slug').val(c.slug);
+                    $('#cat-emoji').val(c.emoji);$('#cat-order').val(c.sort_order);
+                    $('#cat-desc').val(c.description);$('#cat-img').val(c.image_url);
+                    $('#cat-active').prop('checked',c.is_active=='1');
+                    $('#cat-modal-title').text('Editar Categoría');
+                } else {
+                    $('#cat-id').val('');$('#cat-name').val('');$('#cat-slug').val('');
+                    $('#cat-emoji').val('📦');$('#cat-order').val(0);$('#cat-desc').val('');$('#cat-img').val('');
+                    $('#cat-active').prop('checked',true);
+                    $('#cat-modal-title').text('Nueva Categoría');
+                }
+                $('#cat-modal').css('display','flex');
+            };
+            window.pgCatSave = function(){
+                PG.post('petsgo_save_category',{
+                    id:$('#cat-id').val(),name:$('#cat-name').val(),slug:$('#cat-slug').val(),
+                    emoji:$('#cat-emoji').val(),sort_order:$('#cat-order').val(),
+                    description:$('#cat-desc').val(),image_url:$('#cat-img').val(),
+                    is_active:$('#cat-active').is(':checked')?1:0
+                },function(r){
+                    if(r.success){$('#cat-modal').hide();loadCats();}else{alert(r.data);}
+                });
+            };
+            window.pgCatDel = function(id,name){
+                if(!confirm('¿Eliminar categoría "'+name+'"?')) return;
+                PG.post('petsgo_delete_category',{id:id},function(r){
+                    if(r.success) loadCats(); else alert(r.data);
+                });
+            };
+        });
+        </script>
+        <?php
+    }
+
+    // ============================================================
+    // REST API — Tickets
+    // ============================================================
+    private function generate_ticket_number() {
+        return 'TK-' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 8));
+    }
+
+    public function api_get_categories_rest() {
+        return $this->api_get_categories();
+    }
+
+    public function api_create_ticket($request) {
+        global $wpdb;
+        $user = wp_get_current_user();
+        $roles = (array) $user->roles;
+        $user_role = 'cliente';
+        if (in_array('petsgo_vendor', $roles)) $user_role = 'tienda';
+        elseif (in_array('petsgo_rider', $roles)) $user_role = 'rider';
+        elseif (in_array('administrator', $roles)) $user_role = 'admin';
+
+        $subject = sanitize_text_field($request->get_param('subject'));
+        $description = sanitize_textarea_field($request->get_param('description'));
+        $category = sanitize_text_field($request->get_param('category') ?: 'general');
+        $priority = sanitize_text_field($request->get_param('priority') ?: 'media');
+        if (empty($subject) || empty($description)) {
+            return new WP_Error('missing_fields', 'Asunto y descripción son obligatorios.', ['status' => 400]);
+        }
+
+        $ticket_number = $this->generate_ticket_number();
+        $wpdb->insert("{$wpdb->prefix}petsgo_tickets", [
+            'ticket_number' => $ticket_number,
+            'user_id'       => $user->ID,
+            'user_name'     => $user->display_name ?: $user->user_login,
+            'user_email'    => $user->user_email,
+            'user_role'     => $user_role,
+            'subject'       => $subject,
+            'description'   => $description,
+            'category'      => $category,
+            'priority'      => $priority,
+            'status'        => 'abierto',
+        ]);
+        $ticket_id = $wpdb->insert_id;
+
+        // Send email to ticket creator
+        $this->send_ticket_email_creator($ticket_number, $subject, $user->user_email, $user->display_name);
+        // Send email to admins
+        $this->send_ticket_email_admin($ticket_number, $subject, $description, $user->display_name, $user_role, $category, $priority);
+
+        $this->audit('create_ticket', 'ticket', $ticket_id, $ticket_number . ' — ' . $subject);
+
+        return rest_ensure_response([
+            'success' => true,
+            'ticket_number' => $ticket_number,
+            'message' => 'Ticket creado exitosamente. Recibirás un correo de confirmación.',
+        ]);
+    }
+
+    public function api_get_tickets($request) {
+        global $wpdb;
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('administrator');
+        if ($is_admin) {
+            $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_tickets ORDER BY created_at DESC LIMIT 200");
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE user_id=%d ORDER BY created_at DESC", $user->ID
+            ));
+        }
+        return rest_ensure_response(['data' => $rows]);
+    }
+
+    public function api_get_ticket_detail($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('administrator');
+        $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+        if (!$ticket) return new WP_Error('not_found', 'Ticket no encontrado', ['status' => 404]);
+        if (!$is_admin && $ticket->user_id != $user->ID) return new WP_Error('forbidden','Sin acceso',['status'=>403]);
+        $replies = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_ticket_replies WHERE ticket_id=%d ORDER BY created_at ASC", $id
+        ));
+        return rest_ensure_response(['ticket' => $ticket, 'replies' => $replies]);
+    }
+
+    public function api_add_ticket_reply_rest($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $message = sanitize_textarea_field($request->get_param('message'));
+        if (empty($message)) return new WP_Error('empty', 'El mensaje es obligatorio.', ['status' => 400]);
+        $user = wp_get_current_user();
+        $is_admin = current_user_can('administrator');
+        $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+        if (!$ticket) return new WP_Error('not_found', 'Ticket no encontrado', ['status' => 404]);
+        if (!$is_admin && $ticket->user_id != $user->ID) return new WP_Error('forbidden','Sin acceso',['status'=>403]);
+
+        $roles = (array) $user->roles;
+        $role_label = 'cliente';
+        if (in_array('administrator', $roles)) $role_label = 'admin';
+        elseif (in_array('petsgo_vendor', $roles)) $role_label = 'tienda';
+        elseif (in_array('petsgo_rider', $roles)) $role_label = 'rider';
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", [
+            'ticket_id' => $id,
+            'user_id'   => $user->ID,
+            'user_name' => $user->display_name ?: $user->user_login,
+            'user_role' => $role_label,
+            'message'   => $message,
+        ]);
+        // If admin replies, mark as en_proceso
+        if ($is_admin && $ticket->status === 'abierto') {
+            $wpdb->update("{$wpdb->prefix}petsgo_tickets", ['status' => 'en_proceso'], ['id' => $id]);
+        }
+        return rest_ensure_response(['success' => true, 'message' => 'Respuesta agregada']);
+    }
+
+    // ============================================================
+    // AJAX — Tickets (admin portal)
+    // ============================================================
+    public function petsgo_search_tickets() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $search = sanitize_text_field($_POST['search'] ?? '');
+        $sql = "SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE 1=1";
+        $args = [];
+        if ($status) { $sql .= " AND status=%s"; $args[] = $status; }
+        if ($search) { $sql .= " AND (ticket_number LIKE %s OR subject LIKE %s OR user_name LIKE %s)"; $args[] = '%'.$wpdb->esc_like($search).'%'; $args[] = '%'.$wpdb->esc_like($search).'%'; $args[] = '%'.$wpdb->esc_like($search).'%'; }
+        $sql .= " ORDER BY FIELD(status,'abierto','en_proceso','resuelto','cerrado'), created_at DESC LIMIT 200";
+        if ($args) $sql = $wpdb->prepare($sql, ...$args);
+        $rows = $wpdb->get_results($sql);
+        wp_send_json_success($rows);
+    }
+
+    public function petsgo_update_ticket() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id     = intval($_POST['id'] ?? 0);
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        if (!$id || !in_array($status, ['abierto','en_proceso','resuelto','cerrado'])) wp_send_json_error('Datos inválidos');
+        $data = ['status' => $status];
+        if ($status === 'resuelto' || $status === 'cerrado') $data['resolved_at'] = current_time('mysql');
+        $wpdb->update("{$wpdb->prefix}petsgo_tickets", $data, ['id' => $id]);
+        $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+        $this->audit('update_ticket', 'ticket', $id, $ticket->ticket_number . ' → ' . $status);
+        // Send email to user about status change
+        if ($ticket) {
+            $this->send_ticket_status_email($ticket->ticket_number, $ticket->subject, $ticket->user_email, $ticket->user_name, $status);
+        }
+        wp_send_json_success(['message' => 'Ticket actualizado']);
+    }
+
+    public function petsgo_assign_ticket() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+        $assigned_to = intval($_POST['assigned_to'] ?? 0);
+        if (!$id) wp_send_json_error('ID inválido');
+        $assigned_user = $assigned_to ? get_userdata($assigned_to) : null;
+        $wpdb->update("{$wpdb->prefix}petsgo_tickets", [
+            'assigned_to'   => $assigned_to ?: null,
+            'assigned_name' => $assigned_user ? $assigned_user->display_name : '',
+            'status'        => 'en_proceso',
+        ], ['id' => $id]);
+        $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+        $this->audit('assign_ticket', 'ticket', $id, $ticket->ticket_number . ' → ' . ($assigned_user ? $assigned_user->display_name : 'sin asignar'));
+        // Send email to assigned person
+        if ($assigned_user && $ticket) {
+            $this->send_ticket_assigned_email($ticket->ticket_number, $ticket->subject, $ticket->description, $assigned_user->user_email, $assigned_user->display_name, $ticket->user_name);
+        }
+        wp_send_json_success(['message' => 'Ticket asignado']);
+    }
+
+    public function petsgo_add_ticket_reply() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['ticket_id'] ?? 0);
+        $message = sanitize_textarea_field($_POST['message'] ?? '');
+        if (!$id || !$message) wp_send_json_error('Datos inválidos');
+        $user = wp_get_current_user();
+        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", [
+            'ticket_id' => $id,
+            'user_id'   => $user->ID,
+            'user_name' => $user->display_name ?: $user->user_login,
+            'user_role' => 'admin',
+            'message'   => $message,
+        ]);
+        // Update ticket status
+        $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+        if ($ticket && $ticket->status === 'abierto') {
+            $wpdb->update("{$wpdb->prefix}petsgo_tickets", ['status' => 'en_proceso'], ['id' => $id]);
+        }
+        // Notify ticket creator
+        if ($ticket) {
+            $this->send_ticket_reply_email($ticket->ticket_number, $ticket->subject, $ticket->user_email, $ticket->user_name, $message);
+        }
+        $this->audit('reply_ticket', 'ticket', $id, $ticket->ticket_number ?? '');
+        wp_send_json_success(['message' => 'Respuesta enviada']);
+    }
+
+    public function petsgo_ticket_count() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_tickets WHERE status IN ('abierto','en_proceso')");
+        wp_send_json_success(['count' => $open]);
+    }
+
+    // ============================================================
+    // EMAIL — Tickets
+    // ============================================================
+    private function send_ticket_email_creator($ticket_number, $subject, $email, $name) {
+        $inner = '<h2 style="color:#00A8E8;margin:0 0 16px;">🎫 Ticket Creado: '.$ticket_number.'</h2>
+        <p>Hola <strong>'.esc_html($name).'</strong>,</p>
+        <p>Tu solicitud ha sido recibida exitosamente. Nuestro equipo revisará tu caso y te responderá a la brevedad.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">'.$ticket_number.'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($subject).'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Estado</td><td style="padding:8px 12px;border:1px solid #eee;"><span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">Abierto</span></td></tr>
+        </table>
+        <p style="color:#888;font-size:13px;">Recibirás notificaciones por correo cuando haya actualizaciones en tu ticket.</p>';
+        $html = $this->email_wrap($inner, '🎫 Ticket Creado — ' . $ticket_number);
+        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' creado', $html, ['Content-Type: text/html; charset=UTF-8']);
+    }
+
+    private function send_ticket_email_admin($ticket_number, $subject, $description, $user_name, $user_role, $category, $priority) {
+        $role_labels = ['cliente'=>'Cliente','tienda'=>'Tienda','rider'=>'Rider','admin'=>'Admin'];
+        $priority_labels = ['baja'=>'🟢 Baja','media'=>'🟡 Media','alta'=>'🟠 Alta','urgente'=>'🔴 Urgente'];
+        $inner = '<h2 style="color:#dc3545;margin:0 0 16px;">🔔 Nuevo Ticket: '.$ticket_number.'</h2>
+        <p>Se ha recibido un nuevo ticket de soporte.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">'.$ticket_number.'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Solicitante</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($user_name).' <span style="background:#e2e3e5;padding:2px 8px;border-radius:10px;font-size:11px;">'.($role_labels[$user_role]??$user_role).'</span></td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($subject).'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Categoría</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($category).'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Prioridad</td><td style="padding:8px 12px;border:1px solid #eee;">'.($priority_labels[$priority]??$priority).'</td></tr>
+        </table>
+        <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="font-weight:600;margin:0 0 8px;">Descripción:</p>
+            <p style="margin:0;">'.nl2br(esc_html($description)).'</p>
+        </div>
+        <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Ver en Panel Admin</a></p>';
+        $html = $this->email_wrap($inner, '🔔 Nuevo Ticket — ' . $ticket_number);
+        $admin_email = $this->pg_setting('company_email', 'contacto@petsgo.cl');
+        wp_mail($admin_email, 'PetsGo — Nuevo Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+    }
+
+    private function send_ticket_status_email($ticket_number, $subject, $email, $name, $status) {
+        $status_labels = ['abierto'=>'Abierto','en_proceso'=>'En Proceso','resuelto'=>'Resuelto','cerrado'=>'Cerrado'];
+        $status_colors = ['abierto'=>'#fff3cd;color:#856404','en_proceso'=>'#cce5ff;color:#004085','resuelto'=>'#d4edda;color:#155724','cerrado'=>'#e2e3e5;color:#383d41'];
+        $inner = '<h2 style="color:#00A8E8;margin:0 0 16px;">📋 Actualización de Ticket: '.$ticket_number.'</h2>
+        <p>Hola <strong>'.esc_html($name).'</strong>,</p>
+        <p>Tu ticket ha sido actualizado:</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">'.$ticket_number.'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($subject).'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Nuevo Estado</td><td style="padding:8px 12px;border:1px solid #eee;"><span style="background:'.($status_colors[$status]??'#e2e3e5;color:#383d41').';padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">'.($status_labels[$status]??$status).'</span></td></tr>
+        </table>';
+        $html = $this->email_wrap($inner, '📋 Ticket Actualizado — ' . $ticket_number);
+        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' actualizado', $html, ['Content-Type: text/html; charset=UTF-8']);
+    }
+
+    private function send_ticket_assigned_email($ticket_number, $subject, $description, $email, $assigned_name, $requester_name) {
+        $inner = '<h2 style="color:#FFC400;margin:0 0 16px;">📌 Ticket Asignado: '.$ticket_number.'</h2>
+        <p>Hola <strong>'.esc_html($assigned_name).'</strong>,</p>
+        <p>Se te ha asignado el siguiente ticket de soporte:</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">'.$ticket_number.'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Solicitante</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($requester_name).'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($subject).'</td></tr>
+        </table>
+        <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin:16px 0;">
+            <p style="font-weight:600;margin:0 0 8px;">Descripción:</p>
+            <p style="margin:0;">'.nl2br(esc_html($description)).'</p>
+        </div>
+        <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Gestionar Ticket</a></p>';
+        $html = $this->email_wrap($inner, '📌 Ticket Asignado — ' . $ticket_number);
+        wp_mail($email, 'PetsGo — Te han asignado el Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+    }
+
+    private function send_ticket_reply_email($ticket_number, $subject, $email, $name, $reply_message) {
+        $inner = '<h2 style="color:#00A8E8;margin:0 0 16px;">💬 Nueva Respuesta en Ticket: '.$ticket_number.'</h2>
+        <p>Hola <strong>'.esc_html($name).'</strong>,</p>
+        <p>Has recibido una nueva respuesta en tu ticket:</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">'.$ticket_number.'</td></tr>
+            <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">'.esc_html($subject).'</td></tr>
+        </table>
+        <div style="background:#f0f8ff;border-left:4px solid #00A8E8;border-radius:6px;padding:16px;margin:16px 0;">
+            <p style="margin:0;">'.nl2br(esc_html($reply_message)).'</p>
+        </div>
+        <p style="color:#888;font-size:13px;">Puedes responder desde tu panel en PetsGo.</p>';
+        $html = $this->email_wrap($inner, '💬 Respuesta en Ticket — ' . $ticket_number);
+        wp_mail($email, 'PetsGo — Respuesta en Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+    }
+
+    // ============================================================
+    // ADMIN PAGE — Tickets
+    // ============================================================
+    public function page_tickets() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        global $wpdb;
+        $admins = get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]);
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🎫 Tickets de Soporte</h1>
+            <p>Gestiona las solicitudes de clientes, tiendas y riders.</p>
+
+            <div class="petsgo-search-bar">
+                <input type="text" id="tk-search" placeholder="Buscar por N°, asunto o nombre...">
+                <select id="tk-status-filter">
+                    <option value="">Todos los estados</option>
+                    <option value="abierto">🟡 Abierto</option>
+                    <option value="en_proceso">🔵 En Proceso</option>
+                    <option value="resuelto">🟢 Resuelto</option>
+                    <option value="cerrado">⚫ Cerrado</option>
+                </select>
+                <button class="petsgo-btn petsgo-btn-primary" onclick="loadTickets()">🔍 Buscar</button>
+            </div>
+
+            <!-- Stats -->
+            <div class="petsgo-cards" id="tk-stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;"></div>
+
+            <table class="petsgo-table" id="tk-table">
+                <thead>
+                    <tr>
+                        <th>N° Ticket</th><th>Solicitante</th><th>Rol</th><th>Asunto</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Asignado</th><th>Fecha</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="tk-body"></tbody>
+            </table>
+
+            <!-- Detail Modal -->
+            <div id="tk-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
+                <div style="background:#fff;border-radius:12px;padding:28px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3 id="tk-modal-title" style="margin:0;">Detalle Ticket</h3>
+                        <button onclick="document.getElementById('tk-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button>
+                    </div>
+                    <div id="tk-detail"></div>
+                    <hr style="margin:20px 0;">
+                    <h4>💬 Respuestas</h4>
+                    <div id="tk-replies" style="max-height:250px;overflow-y:auto;margin-bottom:16px;"></div>
+                    <div style="display:flex;gap:8px;">
+                        <input type="hidden" id="tk-reply-id">
+                        <textarea id="tk-reply-msg" rows="3" style="flex:1;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
+                        <button class="petsgo-btn petsgo-btn-primary" onclick="pgTicketReply()" style="align-self:flex-end;">📤 Enviar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script>
+        jQuery(function($){
+            var admins = <?php echo json_encode($admins); ?>;
+
+            function loadTickets(){
+                PG.post('petsgo_search_tickets',{status:$('#tk-status-filter').val(),search:$('#tk-search').val()},function(r){
+                    if(!r.success) return;
+                    var data=r.data, open=0,proc=0,resolved=0,total=data.length;
+                    var html='';
+                    var roleBadge={cliente:'background:#cce5ff;color:#004085',tienda:'background:#d4edda;color:#155724',rider:'background:#fff3cd;color:#856404',admin:'background:#f8d7da;color:#721c24'};
+                    var priBadge={baja:'background:#d4edda;color:#155724',media:'background:#fff3cd;color:#856404',alta:'background:#ffe0cc;color:#cc5500',urgente:'background:#f8d7da;color:#721c24'};
+                    var stBadge={abierto:'background:#fff3cd;color:#856404',en_proceso:'background:#cce5ff;color:#004085',resuelto:'background:#d4edda;color:#155724',cerrado:'background:#e2e3e5;color:#383d41'};
+                    var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
+                    $.each(data,function(i,t){
+                        if(t.status=='abierto') open++;
+                        if(t.status=='en_proceso') proc++;
+                        if(t.status=='resuelto') resolved++;
+                        var assignOpts='<option value="">Sin asignar</option>';
+                        $.each(admins,function(_,a){ assignOpts+='<option value="'+a.ID+'" '+(t.assigned_to==a.ID?'selected':'')+'>'+a.display_name+'</option>'; });
+                        html+='<tr>';
+                        html+='<td><strong style="color:#00A8E8;">'+t.ticket_number+'</strong></td>';
+                        html+='<td>'+t.user_name+'<br><small style="color:#999;">'+t.user_email+'</small></td>';
+                        html+='<td><span class="petsgo-badge" style="'+(roleBadge[t.user_role]||'')+'">'+(t.user_role||'')+'</span></td>';
+                        html+='<td style="max-width:200px;">'+t.subject+'</td>';
+                        html+='<td>'+t.category+'</td>';
+                        html+='<td><span class="petsgo-badge" style="'+(priBadge[t.priority]||'')+'">'+t.priority+'</span></td>';
+                        html+='<td><span class="petsgo-badge" style="'+(stBadge[t.status]||'')+'">'+stLabel[t.status]+'</span></td>';
+                        html+='<td><select onchange="pgTicketAssign('+t.id+',this.value)" style="padding:4px;border-radius:4px;border:1px solid #ccc;font-size:12px;">'+assignOpts+'</select></td>';
+                        html+='<td style="white-space:nowrap;font-size:12px;">'+new Date(t.created_at).toLocaleDateString('es-CL')+'</td>';
+                        html+='<td style="white-space:nowrap;">';
+                        html+='<button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgTicketDetail('+t.id+')" title="Ver detalle">👁️</button> ';
+                        if(t.status!='cerrado'){
+                            var nextSt = t.status=='abierto'?'en_proceso':(t.status=='en_proceso'?'resuelto':'cerrado');
+                            var nextLbl = nextSt=='en_proceso'?'▶️ Procesar':(nextSt=='resuelto'?'✅ Resolver':'🔒 Cerrar');
+                            html+='<button class="petsgo-btn petsgo-btn-success petsgo-btn-sm" onclick="pgTicketStatus('+t.id+',\''+nextSt+'\')">'+nextLbl+'</button>';
+                        }
+                        html+='</td>';
+                        html+='</tr>';
+                    });
+                    $('#tk-body').html(html||'<tr><td colspan="10" style="text-align:center;color:#999;padding:30px;">No hay tickets</td></tr>');
+                    $('#tk-stats').html(
+                        '<div class="petsgo-card" style="border-left:4px solid #FFC400;"><h2>'+open+'</h2><p>Abiertos</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #00A8E8;"><h2>'+proc+'</h2><p>En Proceso</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #28a745;"><h2>'+resolved+'</h2><p>Resueltos</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #6c757d;"><h2>'+total+'</h2><p>Total</p></div>'
+                    );
+                    window._pgTickets = data;
+                });
+            }
+            loadTickets();
+
+            window.pgTicketStatus = function(id,status){
+                PG.post('petsgo_update_ticket',{id:id,status:status},function(r){
+                    if(r.success) loadTickets(); else alert(r.data);
+                });
+            };
+            window.pgTicketAssign = function(id,userId){
+                PG.post('petsgo_assign_ticket',{id:id,assigned_to:userId},function(r){
+                    if(r.success) loadTickets();
+                });
+            };
+            window.pgTicketDetail = function(id){
+                var t = (window._pgTickets||[]).find(function(x){return x.id==id;});
+                if(!t) return;
+                var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
+                $('#tk-modal-title').html('Ticket: <span style="color:#00A8E8;">'+t.ticket_number+'</span>');
+                $('#tk-detail').html(
+                    '<table style="width:100%;border-collapse:collapse;">'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Solicitante</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_name+' ('+t.user_role+')</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Email</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_email+'</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asunto</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.subject+'</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Categoría</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.category+'</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Prioridad</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.priority+'</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Estado</td><td style="padding:6px 10px;border:1px solid #eee;">'+(stLabel[t.status]||t.status)+'</td></tr>'+
+                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asignado a</td><td style="padding:6px 10px;border:1px solid #eee;">'+(t.assigned_name||'Sin asignar')+'</td></tr>'+
+                    '</table>'+
+                    '<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>'
+                );
+                $('#tk-reply-id').val(id);
+                // Load replies
+                $.post(ajaxurl,{action:'petsgo_search_tickets',_ajax_nonce:PG.nonce,search:t.ticket_number},function(){});
+                // Load replies via simple fetch
+                var repliesHtml='<p style="color:#999;font-size:13px;">Cargando respuestas…</p>';
+                $('#tk-replies').html(repliesHtml);
+                // Use REST to get replies
+                $.ajax({url:'/wp-json/petsgo/v1/tickets/'+id,method:'GET',beforeSend:function(xhr){var tk=localStorage.getItem('petsgo_token');if(tk)xhr.setRequestHeader('Authorization','Bearer '+tk);},success:function(r){
+                    if(r.replies && r.replies.length){
+                        var rh='';
+                        $.each(r.replies,function(_,rp){
+                            var isAdmin=rp.user_role=='admin';
+                            rh+='<div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;'+(isAdmin?'background:#e8f4fd;border-left:3px solid #00A8E8;':'background:#f8f9fa;border-left:3px solid #ccc;')+'">';
+                            rh+='<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><strong style="font-size:13px;">'+rp.user_name+' <span style="color:#999;font-weight:400;">('+rp.user_role+')</span></strong><span style="font-size:11px;color:#999;">'+new Date(rp.created_at).toLocaleString('es-CL')+'</span></div>';
+                            rh+='<p style="margin:0;font-size:13px;">'+rp.message.replace(/\n/g,'<br>')+'</p></div>';
+                        });
+                        $('#tk-replies').html(rh);
+                    } else {
+                        $('#tk-replies').html('<p style="color:#999;font-size:13px;">Sin respuestas aún.</p>');
+                    }
+                },error:function(){ $('#tk-replies').html('<p style="color:#999;font-size:13px;">Sin respuestas aún.</p>'); }});
+                $('#tk-modal').css('display','flex');
+            };
+            window.pgTicketReply = function(){
+                var msg=$('#tk-reply-msg').val().trim();
+                if(!msg){alert('Escribe un mensaje');return;}
+                PG.post('petsgo_add_ticket_reply',{ticket_id:$('#tk-reply-id').val(),message:msg},function(r){
+                    if(r.success){$('#tk-reply-msg').val('');pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();}else{alert(r.data);}
+                });
+            };
+
+            // Auto-refresh notification count
+            function refreshTicketBadge(){
+                PG.post('petsgo_ticket_count',{},function(r){
+                    if(r.success && r.data.count > 0){
+                        var badge = document.getElementById('petsgo-ticket-badge');
+                        if(!badge){
+                            var menuLink = document.querySelector('a[href*="petsgo-tickets"]');
+                            if(menuLink){
+                                badge = document.createElement('span');
+                                badge.id = 'petsgo-ticket-badge';
+                                badge.style.cssText = 'background:#dc3545;color:#fff;border-radius:50%;padding:2px 7px;font-size:11px;font-weight:700;margin-left:6px;';
+                                menuLink.appendChild(badge);
+                            }
+                        }
+                        if(badge) badge.textContent = r.data.count;
+                    }
+                });
+            }
+            refreshTicketBadge();
+            setInterval(refreshTicketBadge, 30000);
+        });
+        </script>
+        <?php
     }
 }
 

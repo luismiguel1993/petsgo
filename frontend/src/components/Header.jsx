@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart, User, Search, Menu, X, LogOut,
-  Store, Package, Truck, Shield, ShieldCheck, ChevronDown, MapPin,
+  Store, Package, Truck, Shield, ShieldCheck, ChevronDown, MapPin, LifeBuoy,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { getPublicSettings } from '../services/api';
+import { getPublicSettings, getCategories } from '../services/api';
 import logoSvg from '../assets/Logo y nombre-1.svg';
 
 const COMUNAS_RM = [
@@ -29,10 +29,25 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   const [selectedComuna, setSelectedComuna] = useState('Santiago Centro');
   const [comunaFilter, setComunaFilter] = useState('');
   const [freeShippingMin, setFreeShippingMin] = useState(39990);
+  const [categories, setCategories] = useState([
+    { name: 'Perros', href: '/categoria/Perros', icon: '🐕' },
+    { name: 'Gatos', href: '/categoria/Gatos', icon: '🐱' },
+    { name: 'Alimento', href: '/categoria/Alimento', icon: '🍖' },
+    { name: 'Farmacia', href: '/categoria/Farmacia', icon: '💊' },
+    { name: 'Accesorios', href: '/categoria/Accesorios', icon: '🎾' },
+    { name: 'Ofertas', href: '/categoria/Ofertas', icon: '🔥' },
+  ]);
 
   useEffect(() => {
     getPublicSettings().then(({ data }) => {
       if (data?.free_shipping_min) setFreeShippingMin(data.free_shipping_min);
+    }).catch(() => {});
+    getCategories().then(({ data }) => {
+      if (data?.data?.length) {
+        setCategories(data.data.slice(0, 6).map(c => ({
+          name: c.name, href: `/categoria/${c.slug}`, icon: c.emoji,
+        })));
+      }
     }).catch(() => {});
   }, []);
 
@@ -47,15 +62,6 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
     setLocalSearch(e.target.value);
     if (onSearch) onSearch(e.target.value);
   };
-
-  const categories = [
-    { name: 'Perros', href: '/categoria/Perros', icon: '🐕' },
-    { name: 'Gatos', href: '/categoria/Gatos', icon: '🐱' },
-    { name: 'Alimento', href: '/categoria/Alimento', icon: '🍖' },
-    { name: 'Farmacia', href: '/categoria/Farmacia', icon: '💊' },
-    { name: 'Accesorios', href: '/categoria/Accesorios', icon: '🎾' },
-    { name: 'Ofertas', href: '/categoria/Ofertas', icon: '🔥' },
-  ];
 
   return (
     <>
@@ -292,6 +298,7 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                               emoji: isAdmin() ? '⚙️' : isVendor() ? '🏪' : isRider() ? '🚚' : '📦',
                               color: isAdmin() ? '#8B5CF6' : isVendor() ? '#F59E0B' : isRider() ? '#22C55E' : '#00A8E8',
                             },
+                            { to: '/soporte', icon: <LifeBuoy size={17} />, label: 'Soporte', emoji: '🎫', color: '#F59E0B' },
                           ].map((item, idx) => (
                             <Link key={idx} to={item.to} onClick={() => setUserMenuOpen(false)}
                               style={{

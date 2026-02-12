@@ -280,4 +280,32 @@ export const submitVendorLead = (data) =>
 export const getPublicSettings = () =>
   api.get('/public-settings');
 
+// ==========================================
+// CATEGORÍAS (público)
+// ==========================================
+
+/** Obtener categorías activas */
+export const getCategories = () =>
+  api.get('/categories');
+
+// ==========================================
+// TICKETS / SOPORTE
+// ==========================================
+
+/** Crear ticket de soporte */
+export const createTicket = (data) =>
+  api.post('/tickets', data);
+
+/** Obtener mis tickets (cliente) o todos (admin) */
+export const getTickets = () =>
+  api.get('/tickets');
+
+/** Detalle de un ticket con respuestas */
+export const getTicketDetail = (id) =>
+  api.get(`/tickets/${id}`);
+
+/** Agregar respuesta a un ticket */
+export const addTicketReply = (id, message) =>
+  api.post(`/tickets/${id}/reply`, { message });
+
 export default api;

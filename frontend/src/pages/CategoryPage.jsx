@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Search, Store, Star, Clock, MapPin, Plus, Minus, PawPrint, Package, Filter } from 'lucide-react';
-import { getProducts, getVendors } from '../services/api';
+import { getProducts, getVendors, getCategories } from '../services/api';
 import { useCart } from '../context/CartContext';
 
-/* ── Mapeo de categorías ──────────────────────────────── */
-const CATEGORY_META = {
+/* ── Fallback de categorías ──────────────────────────── */
+const FALLBACK_CATEGORY_META = {
   Perros:     { emoji: '🐕', label: 'Perros',     desc: 'Todo para tu perro' },
   Gatos:      { emoji: '🐱', label: 'Gatos',      desc: 'Todo para tu gato' },
   Alimento:   { emoji: '🍖', label: 'Alimento',   desc: 'Seco y húmedo' },
@@ -163,7 +163,9 @@ const DEMO_PRODUCTS = {
 const CategoryPage = () => {
   const { slug } = useParams();
   const categoryName = decodeURIComponent(slug);
-  const meta = CATEGORY_META[categoryName] || { emoji: '📦', label: categoryName, desc: '' };
+
+  const [categoryMeta, setCategoryMeta] = useState(FALLBACK_CATEGORY_META);
+  const meta = categoryMeta[categoryName] || { emoji: '📦', label: categoryName, desc: '' };
 
   const [products, setProducts] = useState([]);
   const [allVendors, setAllVendors] = useState([]);
@@ -171,6 +173,20 @@ const CategoryPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('productos'); // 'productos' | 'tiendas'
   const { addItem, getItemQuantity, updateQuantity } = useCart();
+
+  /* Cargar categorías desde la API */
+  useEffect(() => {
+    getCategories().then(res => {
+      const cats = res.data?.data || res.data || [];
+      if (cats.length > 0) {
+        const map = {};
+        cats.forEach(c => {
+          map[c.name] = { emoji: c.emoji || '📦', label: c.name, desc: c.description || '' };
+        });
+        setCategoryMeta(map);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -613,7 +629,7 @@ const CategoryPage = () => {
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: '10px',
           }}>
-            {Object.entries(CATEGORY_META).map(([key, val]) => (
+            {Object.entries(categoryMeta).map(([key, val]) => (
               <Link
                 key={key}
                 to={`/categoria/${encodeURIComponent(key)}`}

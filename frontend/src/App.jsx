@@ -23,6 +23,7 @@ import MyOrdersPage from './pages/MyOrdersPage'
 import VendorDashboard from './pages/VendorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import RiderDashboard from './pages/RiderDashboard'
+import SupportPage from './pages/SupportPage'
 
 function App() {
   const [cartOpen, setCartOpen] = useState(false)
@@ -106,6 +107,7 @@ function App() {
           {/* Rutas autenticadas */}
           <Route path="/mis-pedidos" element={<MyOrdersPage />} />
           <Route path="/perfil" element={<UserProfilePage />} />
+          <Route path="/soporte" element={<SupportPage />} />
 
           {/* Dashboards por rol */}
           <Route path="/vendor" element={<VendorDashboard />} />

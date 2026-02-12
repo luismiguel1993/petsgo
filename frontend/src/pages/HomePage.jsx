@@ -3,16 +3,39 @@ import { Link } from 'react-router-dom';
 import { ShoppingCart, Star, Truck, Heart, Sparkles, ChevronRight, ArrowRight, MessageCircle, ChevronLeft, Shield, Clock, Filter, PawPrint, Plus } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { Minus } from 'lucide-react';
-import { getPublicSettings } from '../services/api';
+import { getPublicSettings, getCategories } from '../services/api';
+
+const FALLBACK_CATEGORIES = [
+  { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/categoria/Perros' },
+  { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '/categoria/Gatos' },
+  { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '/categoria/Alimento' },
+  { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/categoria/Snacks' },
+  { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/categoria/Farmacia' },
+  { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/categoria/Accesorios' },
+  { name: 'Higiene', emoji: '🧴', count: 'Shampoo y aseo', link: '/categoria/Higiene' },
+  { name: 'Camas', emoji: '🛏️', count: 'Descanso ideal', link: '/categoria/Camas' },
+  { name: 'Paseo', emoji: '🦮', count: 'Correas y arneses', link: '/categoria/Paseo' },
+  { name: 'Ropa', emoji: '🧥', count: 'Abrigos y disfraces', link: '/categoria/Ropa' },
+  { name: 'Ofertas', emoji: '🔥', count: 'Hasta 50% off', link: '/categoria/Ofertas' },
+  { name: 'Nuevos', emoji: '✨', count: 'Recién llegados', link: '/categoria/Nuevos' },
+];
 
 const HomePage = () => {
   const { addItem, getItemQuantity, updateQuantity } = useCart();
   const [currentSlide, setCurrentSlide] = useState(0);
   const [freeShippingMin, setFreeShippingMin] = useState(39990);
+  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
 
   useEffect(() => {
     getPublicSettings().then(({ data }) => {
       if (data?.free_shipping_min) setFreeShippingMin(data.free_shipping_min);
+    }).catch(() => {});
+    getCategories().then(({ data }) => {
+      if (data?.data?.length) {
+        setCategories(data.data.map(c => ({
+          name: c.name, emoji: c.emoji, count: c.description || '', link: `/categoria/${c.slug}`,
+        })));
+      }
     }).catch(() => {});
   }, []);
 
@@ -47,21 +70,6 @@ const HomePage = () => {
     { id: 10, name: 'Snack Dental DentaStix x28', brand: 'Pedigree', price: 15990, originalPrice: 18990, image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=80', category: 'Snacks', rating: 4.5, description: 'Barras dentales que reducen hasta 80% el sarro. Pack mensual de 28 unidades para perros medianos.' },
     { id: 11, name: 'Rascador Torre 3 Niveles', brand: 'CatLife', price: 34990, originalPrice: 44990, image: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400&auto=format&fit=crop&q=80', category: 'Accesorios Gatos', rating: 4.7, description: 'Torre rascador de 3 niveles con cuevas, plataformas y juguetes colgantes. Sisal natural resistente.' },
     { id: 12, name: 'Chaleco Abrigador Impermeable', brand: 'PetsGo Select', price: 19990, originalPrice: 24990, image: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&auto=format&fit=crop&q=80', category: 'Ropa', rating: 4.6, description: 'Chaleco impermeable con interior polar. Reflectante para visibilidad nocturna. Tallas S a XXL.' },
-  ];
-
-  const categories = [
-    { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/categoria/Perros' },
-    { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '/categoria/Gatos' },
-    { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '/categoria/Alimento' },
-    { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/categoria/Snacks' },
-    { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/categoria/Farmacia' },
-    { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/categoria/Accesorios' },
-    { name: 'Higiene', emoji: '🧴', count: 'Shampoo y aseo', link: '/categoria/Higiene' },
-    { name: 'Camas', emoji: '🛏️', count: 'Descanso ideal', link: '/categoria/Camas' },
-    { name: 'Paseo', emoji: '🦮', count: 'Correas y arneses', link: '/categoria/Paseo' },
-    { name: 'Ropa', emoji: '🧥', count: 'Abrigos y disfraces', link: '/categoria/Ropa' },
-    { name: 'Ofertas', emoji: '🔥', count: 'Hasta 50% off', link: '/categoria/Ofertas' },
-    { name: 'Nuevos', emoji: '✨', count: 'Recién llegados', link: '/categoria/Nuevos' },
   ];
 
   const formatPrice = (price) => {
