@@ -479,6 +479,7 @@ class PetsGo_Core {
             'logo_id'           => '',
             'plan_annual_free_months' => '2',
             'free_shipping_min' => '39990',
+            'tickets_bcc_email' => '',
         ];
     }
 
@@ -4289,6 +4290,11 @@ Dashboard con analíticas"></textarea>
                         <div class="field-hint">Todos los correos enviados por PetsGo incluirán este email en copia oculta.</div>
                     </div>
                     <div class="petsgo-field">
+                        <label>Email BCC Tickets (copia oculta)</label>
+                        <input type="text" id="ps-tickets-bcc" value="<?php echo $v('tickets_bcc_email'); ?>">
+                        <div class="field-hint">Emails BCC para notificaciones de tickets. Separar múltiples con coma. También configurable desde Vista Previa de Correos.</div>
+                    </div>
+                    <div class="petsgo-field">
                         <label>Email remitente (From)</label>
                         <input type="email" id="ps-from" value="<?php echo $v('company_from_email'); ?>">
                         <div class="field-hint">Dirección que aparece como remitente en los correos enviados.</div>
@@ -4451,6 +4457,7 @@ Dashboard con analíticas"></textarea>
                     company_bcc_email:$('#ps-bcc').val(),
                     company_from_email:$('#ps-from').val(),
                     company_website:$('#ps-website').val(),
+                    tickets_bcc_email:$('#ps-tickets-bcc').val(),
                     social_instagram:$('#ps-instagram').val(),
                     social_facebook:$('#ps-facebook').val(),
                     social_whatsapp:$('#ps-whatsapp').val(),
@@ -4483,7 +4490,10 @@ Dashboard con analíticas"></textarea>
 
         foreach ($allowed as $key) {
             if (isset($_POST[$key])) {
-                if (strpos($key, 'email') !== false) {
+                if ($key === 'tickets_bcc_email') {
+                    // Multiple emails separated by comma
+                    $settings[$key] = sanitize_text_field($_POST[$key]);
+                } elseif (strpos($key, 'email') !== false) {
                     $settings[$key] = sanitize_email($_POST[$key]);
                 } elseif (strpos($key, 'color') !== false) {
                     $settings[$key] = sanitize_hex_color($_POST[$key]) ?: '';
@@ -4863,6 +4873,82 @@ Dashboard con analíticas"></textarea>
       </p>';
                 $html = $this->email_wrap($inner_lt, 'Gracias por tu interés en PetsGo, Andrea');
                 break;
+
+            // ── TICKETS ──
+            case 'ticket_creator':
+                $inner_tc = '<h2 style="color:#00A8E8;margin:0 0 16px;">🎫 Ticket Creado: TK-20260212-001</h2>
+                <p>Hola <strong>María González</strong>,</p>
+                <p>Tu solicitud ha sido recibida exitosamente. Nuestro equipo revisará tu caso y te responderá a la brevedad.</p>
+                <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">TK-20260212-001</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">Problema con mi pedido #1234</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Estado</td><td style="padding:8px 12px;border:1px solid #eee;"><span style="background:#fff3cd;color:#856404;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">Abierto</span></td></tr>
+                </table>
+                <p style="color:#888;font-size:13px;">Recibirás notificaciones por correo cuando haya actualizaciones en tu ticket.</p>';
+                $html = $this->email_wrap($inner_tc, '🎫 Ticket Creado — TK-20260212-001');
+                break;
+
+            case 'ticket_admin':
+                $inner_ta = '<h2 style="color:#dc3545;margin:0 0 16px;">🔔 Nuevo Ticket: TK-20260212-002</h2>
+                <p>Se ha recibido un nuevo ticket de soporte.</p>
+                <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">TK-20260212-002</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Solicitante</td><td style="padding:8px 12px;border:1px solid #eee;">Andrea Muñoz <span style="background:#e2e3e5;padding:2px 8px;border-radius:10px;font-size:11px;">Tienda</span></td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">No puedo subir mis productos</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Categoría</td><td style="padding:8px 12px;border:1px solid #eee;">productos</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Prioridad</td><td style="padding:8px 12px;border:1px solid #eee;">🟠 Alta</td></tr>
+                </table>
+                <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin:16px 0;">
+                    <p style="font-weight:600;margin:0 0 8px;">Descripción:</p>
+                    <p style="margin:0;">Intento agregar productos a mi tienda pero el formulario me da error al subir imágenes. Ya probé con diferentes formatos (JPG, PNG) y el problema persiste.</p>
+                </div>
+                <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Ver en Panel Admin</a></p>';
+                $html = $this->email_wrap($inner_ta, '🔔 Nuevo Ticket — TK-20260212-002');
+                break;
+
+            case 'ticket_status':
+                $inner_ts = '<h2 style="color:#00A8E8;margin:0 0 16px;">📋 Actualización de Ticket: TK-20260212-001</h2>
+                <p>Hola <strong>María González</strong>,</p>
+                <p>Tu ticket ha sido actualizado:</p>
+                <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">TK-20260212-001</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">Problema con mi pedido #1234</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Nuevo Estado</td><td style="padding:8px 12px;border:1px solid #eee;"><span style="background:#cce5ff;color:#004085;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">En Proceso</span></td></tr>
+                </table>';
+                $html = $this->email_wrap($inner_ts, '📋 Ticket Actualizado — TK-20260212-001');
+                break;
+
+            case 'ticket_assigned':
+                $inner_tg = '<h2 style="color:#FFC400;margin:0 0 16px;">📌 Ticket Asignado: TK-20260212-002</h2>
+                <p>Hola <strong>Admin PetsGo</strong>,</p>
+                <p>Se te ha asignado el siguiente ticket de soporte:</p>
+                <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">TK-20260212-002</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Solicitante</td><td style="padding:8px 12px;border:1px solid #eee;">Andrea Muñoz</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">No puedo subir mis productos</td></tr>
+                </table>
+                <div style="background:#f8f9fa;border-radius:8px;padding:16px;margin:16px 0;">
+                    <p style="font-weight:600;margin:0 0 8px;">Descripción:</p>
+                    <p style="margin:0;">Intento agregar productos a mi tienda pero el formulario me da error al subir imágenes.</p>
+                </div>
+                <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Gestionar Ticket</a></p>';
+                $html = $this->email_wrap($inner_tg, '📌 Ticket Asignado — TK-20260212-002');
+                break;
+
+            case 'ticket_reply':
+                $inner_tr = '<h2 style="color:#00A8E8;margin:0 0 16px;">💬 Nueva Respuesta en Ticket: TK-20260212-001</h2>
+                <p>Hola <strong>María González</strong>,</p>
+                <p>Has recibido una nueva respuesta en tu ticket:</p>
+                <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">N° Ticket</td><td style="padding:8px 12px;border:1px solid #eee;">TK-20260212-001</td></tr>
+                    <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Asunto</td><td style="padding:8px 12px;border:1px solid #eee;">Problema con mi pedido #1234</td></tr>
+                </table>
+                <div style="background:#f0f8ff;border-left:4px solid #00A8E8;border-radius:6px;padding:16px;margin:16px 0;">
+                    <p style="margin:0;">Hola María, estamos revisando tu caso. Tu pedido fue reasignado a otro rider y debería llegar en las próximas 2 horas. Disculpa las molestias.</p>
+                </div>
+                <p style="color:#888;font-size:13px;">Puedes responder desde tu panel en PetsGo.</p>';
+                $html = $this->email_wrap($inner_tr, '💬 Respuesta en Ticket — TK-20260212-001');
+                break;
         }
         wp_send_json_success(['html' => $html]);
     }
@@ -4886,6 +4972,12 @@ Dashboard con analíticas"></textarea>
                 <button type="button" class="petsgo-btn ep-tab" data-type="subscription_payment" style="background:#e0f7fa;color:#00695c;border-color:#80deea;">💳 Pago Suscripción</button>
                 <button type="button" class="petsgo-btn ep-tab" data-type="renewal_reminder" style="background:#fff3e0;color:#e65100;border-color:#ffcc80;">⏰ Recordatorio Renovación</button>
                 <button type="button" class="petsgo-btn ep-tab" data-type="lead_thankyou" style="background:#fce4ec;color:#c62828;border-color:#ef9a9a;">📩 Gracias Lead</button>
+                <span style="display:inline-block;width:1px;height:28px;background:#ddd;margin:0 4px;"></span>
+                <button type="button" class="petsgo-btn ep-tab" data-type="ticket_creator" style="background:#e8f0fe;color:#1a73e8;border-color:#a8c7fa;">🎫 Ticket Creado</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="ticket_admin" style="background:#fce8e6;color:#c5221f;border-color:#f5a6a1;">🔔 Ticket Admin</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="ticket_status" style="background:#e6f4ea;color:#137333;border-color:#a8dab5;">📋 Ticket Estado</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="ticket_assigned" style="background:#fff8e1;color:#ea8600;border-color:#fdd663;">📌 Ticket Asignado</button>
+                <button type="button" class="petsgo-btn ep-tab" data-type="ticket_reply" style="background:#e8f0fe;color:#185abc;border-color:#a8c7fa;">💬 Ticket Respuesta</button>
                 <span class="petsgo-loader" id="ep-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-settings'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">⚙️ Editar Configuración</a>
             </div>
@@ -4926,6 +5018,31 @@ Dashboard con analíticas"></textarea>
                 </a>
                 <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de suscripcion de plan con datos ficticios para verificar el diseño.</span>
             </div>
+
+            <!-- ===== CONFIGURACIÓN BCC TICKETS ===== -->
+            <div style="margin-top:32px;background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:24px 28px;">
+                <h3 style="margin:0 0 6px;font-size:16px;color:#2F3A40;">📧 Configuración de Copia Oculta (BCC) — Tickets</h3>
+                <p style="margin:0 0 18px;font-size:13px;color:#888;">Configura los correos que recibirán copia oculta de <strong>todas</strong> las notificaciones de tickets (creación, asignación, estado, respuesta). Separar múltiples correos con coma.</p>
+                <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:300px;">
+                        <label style="display:block;font-size:12px;font-weight:700;color:#6b7280;margin-bottom:6px;">Emails BCC Tickets</label>
+                        <input type="text" id="ep-tickets-bcc" value="<?php echo esc_attr($this->pg_setting('tickets_bcc_email', '')); ?>" placeholder="soporte@petsgo.cl, admin@petsgo.cl" style="width:100%;padding:10px 14px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:Poppins,sans-serif;transition:border-color 0.2s;" onfocus="this.style.borderColor='#00A8E8'" onblur="this.style.borderColor='#e5e7eb'">
+                        <div style="font-size:11px;color:#aaa;margin-top:4px;">Ejemplo: soporte@petsgo.cl, admin@petsgo.cl — Déjalo vacío para no enviar BCC.</div>
+                    </div>
+                    <button type="button" id="ep-save-bcc" class="petsgo-btn petsgo-btn-primary" style="padding:10px 24px;font-size:14px;white-space:nowrap;">
+                        💾 Guardar BCC
+                    </button>
+                    <span id="ep-bcc-msg" style="display:none;font-size:13px;font-weight:600;padding:8px 14px;border-radius:6px;"></span>
+                </div>
+
+                <div style="margin-top:16px;background:#f8f9fa;border-radius:8px;padding:14px 18px;">
+                    <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#6b7280;">📌 Correos BCC actuales por tipo:</p>
+                    <table style="width:100%;font-size:12px;color:#555;border-collapse:collapse;">
+                        <tr><td style="padding:4px 8px;font-weight:600;">Boletas/Stock/Tiendas/Leads:</td><td style="padding:4px 8px;"><?php echo esc_html($this->pg_setting('company_bcc_email', 'contacto@petsgo.cl')); ?> <span style="color:#aaa;">(Configuración → Email BCC)</span></td></tr>
+                        <tr><td style="padding:4px 8px;font-weight:600;">Tickets de Soporte:</td><td style="padding:4px 8px;" id="ep-bcc-current"><?php $tb = $this->pg_setting('tickets_bcc_email', ''); echo $tb ? esc_html($tb) : '<span style="color:#ccc;">No configurado</span>'; ?></td></tr>
+                    </table>
+                </div>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -4940,7 +5057,12 @@ Dashboard con analíticas"></textarea>
                 vendor_welcome: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'¡Bienvenida a PetsGo, Patitas Chile! 🏪',title:'Bienvenida nueva tienda'},
                 subscription_payment: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'PetsGo — Confirmación de pago Plan Pro 💳',title:'Confirmación pago suscripción'},
                 renewal_reminder: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'patitas@demo.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'⏰ PetsGo — Tu suscripción vence en 5 días',title:'Recordatorio de renovación'},
-                lead_thankyou: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'andrea@petparadise.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'Gracias por tu interés en PetsGo 🏪',title:'Gracias por tu interés (lead)'}
+                lead_thankyou: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'andrea@petparadise.cl',bcc:'<?php echo $this->pg_setting("company_bcc_email","contacto@petsgo.cl"); ?>',subject:'Gracias por tu interés en PetsGo 🏪',title:'Gracias por tu interés (lead)'},
+                ticket_creator: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'<?php $tb=$this->pg_setting("tickets_bcc_email",""); echo $tb?$tb:"(no configurado)"; ?>',subject:'PetsGo — Ticket TK-20260212-001 creado',title:'Notificación al creador del ticket'},
+                ticket_admin: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'<?php echo $this->pg_setting("company_email","contacto@petsgo.cl"); ?>',bcc:'<?php $tb=$this->pg_setting("tickets_bcc_email",""); echo $tb?$tb:"(no configurado)"; ?>',subject:'PetsGo — Nuevo Ticket TK-20260212-002',title:'Alerta nuevo ticket para admin'},
+                ticket_status: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'<?php $tb=$this->pg_setting("tickets_bcc_email",""); echo $tb?$tb:"(no configurado)"; ?>',subject:'PetsGo — Ticket TK-20260212-001 actualizado',title:'Cambio de estado del ticket'},
+                ticket_assigned: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'admin@petsgo.cl',bcc:'<?php $tb=$this->pg_setting("tickets_bcc_email",""); echo $tb?$tb:"(no configurado)"; ?>',subject:'PetsGo — Te han asignado el Ticket TK-20260212-002',title:'Ticket asignado a admin/soporte'},
+                ticket_reply: {from:'<?php echo $this->pg_setting("company_name","PetsGo")." <".$this->pg_setting("company_from_email","notificaciones@petsgo.cl").">"; ?>',to:'maria@demo.cl',bcc:'<?php $tb=$this->pg_setting("tickets_bcc_email",""); echo $tb?$tb:"(no configurado)"; ?>',subject:'PetsGo — Respuesta en Ticket TK-20260212-001',title:'Respuesta en ticket'}
             };
             function loadPreview(type){
                 $('#ep-loader').addClass('active');
@@ -4962,6 +5084,47 @@ Dashboard con analíticas"></textarea>
                 loadPreview($(this).data('type'));
             });
             loadPreview('invoice');
+
+            // Save tickets BCC
+            $('#ep-save-bcc').on('click',function(){
+                var bcc = $('#ep-tickets-bcc').val().trim();
+                PG.post('petsgo_save_settings',{
+                    tickets_bcc_email: bcc,
+                    // pass existing values so they remain unchanged
+                    company_name: '<?php echo esc_js($this->pg_setting("company_name","PetsGo")); ?>',
+                    company_tagline: '<?php echo esc_js($this->pg_setting("company_tagline","")); ?>',
+                    company_rut: '<?php echo esc_js($this->pg_setting("company_rut","")); ?>',
+                    company_address: '<?php echo esc_js($this->pg_setting("company_address","")); ?>',
+                    company_phone: '<?php echo esc_js($this->pg_setting("company_phone","")); ?>',
+                    company_email: '<?php echo esc_js($this->pg_setting("company_email","contacto@petsgo.cl")); ?>',
+                    company_bcc_email: '<?php echo esc_js($this->pg_setting("company_bcc_email","contacto@petsgo.cl")); ?>',
+                    company_from_email: '<?php echo esc_js($this->pg_setting("company_from_email","notificaciones@petsgo.cl")); ?>',
+                    company_website: '<?php echo esc_js($this->pg_setting("company_website","")); ?>',
+                    social_instagram: '<?php echo esc_js($this->pg_setting("social_instagram","")); ?>',
+                    social_facebook: '<?php echo esc_js($this->pg_setting("social_facebook","")); ?>',
+                    social_whatsapp: '<?php echo esc_js($this->pg_setting("social_whatsapp","")); ?>',
+                    color_primary: '<?php echo esc_js($this->pg_setting("color_primary","#00A8E8")); ?>',
+                    color_secondary: '<?php echo esc_js($this->pg_setting("color_secondary","#FFC400")); ?>',
+                    color_dark: '<?php echo esc_js($this->pg_setting("color_dark","#2F3A40")); ?>',
+                    color_success: '<?php echo esc_js($this->pg_setting("color_success","#28a745")); ?>',
+                    color_danger: '<?php echo esc_js($this->pg_setting("color_danger","#dc3545")); ?>',
+                    logo_id: '<?php echo esc_js($this->pg_setting("logo_id","")); ?>',
+                    plan_annual_free_months: '<?php echo esc_js($this->pg_setting("plan_annual_free_months","2")); ?>',
+                    free_shipping_min: '<?php echo esc_js($this->pg_setting("free_shipping_min","39990")); ?>'
+                },function(r){
+                    var m=$('#ep-bcc-msg');
+                    if(r.success){
+                        m.css({display:'inline-block',background:'#d4edda',color:'#155724'}).text('✅ Guardado');
+                        $('#ep-bcc-current').html(bcc||'<span style="color:#ccc;">No configurado</span>');
+                        // update ticket meta bcc values
+                        var bccDisplay = bcc || '(no configurado)';
+                        ['ticket_creator','ticket_admin','ticket_status','ticket_assigned','ticket_reply'].forEach(function(k){ if(meta[k]) meta[k].bcc = bccDisplay; });
+                    } else {
+                        m.css({display:'inline-block',background:'#f8d7da',color:'#721c24'}).text('Error al guardar');
+                    }
+                    setTimeout(function(){m.fadeOut();},3000);
+                });
+            });
         });
         </script>
         <?php
@@ -7331,7 +7494,10 @@ Dashboard con analíticas"></textarea>
         </table>
         <p style="color:#888;font-size:13px;">Recibirás notificaciones por correo cuando haya actualizaciones en tu ticket.</p>';
         $html = $this->email_wrap($inner, '🎫 Ticket Creado — ' . $ticket_number);
-        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' creado', $html, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $bcc = $this->pg_setting('tickets_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' creado', $html, $headers);
     }
 
     private function send_ticket_email_admin($ticket_number, $subject, $description, $user_name, $user_role, $category, $priority) {
@@ -7353,7 +7519,10 @@ Dashboard con analíticas"></textarea>
         <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Ver en Panel Admin</a></p>';
         $html = $this->email_wrap($inner, '🔔 Nuevo Ticket — ' . $ticket_number);
         $admin_email = $this->pg_setting('company_email', 'contacto@petsgo.cl');
-        wp_mail($admin_email, 'PetsGo — Nuevo Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $bcc = $this->pg_setting('tickets_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        wp_mail($admin_email, 'PetsGo — Nuevo Ticket ' . $ticket_number, $html, $headers);
     }
 
     private function send_ticket_status_email($ticket_number, $subject, $email, $name, $status) {
@@ -7368,7 +7537,10 @@ Dashboard con analíticas"></textarea>
             <tr><td style="padding:8px 12px;background:#f8f9fa;font-weight:600;border:1px solid #eee;">Nuevo Estado</td><td style="padding:8px 12px;border:1px solid #eee;"><span style="background:'.($status_colors[$status]??'#e2e3e5;color:#383d41').';padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;">'.($status_labels[$status]??$status).'</span></td></tr>
         </table>';
         $html = $this->email_wrap($inner, '📋 Ticket Actualizado — ' . $ticket_number);
-        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' actualizado', $html, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $bcc = $this->pg_setting('tickets_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        wp_mail($email, 'PetsGo — Ticket ' . $ticket_number . ' actualizado', $html, $headers);
     }
 
     private function send_ticket_assigned_email($ticket_number, $subject, $description, $email, $assigned_name, $requester_name) {
@@ -7386,7 +7558,10 @@ Dashboard con analíticas"></textarea>
         </div>
         <p><a href="'.admin_url('admin.php?page=petsgo-tickets').'" style="display:inline-block;background:#00A8E8;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:700;">Gestionar Ticket</a></p>';
         $html = $this->email_wrap($inner, '📌 Ticket Asignado — ' . $ticket_number);
-        wp_mail($email, 'PetsGo — Te han asignado el Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $bcc = $this->pg_setting('tickets_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        wp_mail($email, 'PetsGo — Te han asignado el Ticket ' . $ticket_number, $html, $headers);
     }
 
     private function send_ticket_reply_email($ticket_number, $subject, $email, $name, $reply_message) {
@@ -7402,7 +7577,10 @@ Dashboard con analíticas"></textarea>
         </div>
         <p style="color:#888;font-size:13px;">Puedes responder desde tu panel en PetsGo.</p>';
         $html = $this->email_wrap($inner, '💬 Respuesta en Ticket — ' . $ticket_number);
-        wp_mail($email, 'PetsGo — Respuesta en Ticket ' . $ticket_number, $html, ['Content-Type: text/html; charset=UTF-8']);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $bcc = $this->pg_setting('tickets_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        wp_mail($email, 'PetsGo — Respuesta en Ticket ' . $ticket_number, $html, $headers);
     }
 
     // ============================================================
