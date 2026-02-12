@@ -79,6 +79,7 @@ class PetsGo_Core {
             'petsgo_assign_ticket',
             'petsgo_add_ticket_reply',
             'petsgo_ticket_count',
+            'petsgo_save_legal',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -562,6 +563,9 @@ class PetsGo_Core {
 
         // Preview Emails — hidden page (solo admin)
         add_submenu_page(null, 'Preview Emails', '', $cap_admin, 'petsgo-email-preview', [$this, 'page_email_preview']);
+
+        // Contenido Legal — admin
+        add_submenu_page('petsgo-dashboard', 'Contenido Legal', '📄 Contenido Legal', $cap_admin, 'petsgo-legal', [$this, 'page_legal']);
     }
 
     // ============================================================
@@ -5487,6 +5491,7 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/vendors/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_vendor_detail'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/plans',['methods'=>'GET','callback'=>[$this,'api_get_plans'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/public-settings',['methods'=>'GET','callback'=>[$this,'api_get_public_settings'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/legal/(?P<slug>[a-z_-]+)',['methods'=>'GET','callback'=>[$this,'api_get_legal_page'],'permission_callback'=>'__return_true']);
         // Auth
         register_rest_route('petsgo/v1','/auth/login',['methods'=>'POST','callback'=>[$this,'api_login'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/register',['methods'=>'POST','callback'=>[$this,'api_register'],'permission_callback'=>'__return_true']);
@@ -5573,6 +5578,25 @@ Dashboard con analíticas"></textarea>
             'free_shipping_min'      => intval($this->pg_setting('free_shipping_min', 39990)),
             'plan_annual_free_months'=> intval($this->pg_setting('plan_annual_free_months', 2)),
             'company_name'           => $this->pg_setting('company_name', 'PetsGo'),
+        ]);
+    }
+
+    // --- Legal / Contenido público ---
+    public function api_get_legal_page($request) {
+        $slug = sanitize_key($request->get_param('slug'));
+        $allowed = ['centro-de-ayuda','terminos-y-condiciones','politica-de-privacidad','politica-de-envios'];
+        if (!in_array($slug, $allowed)) return new WP_Error('not_found','Página no encontrada',['status'=>404]);
+        $content = get_option('petsgo_legal_' . str_replace('-','_',$slug), '');
+        $titles = [
+            'centro-de-ayuda'        => 'Centro de Ayuda',
+            'terminos-y-condiciones' => 'Términos y Condiciones',
+            'politica-de-privacidad' => 'Política de Privacidad',
+            'politica-de-envios'     => 'Política de Envíos',
+        ];
+        return rest_ensure_response([
+            'slug'    => $slug,
+            'title'   => $titles[$slug] ?? $slug,
+            'content' => $content,
         ]);
     }
 
@@ -7767,6 +7791,116 @@ Dashboard con analíticas"></textarea>
             }
             refreshTicketBadge();
             setInterval(refreshTicketBadge, 30000);
+        });
+        </script>
+        <?php
+    }
+
+    // ============================================================
+    // AJAX — Contenido Legal
+    // ============================================================
+    public function petsgo_save_legal() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        $slug = sanitize_key($_POST['slug'] ?? '');
+        $content = wp_kses_post($_POST['content'] ?? '');
+        $allowed = ['centro_de_ayuda','terminos_y_condiciones','politica_de_privacidad','politica_de_envios'];
+        if (!in_array($slug, $allowed)) wp_send_json_error('Slug inválido');
+        update_option('petsgo_legal_' . $slug, $content);
+        $this->audit('save_legal', 'legal', 0, $slug);
+        wp_send_json_success(['message' => 'Contenido guardado correctamente']);
+    }
+
+    // ============================================================
+    // ADMIN PAGE — Contenido Legal
+    // ============================================================
+    public function page_legal() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $pages = [
+            'centro_de_ayuda'        => ['title' => 'Centro de Ayuda', 'icon' => '❓', 'desc' => 'Información para que los clientes, riders y tiendas sepan cómo usar el soporte y crear tickets.'],
+            'terminos_y_condiciones' => ['title' => 'Términos y Condiciones', 'icon' => '📋', 'desc' => 'Términos de uso del marketplace PetsGo.'],
+            'politica_de_privacidad' => ['title' => 'Política de Privacidad', 'icon' => '🔒', 'desc' => 'Política de privacidad y protección de datos.'],
+            'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
+        ];
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>📄 Contenido Legal y Ayuda</h1>
+            <p>Edita el contenido de las páginas públicas del marketplace. El contenido se muestra en el sitio web tal como lo escribes aquí (soporta HTML).</p>
+
+            <div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">
+                <?php foreach ($pages as $slug => $info): ?>
+                <button type="button" class="button legal-tab-btn <?php echo array_key_first($pages)===$slug?'button-primary':''; ?>" data-slug="<?php echo $slug; ?>">
+                    <?php echo $info['icon'] . ' ' . $info['title']; ?>
+                </button>
+                <?php endforeach; ?>
+            </div>
+
+            <?php foreach ($pages as $slug => $info):
+                $content = get_option('petsgo_legal_' . $slug, '');
+            ?>
+            <div class="legal-panel" data-slug="<?php echo $slug; ?>" style="<?php echo array_key_first($pages)!==$slug?'display:none;':''; ?>">
+                <div class="petsgo-card" style="padding:24px;">
+                    <h2><?php echo $info['icon'] . ' ' . $info['title']; ?></h2>
+                    <p style="color:#666;font-size:13px;margin-bottom:16px;"><?php echo $info['desc']; ?></p>
+                    <?php
+                    $editor_id = 'legal_editor_' . $slug;
+                    wp_editor($content, $editor_id, [
+                        'textarea_name' => 'legal_content_' . $slug,
+                        'media_buttons' => true,
+                        'textarea_rows' => 20,
+                        'teeny'         => false,
+                        'quicktags'     => true,
+                    ]);
+                    ?>
+                    <div style="margin-top:16px;display:flex;align-items:center;gap:12px;">
+                        <button type="button" class="button button-primary legal-save-btn" data-slug="<?php echo $slug; ?>">
+                            💾 Guardar <?php echo $info['title']; ?>
+                        </button>
+                        <span class="legal-msg" data-slug="<?php echo $slug; ?>" style="font-weight:600;font-size:13px;"></span>
+                    </div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <script>
+        jQuery(function($){
+            // Tab switching
+            $('.legal-tab-btn').on('click', function(){
+                var slug = $(this).data('slug');
+                $('.legal-tab-btn').removeClass('button-primary');
+                $(this).addClass('button-primary');
+                $('.legal-panel').hide();
+                $('.legal-panel[data-slug="'+slug+'"]').show();
+            });
+            // Save
+            $('.legal-save-btn').on('click', function(){
+                var slug = $(this).data('slug');
+                var $msg = $('.legal-msg[data-slug="'+slug+'"]');
+                var editorId = 'legal_editor_' + slug;
+                var content = '';
+                // Get content from TinyMCE or textarea
+                if (typeof tinyMCE !== 'undefined' && tinyMCE.get(editorId)) {
+                    content = tinyMCE.get(editorId).getContent();
+                } else {
+                    content = $('#' + editorId).val();
+                }
+                $msg.text('Guardando...').css('color','#666');
+                $.post(ajaxurl, {
+                    action: 'petsgo_save_legal',
+                    _ajax_nonce: '<?php echo wp_create_nonce('petsgo_ajax'); ?>',
+                    slug: slug,
+                    content: content,
+                }, function(r){
+                    if (r.success) {
+                        $msg.text('✅ Guardado').css('color','#28a745');
+                    } else {
+                        $msg.text('❌ Error').css('color','#dc3545');
+                    }
+                    setTimeout(function(){ $msg.text(''); }, 3000);
+                }).fail(function(){
+                    $msg.text('❌ Error de red').css('color','#dc3545');
+                });
+            });
         });
         </script>
         <?php

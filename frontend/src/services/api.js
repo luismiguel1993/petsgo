@@ -308,4 +308,12 @@ export const getTicketDetail = (id) =>
 export const addTicketReply = (id, message) =>
   api.post(`/tickets/${id}/reply`, { message });
 
+// ==========================================
+// CONTENIDO LEGAL / AYUDA
+// ==========================================
+
+/** Obtener contenido de una página legal/ayuda */
+export const getLegalPage = (slug) =>
+  api.get(`/legal/${slug}`);
+
 export default api;

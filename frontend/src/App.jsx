@@ -24,6 +24,8 @@ import VendorDashboard from './pages/VendorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import RiderDashboard from './pages/RiderDashboard'
 import SupportPage from './pages/SupportPage'
+import HelpCenterPage from './pages/HelpCenterPage'
+import LegalPage from './pages/LegalPage'
 
 function App() {
   const [cartOpen, setCartOpen] = useState(false)
@@ -103,6 +105,10 @@ function App() {
           <Route path="/producto/:id" element={<ProductDetailPage />} />
           <Route path="/carrito" element={<CartPage />} />
           <Route path="/planes" element={<PlansPage />} />
+          <Route path="/centro-de-ayuda" element={<HelpCenterPage />} />
+          <Route path="/terminos-y-condiciones" element={<LegalPage slug="terminos-y-condiciones" />} />
+          <Route path="/politica-de-privacidad" element={<LegalPage slug="politica-de-privacidad" />} />
+          <Route path="/politica-de-envios" element={<LegalPage slug="politica-de-envios" />} />
 
           {/* Rutas autenticadas */}
           <Route path="/mis-pedidos" element={<MyOrdersPage />} />

@@ -72,22 +72,22 @@ const Footer = () => {
             </h4>
             <ul className="space-y-4">
               <li>
-                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/centro-de-ayuda" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Centro de Ayuda
                 </Link>
               </li>
               <li>
-                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/politica-de-envios" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Política de Envíos
                 </Link>
               </li>
               <li>
-                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/terminos-y-condiciones" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Términos y Condiciones
                 </Link>
               </li>
               <li>
-                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <Link to="/politica-de-privacidad" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Privacidad
                 </Link>
               </li>
@@ -135,9 +135,9 @@ const Footer = () => {
               © {new Date().getFullYear()} PetsGo Marketplace. Todos los derechos reservados.
             </p>
             <div className="flex items-center gap-6 text-sm">
-              <Link to="/planes" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</Link>
+              <Link to="/politica-de-privacidad" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</Link>
               <span className="text-gray-600">|</span>
-              <Link to="/planes" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</Link>
+              <Link to="/terminos-y-condiciones" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</Link>
             </div>
           </div>
         </div>
