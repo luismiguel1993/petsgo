@@ -319,12 +319,12 @@ const PlansPage = () => {
 
       {/* ========== FORMULARIO DE CONTACTO ========== */}
       <div id="contact-form" style={{
-        maxWidth: '1000px', margin: '80px auto 0', padding: '0 24px 80px',
+        maxWidth: '1100px', margin: '80px auto 0', padding: '0 24px 80px',
       }}>
         <div style={{
           background: '#fff', borderRadius: '28px', overflow: 'hidden',
           boxShadow: '0 8px 40px rgba(0,0,0,0.06)', border: '1px solid #f0f0f0',
-          display: 'grid', gridTemplateColumns: '1fr 1fr',
+          display: 'grid', gridTemplateColumns: '2fr 3fr',
         }} className="contact-grid">
           {/* Left - info */}
           <div className="contact-left" style={{
@@ -360,7 +360,7 @@ const PlansPage = () => {
           </div>
 
           {/* Right - form */}
-          <div className="contact-right" style={{ padding: '48px 40px' }}>
+          <div className="contact-right" style={{ padding: '40px 36px' }}>
             <h3 style={{ fontSize: '22px', fontWeight: 800, color: '#2F3A40', marginBottom: '8px' }}>
               Solicita tu registro
             </h3>
@@ -377,12 +377,12 @@ const PlansPage = () => {
                 <p style={{ fontSize: '14px', color: '#6b7280' }}>Te contactaremos en menos de 24 horas a tu email.</p>
               </div>
             ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><Building2 size={18} /></div>
                     <input
-                      type="text" required placeholder="Nombre de tu tienda"
+                      type="text" required placeholder="Nombre de tu tienda" autoComplete="off"
                       value={formData.storeName} onChange={(e) => handleChange('storeName', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
@@ -392,7 +392,7 @@ const PlansPage = () => {
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><User size={18} /></div>
                     <input
-                      type="text" required placeholder="Nombre de contacto" inputMode="text" autoComplete="name"
+                      type="text" required placeholder="Nombre de contacto" inputMode="text" autoComplete="off"
                       value={formData.contactName} onChange={(e) => handleChange('contactName', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
@@ -405,7 +405,7 @@ const PlansPage = () => {
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><Mail size={18} /></div>
                     <input
-                      type="email" required placeholder="Email de contacto"
+                      type="email" required placeholder="Email de contacto" autoComplete="off"
                       value={formData.email} onChange={(e) => handleChange('email', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
@@ -417,7 +417,7 @@ const PlansPage = () => {
                     <div style={{ display: 'flex' }}>
                       <span style={{ padding: '14px 10px 14px 46px', background: '#f3f4f6', borderRadius: '12px 0 0 12px', border: '2px solid #e5e7eb', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', lineHeight: '1.2' }}>+569</span>
                       <input
-                        type="tel" required placeholder="XXXXXXXX" maxLength={8}
+                        type="tel" required placeholder="XXXXXXXX" maxLength={8} autoComplete="off"
                         value={formData.phone} onChange={(e) => handleChange('phone', formatPhoneDigits(e.target.value))}
                         style={{ ...inputStyle, paddingLeft: '14px', borderRadius: '0 12px 12px 0' }}
                         onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
