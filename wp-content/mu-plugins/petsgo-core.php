@@ -4525,35 +4525,95 @@ Dashboard con analíticas"></textarea>
                 $html = $this->email_wrap($inner_cw, '¡Bienvenida a PetsGo, María!');
                 break;
 
+            case 'rider_registro':
+                $inner_reg = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>Carlos</strong>! 🚴</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Gracias por registrarte como <strong>Rider en PetsGo</strong>. Para continuar con tu solicitud, verifica tu correo electr&oacute;nico.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td align="center" style="background-color:#fff8ed;border-radius:12px;padding:30px 24px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#555;">Tu c&oacute;digo de verificaci&oacute;n es:</p>
+          <p style="margin:0;font-size:36px;font-weight:900;letter-spacing:6px;color:#F59E0B;font-family:monospace;">A1B2C3</p>
+          <p style="margin:12px 0 0;font-size:12px;color:#999;">V&aacute;lido por 48 horas</p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0f9ff;border-left:4px solid #00A8E8;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📋 Pasos del registro:</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
+            <tr><td>✅ Paso 1: Datos b&aacute;sicos registrados</td></tr>
+            <tr><td>👉 <strong>Paso 2: Verifica tu email e ingresa tus documentos</strong></td></tr>
+            <tr><td>⏳ Paso 3: Revisi&oacute;n y aprobaci&oacute;n del admin</td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">carlos@demo.cl</span> porque te registraste como Rider en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_reg, 'Verifica tu email para continuar, Carlos 🚴');
+                break;
+
             case 'rider_welcome':
                 $inner_rw = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>Carlos</strong>! 🚴</p>
-      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. Estamos felices de tenerte a bordo.</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Bienvenido al <strong>equipo de Delivery de PetsGo</strong>. ¡Tu cuenta ha sido <strong style="color:#16a34a;">aprobada</strong> y ya puedes comenzar a realizar entregas!</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0fdf4;border-left:4px solid #22C55E;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 6px;font-size:14px;color:#166534;font-weight:700;">✅ Cuenta Aprobada</p>
+          <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">Todos tus documentos fueron verificados exitosamente. Ya formas parte del equipo.</p>
+        </td></tr>
+      </table>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
         <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:20px 24px;">
-          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Próximos pasos:</p>
+          <p style="margin:0 0 12px;font-size:14px;color:#333;font-weight:700;">📦 Pr&oacute;ximos pasos:</p>
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:13px;color:#555;line-height:2;">
-            <tr><td>1️⃣ Espera que el admin active tu cuenta</td></tr>
-            <tr><td>2️⃣ Recibirás un correo cuando estés habilitado</td></tr>
-            <tr><td>3️⃣ Podrás ver y aceptar entregas desde tu panel</td></tr>
+            <tr><td>1️⃣ Ingresa a tu Panel de Rider</td></tr>
+            <tr><td>2️⃣ Revisa las entregas disponibles</td></tr>
+            <tr><td>3️⃣ Acepta y realiza entregas a los clientes</td></tr>
             <tr><td>4️⃣ Entrega con ❤️ y gana valoraciones positivas</td></tr>
           </table>
         </td></tr>
       </table>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
         <tr><td style="background-color:#f8f9fa;border-radius:8px;padding:14px 20px;font-size:13px;color:#555;">
-          🚗 Vehículo registrado: <strong style="color:#333;">Moto 125cc</strong>
+          🚗 Veh&iacute;culo registrado: <strong style="color:#333;">Moto</strong>
         </td></tr>
       </table>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
         <tr><td align="center">
-          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a PetsGo</a>
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#FFC400;color:#2F3A40;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Ir a mi Panel de Rider 🚴</a>
         </td></tr>
       </table>
       <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
-        Este correo fue enviado a <span style="color:#888;">carlos@demo.cl</span> porque te registraste como Rider en PetsGo.
+        Este correo fue enviado a <span style="color:#888;">carlos@demo.cl</span> porque tu cuenta Rider fue aprobada en PetsGo.
       </p>';
                 $html = $this->email_wrap($inner_rw, '¡Bienvenido al equipo de Delivery, Carlos!');
+                break;
+
+            case 'rider_rechazo':
+                $inner_rej = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>Carlos</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que uno de tus documentos ha sido <strong style="color:#dc2626;">rechazado</strong> durante la revisi&oacute;n.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #ef4444;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 8px;font-size:14px;color:#991b1b;font-weight:700;">❌ Documento rechazado</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#555;">Tipo: <strong>Licencia de Conducir</strong></p>
+          <p style="margin:0;font-size:13px;color:#555;">Motivo: <strong>La imagen est&aacute; borrosa, por favor sube una foto m&aacute;s n&iacute;tida</strong></p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:16px 24px;">
+          <p style="margin:0;font-size:13px;color:#555;line-height:1.6;">📋 Ingresa a tu Panel de Rider y sube nuevamente el documento corregido para continuar con tu solicitud.</p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#F97316;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Subir Documento Corregido</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">carlos@demo.cl</span> por la revisi&oacute;n de tu cuenta Rider en PetsGo.
+      </p>';
+                $html = $this->email_wrap($inner_rej, 'Documento rechazado - Acci&oacute;n requerida');
                 break;
 
             case 'vendor_welcome':
