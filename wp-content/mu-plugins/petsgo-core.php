@@ -2323,7 +2323,7 @@ class PetsGo_Core {
                     if(!r.success||!r.data.length){$('#pdr-body').html('<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Sin documentos.</td></tr>');return;}
                     var h='';
                     $.each(r.data,function(i,d){
-                        var docLabels={'license':'🪪 Licencia de conducir','vehicle_registration':'📄 Padrón vehículo','id_card':'🆔 Documento identidad'};
+                        var docLabels={'license':'🪪 Licencia de conducir','vehicle_registration':'📄 Padrón vehículo','id_card':'🆔 Documento identidad','selfie':'📸 Selfie','vehicle_photo_1':'🚗 Foto vehículo #1','vehicle_photo_2':'🚗 Foto vehículo #2','vehicle_photo_3':'🚗 Foto vehículo #3'};
                         var stBadge=d.status==='approved'?'<span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">✅ Aprobado</span>':
                             d.status==='rejected'?'<span style="background:#fce4ec;color:#c62828;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">❌ Rechazado</span>':
                             '<span style="background:#fff3e0;color:#e65100;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">⏳ Pendiente</span>';
@@ -2994,7 +2994,13 @@ Dashboard con analíticas"></textarea>
                 $rider_id
             ));
 
-            $all_ok = in_array('id_card', $approved);
+            $all_ok = in_array('id_card', $approved) && in_array('selfie', $approved);
+            $is_a_pie = ($vehicle_type === 'a_pie');
+            if (!$is_a_pie) {
+                if (!in_array('vehicle_photo_1', $approved)) $all_ok = false;
+                if (!in_array('vehicle_photo_2', $approved)) $all_ok = false;
+                if (!in_array('vehicle_photo_3', $approved)) $all_ok = false;
+            }
             if ($needs_license && !in_array('license', $approved)) $all_ok = false;
             if ($needs_license && !in_array('vehicle_registration', $approved)) $all_ok = false;
 
@@ -3055,7 +3061,7 @@ Dashboard con analíticas"></textarea>
             $rider_id = $doc->rider_id;
             $rider_user = get_userdata($rider_id);
             $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
-            $docLabels = ['license'=>'Licencia de Conducir','vehicle_registration'=>'Padr' . chr(243) . 'n del Veh' . chr(237) . 'culo','id_card'=>'Documento de Identidad'];
+            $docLabels = ['license'=>'Licencia de Conducir','vehicle_registration'=>'Padr' . chr(243) . 'n del Veh' . chr(237) . 'culo','id_card'=>'Documento de Identidad','selfie'=>'Foto de Perfil (Selfie)','vehicle_photo_1'=>'Foto Veh' . chr(237) . 'culo #1','vehicle_photo_2'=>'Foto Veh' . chr(237) . 'culo #2','vehicle_photo_3'=>'Foto Veh' . chr(237) . 'culo #3'];
             $docLabel = $docLabels[$doc->doc_type] ?? $doc->doc_type;
 
             // Set back to pending_docs so rider can re-upload
@@ -5663,7 +5669,7 @@ Dashboard con analíticas"></textarea>
             return new WP_Error('no_file', 'No se recibió ningún archivo', ['status' => 400]);
         }
         $doc_type = sanitize_text_field($_POST['doc_type'] ?? '');
-        if (!in_array($doc_type, ['license', 'vehicle_registration', 'id_card', 'selfie'])) {
+        if (!in_array($doc_type, ['license', 'vehicle_registration', 'id_card', 'selfie', 'vehicle_photo_1', 'vehicle_photo_2', 'vehicle_photo_3'])) {
             return new WP_Error('invalid_type', 'Tipo de documento inválido', ['status' => 400]);
         }
 
@@ -5716,10 +5722,17 @@ Dashboard con analíticas"></textarea>
             $has_id = in_array('id_card', $uploaded_types);
             $has_license = in_array('license', $uploaded_types);
             $has_registration = in_array('vehicle_registration', $uploaded_types);
+            $is_a_pie = ($vtype === 'a_pie');
+            $has_vehicle_photos = in_array('vehicle_photo_1', $uploaded_types)
+                && in_array('vehicle_photo_2', $uploaded_types)
+                && in_array('vehicle_photo_3', $uploaded_types);
 
             $all_uploaded = $has_selfie && $has_id;
+            if (!$is_a_pie) {
+                $all_uploaded = $all_uploaded && $has_vehicle_photos;
+            }
             if ($needs_motor) {
-                $all_uploaded = $has_selfie && $has_id && $has_license && $has_registration;
+                $all_uploaded = $all_uploaded && $has_license && $has_registration;
             }
             if ($all_uploaded) {
                 update_user_meta($uid, 'petsgo_rider_status', 'pending_review');
@@ -5744,7 +5757,13 @@ Dashboard con analíticas"></textarea>
 
         // Required docs check
         $needs_motor = in_array($vehicle, ['moto', 'auto', 'scooter']);
+        $is_a_pie = ($vehicle === 'a_pie');
         $required = ['selfie', 'id_card'];
+        if (!$is_a_pie) {
+            $required[] = 'vehicle_photo_1';
+            $required[] = 'vehicle_photo_2';
+            $required[] = 'vehicle_photo_3';
+        }
         if ($needs_motor) { $required[] = 'license'; $required[] = 'vehicle_registration'; }
         $uploaded_types = array_map(fn($d) => $d->doc_type, $docs);
         $missing_docs = array_values(array_diff($required, $uploaded_types));

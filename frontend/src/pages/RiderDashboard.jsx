@@ -22,6 +22,9 @@ const STATUS_CONFIG = {
 const DOC_TYPES = {
   selfie:               { label: 'Foto de Perfil (Selfie)', icon: '📸', description: 'Selfie clara de tu rostro para reconocimiento facial' },
   id_card:              { label: 'Documento de Identidad', icon: '🆔', description: 'Foto legible de tu documento (ambas caras)' },
+  vehicle_photo_1:      { label: 'Foto Vehículo #1', icon: '🚗', description: 'Foto frontal de tu medio de transporte' },
+  vehicle_photo_2:      { label: 'Foto Vehículo #2', icon: '🚗', description: 'Foto lateral de tu medio de transporte' },
+  vehicle_photo_3:      { label: 'Foto Vehículo #3', icon: '🚗', description: 'Foto trasera de tu medio de transporte' },
   license:              { label: 'Licencia de Conducir', icon: '🪪', description: 'Foto de licencia vigente' },
   vehicle_registration: { label: 'Padrón del Vehículo', icon: '📄', description: 'Padrón o inscripción vehicular' },
 };

@@ -274,9 +274,15 @@ const RiderRegisterPage = () => {
                   ))}
                 </div>
                 {selectedVehicle?.needsDocs && (
-                  <div style={{ marginTop: '8px', padding: '8px 14px', background: '#FFF3E0', borderRadius: '8px', fontSize: '12px', color: '#e65100', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ marginTop: '8px', padding: '8px 14px', background: '#FFF3E0', borderRadius: '8px', fontSize: '12px', color: '#e65100', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                     <Shield size={14} />
-                    Para vehículos motorizados deberás subir <strong>licencia de conducir</strong> y <strong>padrón del vehículo</strong> en el paso siguiente.
+                    Para vehículos motorizados deberás subir <strong>licencia de conducir</strong>, <strong>padrón del vehículo</strong> y <strong>3 fotos del vehículo</strong>.
+                  </div>
+                )}
+                {selectedVehicle && !selectedVehicle.needsDocs && form.vehicle !== 'a_pie' && (
+                  <div style={{ marginTop: '8px', padding: '8px 14px', background: '#E3F2FD', borderRadius: '8px', fontSize: '12px', color: '#1565C0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <Shield size={14} />
+                    Deberás subir <strong>3 fotos de tu medio de transporte</strong> (frontal, lateral y trasera).
                   </div>
                 )}
               </div>
@@ -321,7 +327,7 @@ const RiderRegisterPage = () => {
                 <ol style={{ margin: '6px 0 0', paddingLeft: '18px', lineHeight: '1.8' }}>
                   <li>Registra tus datos básicos <span style={{ color: '#F59E0B', fontWeight: 700 }}>(este paso)</span></li>
                   <li>Verifica tu correo electrónico</li>
-                  <li>Sube tus documentos (identidad{selectedVehicle?.needsDocs ? ', licencia, padrón' : ''})</li>
+                  <li>Sube tus documentos (identidad, fotos vehículo{selectedVehicle?.needsDocs ? ', licencia, padrón' : ''})</li>
                   <li>Espera la aprobación del administrador</li>
                 </ol>
               </div>
@@ -414,7 +420,7 @@ const RiderRegisterPage = () => {
             {/* What's next */}
             <div style={{ marginTop: '20px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', padding: '14px 18px', fontSize: '12px', color: '#0369a1' }}>
               <strong>Después de verificar:</strong>
-              <p style={{ margin: '4px 0 0' }}>Inicia sesión y desde tu Panel de Rider podrás subir tus documentos (documento de identidad{selectedVehicle?.needsDocs ? ', licencia de conducir y padrón del vehículo' : ''}).</p>
+              <p style={{ margin: '4px 0 0' }}>Inicia sesión y desde tu Panel de Rider podrás subir tus documentos (documento de identidad, fotos de tu vehículo{selectedVehicle?.needsDocs ? ', licencia de conducir y padrón del vehículo' : ''}).</p>
             </div>
           </div>
         )}
