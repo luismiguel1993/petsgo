@@ -1,7 +1,56 @@
 /**
- * Chile utilities: Regiones, Comunas, RUT validation, phone formatting.
+ * Chile utilities: Regiones, Comunas, RUT validation, phone formatting,
+ * name sanitization, and SQL injection protection.
  * Single source of truth for all registration & profile forms.
  */
+
+/* ═══════════════════════════════════════════════
+   NAME SANITIZATION — letters only (+ spaces, accents, hyphens, ñ)
+═══════════════════════════════════════════════ */
+
+/** Strip anything that is not a letter, space, accent, hyphen or apostrophe */
+export const sanitizeName = (value) =>
+  value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]/g, '');
+
+/** Validate: at least 2 letters, no numbers/specials */
+export const isValidName = (name) =>
+  /^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]{2,}$/.test(name.trim());
+
+/* ═══════════════════════════════════════════════
+   SQL INJECTION PROTECTION  —  client-side guard
+   Detects common SQL injection patterns and strips them.
+   This is a DEFENSE-IN-DEPTH layer; the backend also validates.
+═══════════════════════════════════════════════ */
+
+const SQL_PATTERNS = /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|EXEC|UNION|TRUNCATE|DECLARE|CAST|CONVERT|INTO|FROM|WHERE|OR|AND)\b\s+(ALL|TABLE|DATABASE|INTO|FROM|SET|VALUES|HAVING|LIKE|BETWEEN|EXISTS|TOP|COLUMN|INDEX|VIEW|PROCEDURE|FUNCTION|TRIGGER|SCHEMA|GRANT|REVOKE)?|--|;[\s]*$|\/\*|\*\/|xp_|sp_|0x[0-9a-fA-F]+|\bCHAR\s*\(|\bCONCAT\s*\(|'\s*(OR|AND)\s+'|'\s*=\s*'|INFORMATION_SCHEMA|SLEEP\s*\(|BENCHMARK\s*\(|LOAD_FILE\s*\(|OUTFILE\b)/gi;
+
+/** Returns true if the value looks like a SQL injection attempt */
+export const hasSqlInjection = (value) => {
+  if (!value || typeof value !== 'string') return false;
+  return SQL_PATTERNS.test(value);
+};
+
+/** Strip dangerous SQL tokens from a string */
+export const sanitizeInput = (value) => {
+  if (!value || typeof value !== 'string') return value;
+  // Remove null bytes
+  let v = value.replace(/\0/g, '');
+  // Remove dangerous patterns
+  v = v.replace(SQL_PATTERNS, '');
+  // Remove stray single-quotes used for injection
+  v = v.replace(/[']{2,}/g, "'");
+  return v.trim();
+};
+
+/** Validate all form fields for SQL injection. Returns error message or null. */
+export const checkFormForSqlInjection = (formObj) => {
+  for (const [key, val] of Object.entries(formObj)) {
+    if (typeof val === 'string' && hasSqlInjection(val)) {
+      return `El campo contiene caracteres no permitidos. Por favor revisa tus datos.`;
+    }
+  }
+  return null;
+};
 
 /* ═══════════════════════════════════════════════
    REGIONES Y COMUNAS DE CHILE
@@ -58,8 +107,33 @@ export const formatRut = (value) => {
 };
 
 /* ═══════════════════════════════════════════════
-   PHONE FORMATTING
+   PHONE FORMATTING  —  prefix +569 is fixed,
+   user only types the remaining 8 digits.
 ═══════════════════════════════════════════════ */
+
+/** Keep only digits, max 8 chars (used as onChange handler for phone inputs) */
+export const formatPhoneDigits = (value) => value.replace(/\D/g, '').slice(0, 8);
+
+/** Exactly 8 digits = valid (prefix +569 added separately) */
+export const isValidPhoneDigits = (digits) => /^\d{8}$/.test(digits);
+
+/** Build full phone from 8-digit input */
+export const buildFullPhone = (digits) => `+569${digits}`;
+
+/** Extract the 8 digits from a stored full phone (+569XXXXXXXX → XXXXXXXX) */
+export const extractPhoneDigits = (phone) => {
+  if (!phone) return '';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length === 11 && clean.startsWith('569')) return clean.slice(3);
+  if (clean.length === 9 && clean.startsWith('9')) return clean.slice(1);
+  if (clean.length === 8) return clean;
+  return clean.slice(-8);
+};
+
+/** Full-format validation (kept for backend compat) */
+export const isValidPhone = (phone) => /^\+569\d{8}$/.test(phone);
+
+/** Legacy formatter — still useful if raw full phone value arrives */
 export const formatPhone = (value) => {
   let v = value.replace(/[^0-9+]/g, '');
   if (!v.startsWith('+56') && v.length > 0) {
@@ -69,5 +143,3 @@ export const formatPhone = (value) => {
   }
   return v;
 };
-
-export const isValidPhone = (phone) => /^\+569\d{8}$/.test(phone);

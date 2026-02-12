@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Star, Crown, Store, Send, User, Mail, Phone, MapPin, Building2, MessageSquare, Sparkles } from 'lucide-react';
 import { getPlans, submitVendorLead } from '../services/api';
+import { formatPhoneDigits, buildFullPhone, sanitizeName, checkFormForSqlInjection, sanitizeInput } from '../utils/chile';
 
 const DEMO_PLANS = [
   { id: 1, plan_name: 'Básico', monthly_price: 29990, is_featured: 0, features_json: '{"max_products":50,"commission_rate":15,"support":"email","analytics":false,"featured":false}' },
@@ -59,9 +60,11 @@ const PlansPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    const sqlCheck = checkFormForSqlInjection(formData);
+    if (sqlCheck) { setFormError(sqlCheck); setSubmitting(false); return; }
     setSubmitting(true);
     try {
-      await submitVendorLead(formData);
+      await submitVendorLead({ ...formData, phone: buildFullPhone(formData.phone) });
       setFormSent(true);
       setTimeout(() => setFormSent(false), 8000);
       setFormData({ storeName: '', contactName: '', email: '', phone: '', comuna: '', message: '', plan: '' });
@@ -72,7 +75,11 @@ const PlansPage = () => {
     }
   };
 
-  const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field, value) => {
+    if (field === 'contactName') value = sanitizeName(value);
+    if (field === 'storeName' || field === 'comuna' || field === 'message') value = sanitizeInput(value);
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
 
   const colors = ['#00A8E8', '#FFC400', '#2F3A40'];
   const icons = [Star, Crown, Crown];
@@ -374,7 +381,7 @@ const PlansPage = () => {
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><User size={18} /></div>
                     <input
-                      type="text" required placeholder="Nombre de contacto"
+                      type="text" required placeholder="Nombre de contacto" inputMode="text" autoComplete="name"
                       value={formData.contactName} onChange={(e) => handleChange('contactName', e.target.value)}
                       style={inputStyle}
                       onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
@@ -396,13 +403,16 @@ const PlansPage = () => {
                   </div>
                   <div style={{ position: 'relative' }}>
                     <div style={iconWrapStyle}><Phone size={18} /></div>
-                    <input
-                      type="tel" required placeholder="+56 9 1234 5678"
-                      value={formData.phone} onChange={(e) => handleChange('phone', e.target.value)}
-                      style={inputStyle}
-                      onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
-                      onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    />
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ padding: '14px 10px 14px 46px', background: '#f3f4f6', borderRadius: '12px 0 0 12px', border: '2px solid #e5e7eb', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>+569</span>
+                      <input
+                        type="tel" required placeholder="XXXXXXXX" maxLength={8}
+                        value={formData.phone} onChange={(e) => handleChange('phone', formatPhoneDigits(e.target.value))}
+                        style={{ ...inputStyle, paddingLeft: '14px', borderRadius: '0 12px 12px 0' }}
+                        onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
+                        onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                      />
+                    </div>
                   </div>
                 </div>
 

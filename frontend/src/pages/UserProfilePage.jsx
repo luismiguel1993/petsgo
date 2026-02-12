@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { User, Edit2, Save, X, Plus, Trash2, Camera, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet, uploadPetPhoto } from '../services/api';
+import { formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb', borderRadius: '12px',
@@ -91,7 +92,7 @@ const UserProfilePage = () => {
     setEditForm({
       first_name: profile?.first_name || '',
       last_name: profile?.last_name || '',
-      phone: profile?.phone || '',
+      phone: extractPhoneDigits(profile?.phone || ''),
     });
   };
 
@@ -99,9 +100,9 @@ const UserProfilePage = () => {
     setSaving(true); setMsg({ type: '', text: '' });
     try {
       // API expects camelCase
-      await updateProfile({ firstName: editForm.first_name, lastName: editForm.last_name, phone: editForm.phone });
+      await updateProfile({ firstName: editForm.first_name, lastName: editForm.last_name, phone: buildFullPhone(editForm.phone) });
       setProfile(prev => ({ ...prev, ...editForm }));
-      updateUser({ firstName: editForm.first_name, lastName: editForm.last_name, phone: editForm.phone });
+      updateUser({ firstName: editForm.first_name, lastName: editForm.last_name, phone: buildFullPhone(editForm.phone) });
       setEditing(false);
       setMsg({ type: 'success', text: 'Perfil actualizado' });
     } catch (err) {
@@ -233,7 +234,7 @@ const UserProfilePage = () => {
                 <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Nombre</label>
                   {editing ? (
-                    <input value={editForm.first_name} onChange={e => setEditForm(p => ({ ...p, first_name: e.target.value }))} style={inputStyle} />
+                    <input value={editForm.first_name} onChange={e => setEditForm(p => ({ ...p, first_name: sanitizeName(e.target.value) }))} inputMode="text" autoComplete="given-name" style={inputStyle} />
                   ) : (
                     <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.first_name || '—'}</p>
                   )}
@@ -241,7 +242,7 @@ const UserProfilePage = () => {
                 <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Apellido</label>
                   {editing ? (
-                    <input value={editForm.last_name} onChange={e => setEditForm(p => ({ ...p, last_name: e.target.value }))} style={inputStyle} />
+                    <input value={editForm.last_name} onChange={e => setEditForm(p => ({ ...p, last_name: sanitizeName(e.target.value) }))} inputMode="text" autoComplete="family-name" style={inputStyle} />
                   ) : (
                     <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.last_name || '—'}</p>
                   )}
@@ -257,7 +258,11 @@ const UserProfilePage = () => {
                 <div style={{ flex: '1 1 140px' }}>
                   <label style={labelStyle}>Teléfono</label>
                   {editing ? (
-                    <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: e.target.value }))} style={inputStyle} />
+                    <div style={{ display: 'flex' }}>
+                      <span style={{ padding: '12px 10px', background: '#e5e7eb', borderRadius: '12px 0 0 12px', border: '1.5px solid #d1d5db', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', lineHeight: '1.2' }}>+569</span>
+                      <input value={editForm.phone} onChange={e => setEditForm(p => ({ ...p, phone: formatPhoneDigits(e.target.value) }))} maxLength={8} placeholder="XXXXXXXX"
+                        style={{ ...inputStyle, borderRadius: '0 12px 12px 0', borderColor: editForm.phone ? (isValidPhoneDigits(editForm.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb' }} />
+                    </div>
                   ) : (
                     <p style={{ fontSize: '15px', fontWeight: 600, color: '#2F3A40' }}>{profile?.phone || '—'}</p>
                   )}

@@ -117,13 +117,15 @@ class PetsGo_Core {
     }
     public static function validate_chilean_phone($phone) {
         $clean = preg_replace('/[^0-9+]/', '', $phone);
-        // +569XXXXXXXX (12 chars) or 9XXXXXXXX (9 chars)
+        // +569XXXXXXXX (12 chars) or 9XXXXXXXX (9 chars) or XXXXXXXX (8 digits only)
         if (preg_match('/^\+569\d{8}$/', $clean)) return true;
         if (preg_match('/^9\d{8}$/', $clean)) return true;
+        if (preg_match('/^\d{8}$/', $clean)) return true;
         return false;
     }
     public static function normalize_phone($phone) {
         $clean = preg_replace('/[^0-9]/', '', $phone);
+        if (strlen($clean) === 8) return '+569' . $clean;
         if (strlen($clean) === 9 && $clean[0] === '9') return '+56' . $clean;
         if (strlen($clean) === 11 && substr($clean, 0, 3) === '569') return '+' . $clean;
         return '+56' . $clean;
@@ -142,6 +144,65 @@ class PetsGo_Core {
         $dv = substr($clean, -1);
         $body = substr($clean, 0, -1);
         return number_format((int)$body, 0, '', '.') . '-' . $dv;
+    }
+
+    /** Validate name: only letters, spaces, accents, hyphens, apostrophes. Min 2 chars. */
+    public static function validate_name($name) {
+        $clean = trim($name);
+        if (mb_strlen($clean) < 2) return false;
+        // Allow letters (including accented), spaces, hyphens, apostrophes
+        return (bool) preg_match("/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\\s'-]+$/u", $clean);
+    }
+
+    /** Strip non-letter characters from a name (except spaces, hyphens, apostrophes) */
+    public static function sanitize_name($name) {
+        return preg_replace("/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\\s'-]/u", '', trim($name));
+    }
+
+    /** Detect common SQL injection patterns in a string. Returns true if suspicious. */
+    public static function detect_sql_injection($value) {
+        if (!is_string($value) || $value === '') return false;
+        $patterns = [
+            '/(\bUNION\b\s+(ALL\s+)?SELECT\b)/i',
+            '/(\bSELECT\b\s+.*\bFROM\b)/i',
+            '/(\bINSERT\b\s+INTO\b)/i',
+            '/(\bUPDATE\b\s+\S+\s+SET\b)/i',
+            '/(\bDELETE\b\s+FROM\b)/i',
+            '/(\bDROP\b\s+(TABLE|DATABASE|INDEX|VIEW)\b)/i',
+            '/(\bALTER\b\s+TABLE\b)/i',
+            '/(\bCREATE\b\s+(TABLE|DATABASE|INDEX|VIEW|PROCEDURE|FUNCTION|TRIGGER)\b)/i',
+            '/(\bEXEC(\s|UTE)?\b\s*\()/i',
+            '/(\bTRUNCATE\b\s+TABLE\b)/i',
+            '/(\bDECLARE\b\s+@)/i',
+            '/(--|#|\/\*|\*\/)/i',
+            '/(\bxp_\w+)/i',
+            '/(\bsp_\w+)/i',
+            '/(\bCHAR\s*\()/i',
+            '/(\bCONCAT\s*\()/i',
+            '/(\bSLEEP\s*\()/i',
+            '/(\bBENCHMARK\s*\()/i',
+            '/(\bLOAD_FILE\s*\()/i',
+            '/(\bINFORMATION_SCHEMA\b)/i',
+            '/(\bOUTFILE\b)/i',
+            "/('+\s*(OR|AND)\s+')/i",
+            "/('+\s*=\s*')/i",
+            '/0x[0-9a-fA-F]{4,}/',
+            '/(;\s*(DROP|DELETE|UPDATE|INSERT|ALTER|CREATE|EXEC|SELECT)\b)/i',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $value)) return true;
+        }
+        return false;
+    }
+
+    /** Scan array of form values for SQL injection. Returns error string or empty. */
+    public static function check_form_sql_injection($fields) {
+        foreach ($fields as $key => $val) {
+            if (is_string($val) && self::detect_sql_injection($val)) {
+                return 'Se detectaron caracteres no permitidos en los datos enviados. Por favor revisa el formulario.';
+            }
+        }
+        return '';
     }
 
     private function check_stock_alert($product_id) {
@@ -2042,8 +2103,8 @@ class PetsGo_Core {
                     <h3>📋 Datos del Usuario</h3>
                     <div class="petsgo-field" id="uf-f-login"><label>Usuario *</label><input type="text" id="uf-login" value="<?php echo esc_attr($user->user_login ?? ''); ?>" <?php echo $uid?'readonly':''; ?> maxlength="60"><div class="field-error">Obligatorio.</div></div>
                     <div style="display:flex;gap:12px;">
-                        <div class="petsgo-field" id="uf-f-fname" style="flex:1;"><label>Nombre *</label><input type="text" id="uf-fname" value="<?php echo esc_attr($profile->first_name ?? ($user->first_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
-                        <div class="petsgo-field" id="uf-f-lname" style="flex:1;"><label>Apellido *</label><input type="text" id="uf-lname" value="<?php echo esc_attr($profile->last_name ?? ($user->last_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
+                        <div class="petsgo-field" id="uf-f-fname" style="flex:1;"><label>Nombre *</label><input type="text" id="uf-fname" pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]+" oninput="this.value=this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]/g,'')" value="<?php echo esc_attr($profile->first_name ?? ($user->first_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
+                        <div class="petsgo-field" id="uf-f-lname" style="flex:1;"><label>Apellido *</label><input type="text" id="uf-lname" pattern="[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]+" oninput="this.value=this.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'\-]/g,'')" value="<?php echo esc_attr($profile->last_name ?? ($user->last_name ?? '')); ?>"><div class="field-error">Obligatorio.</div></div>
                     </div>
                     <div class="petsgo-field" id="uf-f-email"><label>Email *</label><input type="email" id="uf-email" value="<?php echo esc_attr($user->user_email ?? ''); ?>"><div class="field-error">Email válido obligatorio.</div></div>
                     <div style="display:flex;gap:12px;">
@@ -2053,7 +2114,7 @@ class PetsGo_Core {
                         <div class="petsgo-field" id="uf-f-idnum" style="flex:1;"><label>N° Documento *</label><input type="text" id="uf-idnum" value="<?php echo esc_attr($profile->id_number ?? ''); ?>" placeholder="12.345.678-K"><div class="field-error">Documento inválido.</div></div>
                     </div>
                     <div style="display:flex;gap:12px;">
-                        <div class="petsgo-field" style="flex:1;"><label>Teléfono</label><input type="text" id="uf-phone" value="<?php echo esc_attr($profile->phone ?? ''); ?>" placeholder="+569XXXXXXXX"></div>
+                        <div class="petsgo-field" style="flex:1;"><label>Teléfono</label><div style="display:flex;"><span style="padding:8px 10px;background:#e5e7eb;border-radius:4px 0 0 4px;border:1px solid #8c8f94;border-right:none;font-weight:600;white-space:nowrap;">+569</span><input type="text" id="uf-phone" value="<?php $ph=$profile->phone??''; $phClean=preg_replace('/[^0-9]/','', $ph); if(strlen($phClean)===11&&substr($phClean,0,3)==='569') $phClean=substr($phClean,3); elseif(strlen($phClean)===9&&$phClean[0]==='9') $phClean=substr($phClean,1); echo esc_attr(substr($phClean,0,8)); ?>" placeholder="XXXXXXXX" maxlength="8" style="border-radius:0 4px 4px 0;"></div></div>
                         <div class="petsgo-field" style="flex:1;"><label>Fecha Nacimiento</label><input type="date" id="uf-birth" value="<?php echo esc_attr($profile->birth_date ?? ''); ?>"></div>
                     </div>
                     <div class="petsgo-field"><label>Contraseña <?php echo $uid?'(dejar vacío para no cambiar)':'*'; ?></label><input type="password" id="uf-pass" autocomplete="new-password"><div class="field-hint"><?php echo $uid?'':'Mín. 8 caracteres, mayúscula, minúscula, número y especial.'; ?></div></div>
@@ -2130,7 +2191,7 @@ class PetsGo_Core {
                     first_name:$('#uf-fname').val(),last_name:$('#uf-lname').val(),
                     user_email:$('#uf-email').val(),password:$('#uf-pass').val(),role:$('#uf-role').val(),
                     id_type:$('#uf-idtype').val(),id_number:$('#uf-idnum').val(),
-                    phone:$('#uf-phone').val(),birth_date:$('#uf-birth').val()
+                    phone:'+569'+$('#uf-phone').val(),birth_date:$('#uf-birth').val()
                 },function(r){
                     $('#uf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
@@ -2774,9 +2835,19 @@ Dashboard con analíticas"></textarea>
         $birth_date = sanitize_text_field($_POST['birth_date'] ?? '');
         if (!$name && $first_name) $name = trim($first_name . ' ' . $last_name);
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($_POST);
+        if ($sql_err) wp_send_json_error($sql_err);
+
+        // Name sanitization & validation
+        $first_name = self::sanitize_name($first_name);
+        $last_name  = self::sanitize_name($last_name);
+
         $errors=[];
         if(!$login)$errors[]='Usuario obligatorio';if(!$name)$errors[]='Nombre obligatorio';if(!$email)$errors[]='Email obligatorio';
         if(!$id&&strlen($pass)<6)$errors[]='Contraseña mín 6 caracteres';
+        if($first_name && !self::validate_name($first_name)) $errors[]='Nombre solo puede contener letras';
+        if($last_name && !self::validate_name($last_name)) $errors[]='Apellido solo puede contener letras';
         if($id_type==='rut' && $id_number && !self::validate_rut($id_number)) $errors[]='RUT inválido';
         if($phone && !self::validate_chilean_phone($phone)) $errors[]='Teléfono chileno inválido';
         if($errors)wp_send_json_error(implode('. ',$errors));
@@ -5342,8 +5413,18 @@ Dashboard con analíticas"></textarea>
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($p);
+        if ($sql_err) return new WP_Error('security_error', $sql_err, ['status' => 400]);
+
+        // Name sanitization
+        $first_name = self::sanitize_name($first_name);
+        $last_name  = self::sanitize_name($last_name);
+
         if (!$first_name) $errors[] = 'Nombre es obligatorio';
+        elseif (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
+        elseif (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (email_exists($email)) $errors[] = 'Este email ya está registrado';
 
@@ -5455,8 +5536,18 @@ Dashboard con analíticas"></textarea>
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($p);
+        if ($sql_err) return new WP_Error('security_error', $sql_err, ['status' => 400]);
+
+        // Name sanitization
+        $first_name = self::sanitize_name($first_name);
+        $last_name  = self::sanitize_name($last_name);
+
         if (!$first_name) $errors[] = 'Nombre es obligatorio';
+        elseif (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
+        elseif (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (email_exists($email)) $errors[] = 'Este email ya está registrado';
 
@@ -5879,6 +5970,20 @@ Dashboard con analíticas"></textarea>
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($p);
+        if ($sql_err) return new WP_Error('security_error', $sql_err, ['status' => 400]);
+
+        // Sanitize & validate names
+        if ($first_name) {
+            $first_name = self::sanitize_name($first_name);
+            if (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
+        }
+        if ($last_name) {
+            $last_name = self::sanitize_name($last_name);
+            if (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
+        }
+
         if ($first_name) wp_update_user(['ID' => $uid, 'first_name' => $first_name]);
         if ($last_name) wp_update_user(['ID' => $uid, 'last_name' => $last_name]);
         if ($first_name || $last_name) {
@@ -6181,6 +6286,20 @@ Dashboard con analíticas"></textarea>
         $last_name  = sanitize_text_field($p['lastName'] ?? '');
         $phone      = sanitize_text_field($p['phone'] ?? '');
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($p);
+        if ($sql_err) return new WP_Error('security_error', $sql_err, ['status' => 400]);
+
+        // Sanitize & validate names
+        if ($first_name) {
+            $first_name = self::sanitize_name($first_name);
+            if (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
+        }
+        if ($last_name) {
+            $last_name = self::sanitize_name($last_name);
+            if (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
+        }
+
         if ($first_name) wp_update_user(['ID' => $uid, 'first_name' => $first_name]);
         if ($last_name) wp_update_user(['ID' => $uid, 'last_name' => $last_name]);
         if ($first_name || $last_name) {
@@ -6436,9 +6555,17 @@ Dashboard con analíticas"></textarea>
         $message      = sanitize_textarea_field($p['message'] ?? '');
         $plan         = sanitize_text_field($p['plan'] ?? '');
 
+        // SQL injection check
+        $sql_err = self::check_form_sql_injection($p);
+        if ($sql_err) return new WP_Error('security_error', $sql_err, ['status' => 400]);
+
+        // Sanitize contact name (letters only)
+        $contact_name = self::sanitize_name($contact_name);
+
         $errors = [];
         if (!$store_name) $errors[] = 'Nombre de tienda es obligatorio';
         if (!$contact_name) $errors[] = 'Nombre de contacto es obligatorio';
+        elseif (!self::validate_name($contact_name)) $errors[] = 'Nombre de contacto solo puede contener letras';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (!$phone) $errors[] = 'Teléfono es obligatorio';
 

@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Check, X, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import huellaSvg from '../assets/Huella-1.svg';
-import { REGIONES, getComunas, validateRut, formatRut, formatPhone, isValidPhone } from '../utils/chile';
+import { REGIONES, getComunas, validateRut, formatRut, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, sanitizeName, isValidName, checkFormForSqlInjection } from '../utils/chile';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb',
@@ -27,8 +27,9 @@ const RegisterPage = () => {
 
   const handleChange = (field) => (e) => {
     let value = e.target.value;
+    if (field === 'first_name' || field === 'last_name') value = sanitizeName(value);
     if (field === 'id_number' && form.id_type === 'rut') value = formatRut(value);
-    if (field === 'phone') value = formatPhone(value);
+    if (field === 'phone') value = formatPhoneDigits(value);
     if (field === 'region') {
       setForm(prev => ({ ...prev, region: value, comuna: '' }));
       return;
@@ -53,13 +54,17 @@ const RegisterPage = () => {
     // Client-side validation
     const errors = [];
     if (!form.first_name.trim()) errors.push('Nombre es obligatorio');
+    else if (!isValidName(form.first_name)) errors.push('Nombre solo puede contener letras');
     if (!form.last_name.trim()) errors.push('Apellido es obligatorio');
+    else if (!isValidName(form.last_name)) errors.push('Apellido solo puede contener letras');
+    const sqlCheck = checkFormForSqlInjection(form);
+    if (sqlCheck) { setError(sqlCheck); return; }
     if (!form.email.includes('@')) errors.push('Email inválido');
     if (passStrength < 5) errors.push('La contraseña no cumple todos los requisitos');
     if (form.password !== form.confirmPassword) errors.push('Las contraseñas no coinciden');
     if (form.id_type === 'rut' && !validateRut(form.id_number)) errors.push('RUT inválido');
     if (!form.id_number) errors.push('Documento de identidad es obligatorio');
-    if (!form.phone || !isValidPhone(form.phone)) errors.push('Teléfono chileno inválido (+569XXXXXXXX)');
+    if (!form.phone || !isValidPhoneDigits(form.phone)) errors.push('Debes completar los 8 dígitos del teléfono');
     if (!form.region) errors.push('Región es obligatoria');
     if (!form.comuna) errors.push('Comuna es obligatoria');
     if (errors.length) { setError(errors.join('. ')); return; }
@@ -70,7 +75,7 @@ const RegisterPage = () => {
         first_name: form.first_name, last_name: form.last_name,
         email: form.email, password: form.password,
         id_type: form.id_type, id_number: form.id_number,
-        phone: form.phone, birth_date: form.birth_date,
+        phone: buildFullPhone(form.phone), birth_date: form.birth_date,
         region: form.region, comuna: form.comuna,
       });
       setSuccess('¡Cuenta creada! Ahora puedes iniciar sesión.');
@@ -127,11 +132,11 @@ const RegisterPage = () => {
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Nombre *</label>
-                <input type="text" value={form.first_name} onChange={handleChange('first_name')} placeholder="Juan" required style={inputStyle} />
+                <input type="text" inputMode="text" autoComplete="given-name" value={form.first_name} onChange={handleChange('first_name')} placeholder="Juan" required style={inputStyle} />
               </div>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Apellido *</label>
-                <input type="text" value={form.last_name} onChange={handleChange('last_name')} placeholder="Pérez" required style={inputStyle} />
+                <input type="text" inputMode="text" autoComplete="family-name" value={form.last_name} onChange={handleChange('last_name')} placeholder="Pérez" required style={inputStyle} />
               </div>
             </div>
 
@@ -171,11 +176,14 @@ const RegisterPage = () => {
             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Teléfono *</label>
-                <input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="+569XXXXXXXX" required style={{
-                  ...inputStyle,
-                  borderColor: form.phone ? (isValidPhone(form.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb',
-                }} />
-                <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>Formato: +569XXXXXXXX</p>
+                <div style={{ display: 'flex' }}>
+                  <span style={{ padding: '12px 10px', background: '#e5e7eb', borderRadius: '12px 0 0 12px', border: '1.5px solid #d1d5db', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', lineHeight: '1.2' }}>+569</span>
+                  <input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="XXXXXXXX" maxLength={8} required style={{
+                    ...inputStyle,
+                    borderRadius: '0 12px 12px 0',
+                    borderColor: form.phone ? (isValidPhoneDigits(form.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb',
+                  }} />
+                </div>
               </div>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={labelStyle}>Fecha Nacimiento</label>

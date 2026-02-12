@@ -10,7 +10,7 @@ import {
   getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
   getRiderRatings, getRiderStatus, getRiderProfile, updateRiderProfile, getRiderEarnings,
 } from '../services/api';
-import { REGIONES, getComunas, formatPhone, isValidPhone } from '../utils/chile';
+import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
 
 /* ───── constants ───── */
 const STATUS_CONFIG = {
@@ -138,7 +138,7 @@ const RiderDashboard = () => {
       setProfileForm({
         firstName: data.firstName || '',
         lastName: data.lastName || '',
-        phone: data.phone || '',
+        phone: extractPhoneDigits(data.phone || ''),
         region: data.region || '',
         comuna: data.comuna || '',
         bankName: data.bankName || '',
@@ -234,7 +234,7 @@ const RiderDashboard = () => {
   const handleSaveProfile = async () => {
     setSavingProfile(true); setProfileMsg('');
     try {
-      await updateRiderProfile(profileForm);
+      await updateRiderProfile({ ...profileForm, phone: buildFullPhone(profileForm.phone) });
       setProfileMsg('✅ Perfil actualizado correctamente');
       await loadProfile();
     } catch (err) {
@@ -756,21 +756,26 @@ const RiderDashboard = () => {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Nombre</label>
-                <input value={profileForm.firstName || ''} onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                <input value={profileForm.firstName || ''} onChange={e => setProfileForm({ ...profileForm, firstName: sanitizeName(e.target.value) })}
+                  inputMode="text" autoComplete="given-name"
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
                   placeholder="Nombre" />
               </div>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Apellido</label>
-                <input value={profileForm.lastName || ''} onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                <input value={profileForm.lastName || ''} onChange={e => setProfileForm({ ...profileForm, lastName: sanitizeName(e.target.value) })}
+                  inputMode="text" autoComplete="family-name"
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
                   placeholder="Apellido" />
               </div>
               <div style={{ flex: '1 1 100%' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Teléfono</label>
-                <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: formatPhone(e.target.value) })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1px solid ${profileForm.phone ? (isValidPhone(profileForm.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }}
-                  placeholder="+569XXXXXXXX" />
+                <div style={{ display: 'flex' }}>
+                  <span style={{ padding: '10px 10px', background: '#e5e7eb', borderRadius: '10px 0 0 10px', border: '1px solid #d1d5db', borderRight: 'none', fontSize: 14, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>+569</span>
+                  <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: formatPhoneDigits(e.target.value) })}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '0 10px 10px 0', border: `1px solid ${profileForm.phone ? (isValidPhoneDigits(profileForm.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }}
+                    placeholder="XXXXXXXX" maxLength={8} />
+                </div>
               </div>
               <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Región</label>
