@@ -468,6 +468,7 @@ class PetsGo_Core {
             'color_danger'      => '#dc3545',
             'logo_id'           => '',
             'plan_annual_free_months' => '2',
+            'free_shipping_min' => '39990',
         ];
     }
 
@@ -4361,6 +4362,13 @@ Dashboard con analíticas"></textarea>
                         <input type="number" id="ps-annual-free" value="<?php echo $v('plan_annual_free_months'); ?>" min="0" max="6" style="width:80px;">
                         <div class="field-hint">Cantidad de meses gratis al contratar un plan anual. Ej: 2 = paga 10 de 12 meses.</div>
                     </div>
+
+                    <h3 style="margin-top:24px;">🚚 Despacho</h3>
+                    <div class="petsgo-field">
+                        <label>Monto mínimo para despacho gratis ($)</label>
+                        <input type="number" id="ps-free-shipping" value="<?php echo $v('free_shipping_min'); ?>" min="0" step="1000" style="width:140px;">
+                        <div class="field-hint">Monto mínimo de compra para despacho gratis. Ej: 39990 = $39.990. Se muestra en Header y HomePage.</div>
+                    </div>
                 </div>
             </div>
 
@@ -4436,7 +4444,8 @@ Dashboard con analíticas"></textarea>
                     color_success:$('#ps-color-success').val(),
                     color_danger:$('#ps-color-danger').val(),
                     logo_id:$('#ps-logo-id').val(),
-                    plan_annual_free_months:$('#ps-annual-free').val()
+                    plan_annual_free_months:$('#ps-annual-free').val(),
+                    free_shipping_min:$('#ps-free-shipping').val()
                 },function(r){
                     $('#ps-loader').removeClass('active');
                     var c=r.success?'#d4edda':'#f8d7da',t=r.success?'#155724':'#721c24';
@@ -4462,7 +4471,7 @@ Dashboard con analíticas"></textarea>
                     $settings[$key] = sanitize_email($_POST[$key]);
                 } elseif (strpos($key, 'color') !== false) {
                     $settings[$key] = sanitize_hex_color($_POST[$key]) ?: '';
-                } elseif ($key === 'logo_id' || $key === 'plan_annual_free_months') {
+                } elseif ($key === 'logo_id' || $key === 'plan_annual_free_months' || $key === 'free_shipping_min') {
                     $settings[$key] = intval($_POST[$key]);
                 } elseif (strpos($key, 'social_') === 0 || strpos($key, 'website') !== false) {
                     $settings[$key] = esc_url_raw($_POST[$key]);
@@ -5204,6 +5213,7 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/vendors',['methods'=>'GET','callback'=>[$this,'api_get_vendors'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/vendors/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_vendor_detail'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/plans',['methods'=>'GET','callback'=>[$this,'api_get_plans'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/public-settings',['methods'=>'GET','callback'=>[$this,'api_get_public_settings'],'permission_callback'=>'__return_true']);
         // Auth
         register_rest_route('petsgo/v1','/auth/login',['methods'=>'POST','callback'=>[$this,'api_login'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/auth/register',['methods'=>'POST','callback'=>[$this,'api_register'],'permission_callback'=>'__return_true']);
@@ -5276,6 +5286,16 @@ Dashboard con analíticas"></textarea>
     // --- API Vendors ---
     public function api_get_vendors() { global $wpdb; return rest_ensure_response(['data'=>$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE status='active'")]); }
     public function api_get_vendor_detail($request) { global $wpdb;$v=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$request->get_param('id')));if(!$v) return new WP_Error('not_found','No encontrada',['status'=>404]);return rest_ensure_response($v); }
+
+    // --- API Public Settings (no auth needed) ---
+    public function api_get_public_settings() {
+        return rest_ensure_response([
+            'free_shipping_min'      => intval($this->pg_setting('free_shipping_min', 39990)),
+            'plan_annual_free_months'=> intval($this->pg_setting('plan_annual_free_months', 2)),
+            'company_name'           => $this->pg_setting('company_name', 'PetsGo'),
+        ]);
+    }
+
     // --- API Plans ---
     public function api_get_plans() {
         global $wpdb;$rows=$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_subscriptions ORDER BY monthly_price ASC");

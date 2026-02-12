@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShoppingCart, User, Search, Menu, X, LogOut,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
+import { getPublicSettings } from '../services/api';
 import logoSvg from '../assets/Logo y nombre-1.svg';
 
 const COMUNAS_RM = [
@@ -27,6 +28,13 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   const [locationOpen, setLocationOpen] = useState(false);
   const [selectedComuna, setSelectedComuna] = useState('Santiago Centro');
   const [comunaFilter, setComunaFilter] = useState('');
+  const [freeShippingMin, setFreeShippingMin] = useState(39990);
+
+  useEffect(() => {
+    getPublicSettings().then(({ data }) => {
+      if (data?.free_shipping_min) setFreeShippingMin(data.free_shipping_min);
+    }).catch(() => {});
+  }, []);
 
   const getDashboardLink = () => {
     if (isAdmin()) return '/admin';
@@ -45,7 +53,8 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
     { name: 'Gatos', href: '#', icon: '🐱' },
     { name: 'Alimento', href: '#', icon: '🍖' },
     { name: 'Farmacia', href: '#', icon: '💊' },
-    { name: 'Ofertas', href: '#', icon: '⚡' },
+    { name: 'Accesorios', href: '#', icon: '🎾' },
+    { name: 'Ofertas', href: '#', icon: '🔥' },
   ];
 
   return (
@@ -56,7 +65,7 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
           <div className="flex items-center justify-center gap-8 text-white text-xs font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>
             <span className="flex items-center gap-2 whitespace-nowrap">
               <Truck size={14} className="text-[#FFC400]" />
-              <span className="hidden sm:inline">¡Despacho gratis! desde $39.990</span>
+              <span className="hidden sm:inline">¡Despacho gratis! desde ${parseInt(freeShippingMin).toLocaleString('es-CL')}</span>
               <span className="sm:hidden">Despacho gratis</span>
             </span>
             <span className="hidden md:flex items-center gap-2 whitespace-nowrap">

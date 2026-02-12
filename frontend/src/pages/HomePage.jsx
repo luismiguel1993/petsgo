@@ -3,10 +3,18 @@ import { Link } from 'react-router-dom';
 import { ShoppingCart, Star, Truck, Heart, Sparkles, ChevronRight, ArrowRight, MessageCircle, ChevronLeft, Shield, Clock, Filter, PawPrint, Plus } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { Minus } from 'lucide-react';
+import { getPublicSettings } from '../services/api';
 
 const HomePage = () => {
   const { addItem, getItemQuantity, updateQuantity } = useCart();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [freeShippingMin, setFreeShippingMin] = useState(39990);
+
+  useEffect(() => {
+    getPublicSettings().then(({ data }) => {
+      if (data?.free_shipping_min) setFreeShippingMin(data.free_shipping_min);
+    }).catch(() => {});
+  }, []);
 
   const heroImages = [
     { url: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=1200&auto=format&fit=crop&q=80', alt: 'Perro feliz con su dueña' },
@@ -31,10 +39,14 @@ const HomePage = () => {
     { id: 2, name: 'Pro Plan Gato Adulto Pollo 7.5kg', brand: 'Pro Plan', price: 38990, originalPrice: 42990, image: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.7, description: 'Fórmula avanzada con pollo real como ingrediente principal. Rico en proteínas para gatos adultos activos.' },
     { id: 3, name: 'Hills Science Diet Puppy 12kg', brand: 'Hills', price: 48990, originalPrice: null, image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.9, description: 'Nutrición clínicamente probada para cachorros en crecimiento. DHA de aceite de pescado para desarrollo cerebral.' },
     { id: 4, name: 'Whiskas Adulto Pollo 10kg', brand: 'Whiskas', price: 12990, originalPrice: 15990, image: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.5, description: 'Alimento balanceado con sabor a pollo que a los gatos les encanta. Vitaminas y minerales esenciales.' },
-    { id: 5, name: 'Eukanuba Large Breed Adult 15kg', brand: 'Eukanuba', price: 62990, originalPrice: 69990, image: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.6, description: 'Formulado especialmente para razas grandes. Con glucosamina y condroitina para articulaciones saludables.' },
-    { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
-    { id: 7, name: 'Bravecto Perro 10-20kg', brand: 'Bravecto', price: 29990, originalPrice: 34990, image: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=400&auto=format&fit=crop&q=80', category: 'Farmacia', rating: 4.8, description: 'Antiparasitario oral contra pulgas y garrapatas. Protección de hasta 12 semanas con una sola dosis.' },
-    { id: 8, name: 'Cama Ortopédica Premium L', brand: 'PetsGo Select', price: 45990, originalPrice: 54990, image: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&auto=format&fit=crop&q=80', category: 'Accesorios', rating: 4.7, description: 'Cama ortopédica con espuma viscoelástica. Funda lavable antialérgica. Ideal para perros grandes.' },
+    { id: 5, name: 'Bravecto Perro 10-20kg', brand: 'Bravecto', price: 29990, originalPrice: 34990, image: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=400&auto=format&fit=crop&q=80', category: 'Farmacia', rating: 4.8, description: 'Antiparasitario oral contra pulgas y garrapatas. Protección de hasta 12 semanas con una sola dosis.' },
+    { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=80', category: 'Paseo', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
+    { id: 7, name: 'Cama Ortopédica Premium L', brand: 'PetsGo Select', price: 45990, originalPrice: 54990, image: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&auto=format&fit=crop&q=80', category: 'Camas', rating: 4.7, description: 'Cama ortopédica con espuma viscoelástica. Funda lavable antialérgica. Ideal para perros grandes.' },
+    { id: 8, name: 'Shampoo Avena Piel Sensible 500ml', brand: 'Pet Clean', price: 8990, originalPrice: 11990, image: 'https://images.unsplash.com/photo-1583337130417-13104dec14a3?w=400&auto=format&fit=crop&q=80', category: 'Higiene', rating: 4.6, description: 'Shampoo hipoalergénico con extracto de avena y aloe vera. Ideal para pieles sensibles y cachorros.' },
+    { id: 9, name: 'Arnés Anti-Tirón Reflectante M', brand: 'Ruffwear', price: 24990, originalPrice: 29990, image: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=400&auto=format&fit=crop&q=80', category: 'Paseo', rating: 4.9, description: 'Arnés ergonómico anti-tirón con bandas reflectantes. Ajuste en 4 puntos para máximo confort y seguridad.' },
+    { id: 10, name: 'Snack Dental DentaStix x28', brand: 'Pedigree', price: 15990, originalPrice: 18990, image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=80', category: 'Snacks', rating: 4.5, description: 'Barras dentales que reducen hasta 80% el sarro. Pack mensual de 28 unidades para perros medianos.' },
+    { id: 11, name: 'Rascador Torre 3 Niveles', brand: 'CatLife', price: 34990, originalPrice: 44990, image: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400&auto=format&fit=crop&q=80', category: 'Accesorios Gatos', rating: 4.7, description: 'Torre rascador de 3 niveles con cuevas, plataformas y juguetes colgantes. Sisal natural resistente.' },
+    { id: 12, name: 'Chaleco Abrigador Impermeable', brand: 'PetsGo Select', price: 19990, originalPrice: 24990, image: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&auto=format&fit=crop&q=80', category: 'Ropa', rating: 4.6, description: 'Chaleco impermeable con interior polar. Reflectante para visibilidad nocturna. Tallas S a XXL.' },
   ];
 
   const categories = [
@@ -44,6 +56,12 @@ const HomePage = () => {
     { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/tiendas' },
     { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/tiendas' },
     { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/tiendas' },
+    { name: 'Higiene', emoji: '🧴', count: 'Shampoo y aseo', link: '/tiendas' },
+    { name: 'Camas', emoji: '🛏️', count: 'Descanso ideal', link: '/tiendas' },
+    { name: 'Paseo', emoji: '🦮', count: 'Correas y arneses', link: '/tiendas' },
+    { name: 'Ropa', emoji: '🧥', count: 'Abrigos y disfraces', link: '/tiendas' },
+    { name: 'Ofertas', emoji: '🔥', count: 'Hasta 50% off', link: '/tiendas' },
+    { name: 'Nuevos', emoji: '✨', count: 'Recién llegados', link: '/tiendas' },
   ];
 
   const formatPrice = (price) => {
@@ -213,7 +231,7 @@ const HomePage = () => {
               </div>
               <div>
                 <p style={{ fontWeight: 700, color: '#1f2937', fontSize: '12px', margin: 0, lineHeight: 1.3 }}>Envío Gratis</p>
-                <p style={{ fontSize: '10px', color: '#6b7280', margin: 0, lineHeight: 1.3 }}>Desde $39.990</p>
+                <p style={{ fontSize: '10px', color: '#6b7280', margin: 0, lineHeight: 1.3 }}>Desde ${parseInt(freeShippingMin).toLocaleString('es-CL')}</p>
               </div>
             </div>
           </div>
@@ -233,7 +251,7 @@ const HomePage = () => {
               </div>
               <div>
                 <p className="font-bold text-gray-800" style={{fontSize:'13px'}}>Envío gratis</p>
-                <p className="text-gray-500" style={{fontSize:'11px'}}>desde $39.990</p>
+                <p className="text-gray-500" style={{fontSize:'11px'}}>desde ${parseInt(freeShippingMin).toLocaleString('es-CL')}</p>
               </div>
             </span>
             <span className="flex items-center gap-2 text-gray-700 group cursor-pointer">
@@ -263,17 +281,17 @@ const HomePage = () => {
             <Filter size={24} className="text-[#00A8E8]" />
             CATEGORÍAS
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {categories.map((cat) => (
                 <Link 
                 key={cat.name} 
                 to={cat.link}
-                className="group flex flex-col items-center justify-center p-6 bg-white hover:bg-cyan-50 rounded-3xl transition-all no-underline border border-gray-100 hover:border-cyan-200 hover:shadow-xl"
+                className="group flex flex-col items-center justify-center p-5 bg-white hover:bg-cyan-50 rounded-3xl transition-all no-underline border border-gray-100 hover:border-cyan-200 hover:shadow-xl"
               >
-                <span className="text-5xl mb-4 group-hover:scale-110 transition-transform">{cat.emoji}</span>
-                <p className="font-bold text-gray-800 group-hover:text-[#00A8E8] text-center mb-1">{cat.name}</p>
-                <p className="text-xs text-gray-400 text-center uppercase tracking-wider">{cat.count}</p>
-                <ChevronRight size={16} className="text-gray-300 group-hover:text-[#00A8E8] mt-2 transition-colors" />
+                <span className="text-4xl mb-3 group-hover:scale-110 transition-transform">{cat.emoji}</span>
+                <p className="font-bold text-gray-800 group-hover:text-[#00A8E8] text-center mb-1 text-sm">{cat.name}</p>
+                <p className="text-[10px] text-gray-400 text-center uppercase tracking-wider">{cat.count}</p>
+                <ChevronRight size={14} className="text-gray-300 group-hover:text-[#00A8E8] mt-1.5 transition-colors" />
               </Link>
             ))}
           </div>

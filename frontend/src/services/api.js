@@ -272,4 +272,12 @@ export const getAdminVendors = () =>
 export const submitVendorLead = (data) =>
   api.post('/vendor-lead', data);
 
+// ==========================================
+// PUBLIC SETTINGS
+// ==========================================
+
+/** Obtener configuración pública (despacho gratis, etc.) */
+export const getPublicSettings = () =>
+  api.get('/public-settings');
+
 export default api;
