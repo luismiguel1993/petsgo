@@ -6,9 +6,19 @@ import {
 } from 'lucide-react';
 import { getLegalPage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSite } from '../context/SiteContext';
+
+const DEFAULT_FAQS = [
+  { q: '¿Cómo creo un ticket de soporte?', a: 'Si eres cliente o rider, inicia sesión y ve a la sección "Soporte" en tu perfil. Si eres una tienda, crea el ticket desde el portal de administración.' },
+  { q: '¿Cuánto tardan en responder mi ticket?', a: 'Nuestro equipo revisa los tickets en un plazo máximo de 24 horas hábiles. Los tickets urgentes son atendidos con mayor prioridad.' },
+  { q: '¿Puedo dar seguimiento a mi reclamo?', a: 'Sí, puedes ver el estado de todos tus tickets y agregar mensajes adicionales desde la sección "Soporte" en tu perfil.' },
+  { q: '¿Qué tipo de problemas puedo reportar?', a: 'Puedes reportar problemas con pedidos, pagos, entregas, tu cuenta, productos y cualquier otra consulta relacionada con PetsGo.' },
+  { q: '¿Puedo contactar directamente por WhatsApp?', a: 'Sí, puedes contactarnos por WhatsApp para consultas rápidas. Sin embargo, para reclamos formales te recomendamos crear un ticket para mejor seguimiento.' },
+];
 
 const HelpCenterPage = () => {
   const { isAuthenticated, user } = useAuth();
+  const site = useSite();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [openFaq, setOpenFaq] = useState(null);
@@ -23,28 +33,8 @@ const HelpCenterPage = () => {
     })();
   }, []);
 
-  const faqs = [
-    {
-      q: '¿Cómo creo un ticket de soporte?',
-      a: 'Si eres cliente o rider, inicia sesión y ve a la sección "Soporte" en tu perfil. Si eres una tienda, crea el ticket desde el portal de administración.',
-    },
-    {
-      q: '¿Cuánto tardan en responder mi ticket?',
-      a: 'Nuestro equipo revisa los tickets en un plazo máximo de 24 horas hábiles. Los tickets urgentes son atendidos con mayor prioridad.',
-    },
-    {
-      q: '¿Puedo dar seguimiento a mi reclamo?',
-      a: 'Sí, puedes ver el estado de todos tus tickets y agregar mensajes adicionales desde la sección "Soporte" en tu perfil.',
-    },
-    {
-      q: '¿Qué tipo de problemas puedo reportar?',
-      a: 'Puedes reportar problemas con pedidos, pagos, entregas, tu cuenta, productos y cualquier otra consulta relacionada con PetsGo.',
-    },
-    {
-      q: '¿Puedo contactar directamente por WhatsApp?',
-      a: 'Sí, puedes contactarnos por WhatsApp para consultas rápidas. Sin embargo, para reclamos formales te recomendamos crear un ticket para mejor seguimiento.',
-    },
-  ];
+  // Use admin-managed FAQs if available, otherwise defaults
+  const faqs = (site.faqs && site.faqs.length > 0) ? site.faqs : DEFAULT_FAQS;
 
   const ticketGuides = [
     {

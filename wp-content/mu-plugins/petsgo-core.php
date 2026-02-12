@@ -80,6 +80,7 @@ class PetsGo_Core {
             'petsgo_add_ticket_reply',
             'petsgo_ticket_count',
             'petsgo_save_legal',
+            'petsgo_save_faqs',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -4380,7 +4381,9 @@ Dashboard con analíticas"></textarea>
                     <h3 style="margin-top:24px;">🌐 Redes Sociales</h3>
                     <div class="petsgo-field"><label>Instagram URL</label><input type="url" id="ps-instagram" value="<?php echo $v('social_instagram'); ?>" placeholder="https://www.instagram.com/petsgo.cl"></div>
                     <div class="petsgo-field"><label>Facebook URL</label><input type="url" id="ps-facebook" value="<?php echo $v('social_facebook'); ?>" placeholder="https://www.facebook.com/petsgo.cl"></div>
-                    <div class="petsgo-field"><label>WhatsApp</label><input type="text" id="ps-whatsapp" value="<?php echo $v('social_whatsapp'); ?>" placeholder="+56912345678"></div>
+                    <div class="petsgo-field"><label>LinkedIn URL</label><input type="url" id="ps-linkedin" value="<?php echo $v('social_linkedin'); ?>" placeholder="https://www.linkedin.com/company/petsgo-cl"></div>
+                    <div class="petsgo-field"><label>Twitter / X URL</label><input type="url" id="ps-twitter" value="<?php echo $v('social_twitter'); ?>" placeholder="https://x.com/petsgo_cl"></div>
+                    <div class="petsgo-field"><label>WhatsApp</label><input type="text" id="ps-whatsapp" value="<?php echo $v('social_whatsapp'); ?>" placeholder="+56912345678"><div class="field-hint">Número con código país. Se usa para el botón de contacto en el footer.</div></div>
 
                     <h3 style="margin-top:24px;">📋 Suscripciones / Planes</h3>
                     <div class="petsgo-field">
@@ -4394,6 +4397,13 @@ Dashboard con analíticas"></textarea>
                         <label>Monto mínimo para despacho gratis ($)</label>
                         <input type="number" id="ps-free-shipping" value="<?php echo $v('free_shipping_min'); ?>" min="0" step="1000" style="width:140px;">
                         <div class="field-hint">Monto mínimo de compra para despacho gratis. Ej: 39990 = $39.990. Se muestra en Header y HomePage.</div>
+                    </div>
+
+                    <h3 style="margin-top:24px;">📝 Footer del Sitio</h3>
+                    <div class="petsgo-field">
+                        <label>Descripción del footer</label>
+                        <textarea id="ps-footer-desc" rows="3" style="width:100%;font-family:inherit;font-size:13px;padding:10px;border:1px solid #ccc;border-radius:6px;resize:vertical;"><?php echo esc_textarea($v('footer_description')); ?></textarea>
+                        <div class="field-hint">Texto que aparece junto al logo en el pie de página del sitio web.</div>
                     </div>
                 </div>
             </div>
@@ -4462,8 +4472,11 @@ Dashboard con analíticas"></textarea>
                     company_from_email:$('#ps-from').val(),
                     company_website:$('#ps-website').val(),
                     tickets_bcc_email:$('#ps-tickets-bcc').val(),
+                    footer_description:$('#ps-footer-desc').val(),
                     social_instagram:$('#ps-instagram').val(),
                     social_facebook:$('#ps-facebook').val(),
+                    social_linkedin:$('#ps-linkedin').val(),
+                    social_twitter:$('#ps-twitter').val(),
                     social_whatsapp:$('#ps-whatsapp').val(),
                     color_primary:$('#ps-color-primary').val(),
                     color_secondary:$('#ps-color-secondary').val(),
@@ -5574,10 +5587,24 @@ Dashboard con analíticas"></textarea>
 
     // --- API Public Settings (no auth needed) ---
     public function api_get_public_settings() {
+        $faqs = get_option('petsgo_help_faqs', []);
+        if (!is_array($faqs)) $faqs = json_decode($faqs, true) ?: [];
         return rest_ensure_response([
-            'free_shipping_min'      => intval($this->pg_setting('free_shipping_min', 39990)),
-            'plan_annual_free_months'=> intval($this->pg_setting('plan_annual_free_months', 2)),
-            'company_name'           => $this->pg_setting('company_name', 'PetsGo'),
+            'free_shipping_min'       => intval($this->pg_setting('free_shipping_min', 39990)),
+            'plan_annual_free_months' => intval($this->pg_setting('plan_annual_free_months', 2)),
+            'company_name'            => $this->pg_setting('company_name', 'PetsGo'),
+            'company_tagline'         => $this->pg_setting('company_tagline', 'Marketplace de mascotas'),
+            'company_address'         => $this->pg_setting('company_address', 'Santiago, Chile'),
+            'company_phone'           => $this->pg_setting('company_phone', '+56 9 1234 5678'),
+            'company_email'           => $this->pg_setting('company_email', 'contacto@petsgo.cl'),
+            'company_website'         => $this->pg_setting('company_website', 'https://petsgo.cl'),
+            'footer_description'      => $this->pg_setting('footer_description', 'El marketplace más grande de Chile para mascotas. Conectamos tiendas locales con despacho ultra rápido garantizado.'),
+            'social_instagram'        => $this->pg_setting('social_instagram', ''),
+            'social_facebook'         => $this->pg_setting('social_facebook', ''),
+            'social_linkedin'         => $this->pg_setting('social_linkedin', ''),
+            'social_twitter'          => $this->pg_setting('social_twitter', ''),
+            'social_whatsapp'         => $this->pg_setting('social_whatsapp', ''),
+            'faqs'                    => $faqs,
         ]);
     }
 
@@ -7811,6 +7838,23 @@ Dashboard con analíticas"></textarea>
         wp_send_json_success(['message' => 'Contenido guardado correctamente']);
     }
 
+    public function petsgo_save_faqs() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        $raw = stripslashes($_POST['faqs'] ?? '[]');
+        $faqs = json_decode($raw, true);
+        if (!is_array($faqs)) wp_send_json_error('Formato inválido');
+        $clean = [];
+        foreach ($faqs as $faq) {
+            $q = sanitize_text_field($faq['q'] ?? '');
+            $a = sanitize_textarea_field($faq['a'] ?? '');
+            if ($q && $a) $clean[] = ['q' => $q, 'a' => $a];
+        }
+        update_option('petsgo_help_faqs', $clean);
+        $this->audit('save_faqs', 'legal', 0, count($clean) . ' FAQs');
+        wp_send_json_success(['message' => 'FAQs guardadas correctamente']);
+    }
+
     // ============================================================
     // ADMIN PAGE — Contenido Legal
     // ============================================================
@@ -7822,6 +7866,8 @@ Dashboard con analíticas"></textarea>
             'politica_de_privacidad' => ['title' => 'Política de Privacidad', 'icon' => '🔒', 'desc' => 'Política de privacidad y protección de datos.'],
             'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
         ];
+        $faqs = get_option('petsgo_help_faqs', []);
+        if (!is_array($faqs)) $faqs = [];
         ?>
         <div class="wrap petsgo-wrap">
             <h1>📄 Contenido Legal y Ayuda</h1>
@@ -7833,6 +7879,10 @@ Dashboard con analíticas"></textarea>
                     <?php echo $info['icon'] . ' ' . $info['title']; ?>
                 </button>
                 <?php endforeach; ?>
+                <span style="border-left:2px solid #ccc;margin:0 4px;"></span>
+                <button type="button" class="button legal-tab-btn" data-slug="faqs">
+                    💬 Preguntas Frecuentes
+                </button>
             </div>
 
             <?php foreach ($pages as $slug => $info):
@@ -7861,6 +7911,40 @@ Dashboard con analíticas"></textarea>
                 </div>
             </div>
             <?php endforeach; ?>
+
+            <!-- ===== FAQs Panel ===== -->
+            <div class="legal-panel" data-slug="faqs" style="display:none;">
+                <div class="petsgo-card" style="padding:24px;">
+                    <h2>💬 Preguntas Frecuentes (Centro de Ayuda)</h2>
+                    <p style="color:#666;font-size:13px;margin-bottom:16px;">Gestiona las preguntas frecuentes que se muestran en la página Centro de Ayuda del sitio web. Puedes agregar, editar, reordenar y eliminar preguntas.</p>
+                    <div id="faqs-container">
+                        <?php if (empty($faqs)): ?>
+                        <p style="color:#999;font-style:italic;" id="faqs-empty">No hay preguntas frecuentes. Haz clic en "Agregar Pregunta" para comenzar.</p>
+                        <?php endif; ?>
+                        <?php foreach ($faqs as $idx => $faq): ?>
+                        <div class="faq-item" style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:16px;margin-bottom:12px;">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+                                <span style="font-weight:700;font-size:12px;color:#888;">Pregunta #<?php echo $idx+1; ?></span>
+                                <button type="button" class="button faq-remove-btn" style="color:#dc3545;border-color:#dc3545;font-size:12px;padding:2px 10px;">✕ Eliminar</button>
+                            </div>
+                            <div style="margin-bottom:8px;">
+                                <label style="display:block;font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">Pregunta</label>
+                                <input type="text" class="faq-q regular-text" value="<?php echo esc_attr($faq['q']); ?>" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" placeholder="Ej: ¿Cómo creo un ticket de soporte?">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">Respuesta</label>
+                                <textarea class="faq-a" rows="3" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;" placeholder="Escribe la respuesta..."><?php echo esc_textarea($faq['a']); ?></textarea>
+                            </div>
+                        </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <button type="button" class="button" id="faq-add-btn">➕ Agregar Pregunta</button>
+                        <button type="button" class="button button-primary" id="faq-save-btn">💾 Guardar FAQs</button>
+                        <span id="faq-msg" style="font-weight:600;font-size:13px;"></span>
+                    </div>
+                </div>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -7896,6 +7980,52 @@ Dashboard con analíticas"></textarea>
                     } else {
                         $msg.text('❌ Error').css('color','#dc3545');
                     }
+                    setTimeout(function(){ $msg.text(''); }, 3000);
+                }).fail(function(){
+                    $msg.text('❌ Error de red').css('color','#dc3545');
+                });
+            });
+
+            // ===== FAQs Management =====
+            var faqCount = $('#faqs-container .faq-item').length;
+            function faqTemplate(num){
+                return '<div class="faq-item" style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:16px;margin-bottom:12px;">'+
+                    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">'+
+                    '<span style="font-weight:700;font-size:12px;color:#888;">Pregunta #'+num+'</span>'+
+                    '<button type="button" class="button faq-remove-btn" style="color:#dc3545;border-color:#dc3545;font-size:12px;padding:2px 10px;">✕ Eliminar</button></div>'+
+                    '<div style="margin-bottom:8px;"><label style="display:block;font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">Pregunta</label>'+
+                    '<input type="text" class="faq-q regular-text" value="" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;" placeholder="Ej: ¿Cómo creo un ticket de soporte?"></div>'+
+                    '<div><label style="display:block;font-size:12px;font-weight:600;color:#555;margin-bottom:4px;">Respuesta</label>'+
+                    '<textarea class="faq-a" rows="3" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:4px;resize:vertical;" placeholder="Escribe la respuesta..."></textarea></div></div>';
+            }
+            $('#faq-add-btn').on('click', function(){
+                $('#faqs-empty').remove();
+                faqCount++;
+                $('#faqs-container').append(faqTemplate(faqCount));
+            });
+            $(document).on('click','.faq-remove-btn', function(){
+                $(this).closest('.faq-item').remove();
+                // Renumber
+                $('#faqs-container .faq-item').each(function(i){
+                    $(this).find('span').first().text('Pregunta #'+(i+1));
+                });
+                faqCount = $('#faqs-container .faq-item').length;
+            });
+            $('#faq-save-btn').on('click', function(){
+                var faqs = [];
+                $('#faqs-container .faq-item').each(function(){
+                    var q = $(this).find('.faq-q').val().trim();
+                    var a = $(this).find('.faq-a').val().trim();
+                    if (q && a) faqs.push({q:q, a:a});
+                });
+                var $msg = $('#faq-msg');
+                $msg.text('Guardando...').css('color','#666');
+                $.post(ajaxurl, {
+                    action: 'petsgo_save_faqs',
+                    _ajax_nonce: '<?php echo wp_create_nonce("petsgo_ajax"); ?>',
+                    faqs: JSON.stringify(faqs),
+                }, function(r){
+                    $msg.text(r.success ? '✅ FAQs guardadas' : '❌ Error').css('color', r.success ? '#28a745' : '#dc3545');
                     setTimeout(function(){ $msg.text(''); }, 3000);
                 }).fail(function(){
                     $msg.text('❌ Error de red').css('color','#dc3545');
