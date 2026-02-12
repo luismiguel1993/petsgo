@@ -10,6 +10,7 @@ import {
   getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
   getRiderRatings, getRiderStatus, getRiderProfile, updateRiderProfile, getRiderEarnings,
 } from '../services/api';
+import { REGIONES, getComunas, formatPhone, isValidPhone } from '../utils/chile';
 
 /* ───── constants ───── */
 const STATUS_CONFIG = {
@@ -19,6 +20,7 @@ const STATUS_CONFIG = {
 };
 
 const DOC_TYPES = {
+  selfie:               { label: 'Foto de Perfil (Selfie)', icon: '📸', description: 'Selfie clara de tu rostro para reconocimiento facial' },
   id_card:              { label: 'Documento de Identidad', icon: '🆔', description: 'Foto legible de tu documento (ambas caras)' },
   license:              { label: 'Licencia de Conducir', icon: '🪪', description: 'Foto de licencia vigente' },
   vehicle_registration: { label: 'Padrón del Vehículo', icon: '📄', description: 'Padrón o inscripción vehicular' },
@@ -134,6 +136,8 @@ const RiderDashboard = () => {
         firstName: data.firstName || '',
         lastName: data.lastName || '',
         phone: data.phone || '',
+        region: data.region || '',
+        comuna: data.comuna || '',
         bankName: data.bankName || '',
         bankAccountType: data.bankAccountType || '',
         bankAccountNumber: data.bankAccountNumber || '',
@@ -761,9 +765,26 @@ const RiderDashboard = () => {
               </div>
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Teléfono</label>
-                <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
-                  placeholder="+56 9 1234 5678" />
+                <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: formatPhone(e.target.value) })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1px solid ${profileForm.phone ? (isValidPhone(profileForm.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }}
+                  placeholder="+569XXXXXXXX" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Región</label>
+                <select value={profileForm.region || ''} onChange={e => setProfileForm({ ...profileForm, region: e.target.value, comuna: '' })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
+                  <option value="">Selecciona región...</option>
+                  {REGIONES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Comuna</label>
+                <select value={profileForm.comuna || ''} onChange={e => setProfileForm({ ...profileForm, comuna: e.target.value })}
+                  disabled={!profileForm.region}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box', opacity: profileForm.region ? 1 : 0.6 }}>
+                  <option value="">{profileForm.region ? 'Selecciona comuna...' : 'Primero selecciona región'}</option>
+                  {getComunas(profileForm.region).map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
               </div>
             </div>
             {/* Read-only info */}

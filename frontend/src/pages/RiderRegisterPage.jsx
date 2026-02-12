@@ -2,31 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Check, X, AlertCircle, Truck, Mail, Shield } from 'lucide-react';
 import { registerRider, verifyRiderEmail, resendRiderVerification } from '../services/api';
-
-const validateRut = (rut) => {
-  const clean = rut.replace(/[^0-9kK]/g, '').toUpperCase();
-  if (clean.length < 8 || clean.length > 9) return false;
-  const body = clean.slice(0, -1);
-  const dv = clean.slice(-1);
-  let sum = 0, mul = 2;
-  for (let i = body.length - 1; i >= 0; i--) {
-    sum += parseInt(body[i]) * mul;
-    mul = mul === 7 ? 2 : mul + 1;
-  }
-  let expected = 11 - (sum % 11);
-  if (expected === 11) expected = '0';
-  else if (expected === 10) expected = 'K';
-  else expected = String(expected);
-  return dv === expected;
-};
-
-const formatRut = (value) => {
-  const clean = value.replace(/[^0-9kK]/g, '');
-  if (clean.length <= 1) return clean;
-  const dv = clean.slice(-1);
-  const body = clean.slice(0, -1);
-  return body.replace(/\B(?=(\d{3})+(?!\d))/g, '.') + '-' + dv;
-};
+import { REGIONES, getComunas, validateRut, formatRut, formatPhone, isValidPhone } from '../utils/chile';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb',
@@ -48,6 +24,7 @@ const RiderRegisterPage = () => {
   const [form, setForm] = useState({
     first_name: '', last_name: '', email: '', password: '', confirmPassword: '',
     id_type: 'rut', id_number: '', phone: '', birth_date: '', vehicle: '',
+    region: '', comuna: '',
   });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -60,13 +37,10 @@ const RiderRegisterPage = () => {
   const handleChange = (field) => (e) => {
     let value = e.target.value;
     if (field === 'id_number' && form.id_type === 'rut') value = formatRut(value);
-    if (field === 'phone') {
-      value = value.replace(/[^0-9+]/g, '');
-      if (!value.startsWith('+56') && value.length > 0) {
-        if (value.startsWith('56')) value = '+' + value;
-        else if (value.startsWith('9')) value = '+56' + value;
-        else if (!value.startsWith('+')) value = '+56' + value;
-      }
+    if (field === 'phone') value = formatPhone(value);
+    if (field === 'region') {
+      setForm(prev => ({ ...prev, region: value, comuna: '' }));
+      return;
     }
     setForm(prev => ({ ...prev, [field]: value }));
   };
@@ -94,8 +68,10 @@ const RiderRegisterPage = () => {
     if (form.password !== form.confirmPassword) errors.push('Las contraseñas no coinciden');
     if (form.id_type === 'rut' && !validateRut(form.id_number)) errors.push('RUT inválido');
     if (!form.id_number) errors.push('Documento de identidad es obligatorio');
-    if (!form.phone || !/^\+569\d{8}$/.test(form.phone)) errors.push('Teléfono chileno inválido (+569XXXXXXXX)');
+    if (!form.phone || !isValidPhone(form.phone)) errors.push('Teléfono chileno inválido (+569XXXXXXXX)');
     if (!form.vehicle) errors.push('Selecciona un vehículo o medio de transporte');
+    if (!form.region) errors.push('Región es obligatoria');
+    if (!form.comuna) errors.push('Comuna es obligatoria');
     if (errors.length) { setError(errors.join('. ')); return; }
 
     setLoading(true);
@@ -105,6 +81,7 @@ const RiderRegisterPage = () => {
         email: form.email, password: form.password,
         id_type: form.id_type, id_number: form.id_number,
         phone: form.phone, birth_date: form.birth_date, vehicle: form.vehicle,
+        region: form.region, comuna: form.comuna,
       });
       setStep(2);
       setSuccess('');
@@ -254,11 +231,29 @@ const RiderRegisterPage = () => {
                 <div style={{ flex: '1 1 180px' }}>
                   <label style={labelStyle}>Teléfono *</label>
                   <input type="tel" value={form.phone} onChange={handleChange('phone')} placeholder="+569XXXXXXXX" required
-                    style={{ ...inputStyle, borderColor: form.phone ? (/^\+569\d{8}$/.test(form.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb' }} />
+                    style={{ ...inputStyle, borderColor: form.phone ? (isValidPhone(form.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb' }} />
                 </div>
                 <div style={{ flex: '1 1 180px' }}>
                   <label style={labelStyle}>Fecha Nacimiento</label>
                   <input type="date" value={form.birth_date} onChange={handleChange('birth_date')} style={inputStyle} max={new Date().toISOString().split('T')[0]} />
+                </div>
+              </div>
+
+              {/* Región y Comuna */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 200px' }}>
+                  <label style={labelStyle}>Región *</label>
+                  <select value={form.region} onChange={handleChange('region')} required style={{ ...inputStyle, cursor: 'pointer' }}>
+                    <option value="">Selecciona región...</option>
+                    {REGIONES.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: '1 1 200px' }}>
+                  <label style={labelStyle}>Comuna *</label>
+                  <select value={form.comuna} onChange={handleChange('comuna')} required disabled={!form.region} style={{ ...inputStyle, cursor: form.region ? 'pointer' : 'not-allowed', opacity: form.region ? 1 : 0.6 }}>
+                    <option value="">{form.region ? 'Selecciona comuna...' : 'Primero selecciona región'}</option>
+                    {getComunas(form.region).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
                 </div>
               </div>
 

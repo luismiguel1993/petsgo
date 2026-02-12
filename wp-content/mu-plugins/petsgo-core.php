@@ -4979,6 +4979,12 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_account_number varchar(50) DEFAULT NULL AFTER bank_account_type");
         }
 
+        // Region / comuna columns in user_profiles
+        if (!in_array('region', $pcols2)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN region varchar(60) DEFAULT NULL AFTER bank_account_number");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN comuna varchar(60) DEFAULT NULL AFTER region");
+        }
+
         update_option('petsgo_rider_tables_v2', true);
     }
 
@@ -5327,6 +5333,8 @@ Dashboard con analíticas"></textarea>
         $id_type    = sanitize_text_field($p['id_type'] ?? 'rut');
         $id_number  = sanitize_text_field($p['id_number'] ?? '');
         $birth_date = sanitize_text_field($p['birth_date'] ?? '');
+        $region     = sanitize_text_field($p['region'] ?? '');
+        $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
         if (!$first_name) $errors[] = 'Nombre es obligatorio';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
@@ -5352,6 +5360,10 @@ Dashboard con analíticas"></textarea>
         } elseif (in_array($id_type, ['dni','passport']) && strlen($id_number) < 5) {
             $errors[] = 'Número de documento demasiado corto';
         }
+
+        // Region / Comuna
+        if (!$region) $errors[] = 'Región es obligatoria';
+        if (!$comuna) $errors[] = 'Comuna es obligatoria';
 
         if ($birth_date) {
             $bd = strtotime($birth_date);
@@ -5381,7 +5393,9 @@ Dashboard con analíticas"></textarea>
             'id_number'  => $id_type === 'rut' ? self::format_rut($id_number) : $id_number,
             'birth_date' => $birth_date ?: null,
             'phone'      => self::normalize_phone($phone),
-        ], ['%d','%s','%s','%s','%s','%s','%s']);
+            'region'     => $region ?: null,
+            'comuna'     => $comuna ?: null,
+        ], ['%d','%s','%s','%s','%s','%s','%s','%s','%s']);
 
         $this->audit('register', 'user', $uid, $display_name . ' (customer)');
 
@@ -5432,6 +5446,8 @@ Dashboard con analíticas"></textarea>
         $birth_date = sanitize_text_field($p['birth_date'] ?? '');
         $vehicle    = sanitize_text_field($p['vehicle'] ?? '');
         $vehicle_type = sanitize_text_field($p['vehicle_type'] ?? '');
+        $region     = sanitize_text_field($p['region'] ?? '');
+        $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
         if (!$first_name) $errors[] = 'Nombre es obligatorio';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
@@ -5455,6 +5471,10 @@ Dashboard con analíticas"></textarea>
             $errors[] = 'Número de documento demasiado corto';
         }
 
+        // Region / Comuna
+        if (!$region) $errors[] = 'Región es obligatoria';
+        if (!$comuna) $errors[] = 'Comuna es obligatoria';
+
         if ($errors) return new WP_Error('validation_error', implode('. ', $errors), ['status' => 400]);
 
         $username = strtolower(explode('@', $email)[0]);
@@ -5476,7 +5496,9 @@ Dashboard con analíticas"></textarea>
             'id_number'  => $id_type === 'rut' ? self::format_rut($id_number) : $id_number,
             'birth_date' => $birth_date ?: null,
             'phone'      => self::normalize_phone($phone),
-        ], ['%d','%s','%s','%s','%s','%s','%s']);
+            'region'     => $region ?: null,
+            'comuna'     => $comuna ?: null,
+        ], ['%d','%s','%s','%s','%s','%s','%s','%s','%s']);
 
         if ($vehicle) update_user_meta($uid, 'petsgo_vehicle', $vehicle);
         if ($vehicle_type) {
@@ -5641,7 +5663,7 @@ Dashboard con analíticas"></textarea>
             return new WP_Error('no_file', 'No se recibió ningún archivo', ['status' => 400]);
         }
         $doc_type = sanitize_text_field($_POST['doc_type'] ?? '');
-        if (!in_array($doc_type, ['license', 'vehicle_registration', 'id_card'])) {
+        if (!in_array($doc_type, ['license', 'vehicle_registration', 'id_card', 'selfie'])) {
             return new WP_Error('invalid_type', 'Tipo de documento inválido', ['status' => 400]);
         }
 
@@ -5690,13 +5712,14 @@ Dashboard con analíticas"></textarea>
             $uploaded_types = $wpdb->get_col($wpdb->prepare(
                 "SELECT DISTINCT doc_type FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
             ));
+            $has_selfie = in_array('selfie', $uploaded_types);
             $has_id = in_array('id_card', $uploaded_types);
             $has_license = in_array('license', $uploaded_types);
             $has_registration = in_array('vehicle_registration', $uploaded_types);
 
-            $all_uploaded = $has_id;
+            $all_uploaded = $has_selfie && $has_id;
             if ($needs_motor) {
-                $all_uploaded = $has_id && $has_license && $has_registration;
+                $all_uploaded = $has_selfie && $has_id && $has_license && $has_registration;
             }
             if ($all_uploaded) {
                 update_user_meta($uid, 'petsgo_rider_status', 'pending_review');
@@ -5721,7 +5744,7 @@ Dashboard con analíticas"></textarea>
 
         // Required docs check
         $needs_motor = in_array($vehicle, ['moto', 'auto', 'scooter']);
-        $required = ['id_card'];
+        $required = ['selfie', 'id_card'];
         if ($needs_motor) { $required[] = 'license'; $required[] = 'vehicle_registration'; }
         $uploaded_types = array_map(fn($d) => $d->doc_type, $docs);
         $missing_docs = array_values(array_diff($required, $uploaded_types));
@@ -5808,6 +5831,9 @@ Dashboard con analíticas"></textarea>
             'bankName'         => $profile->bank_name ?? '',
             'bankAccountType'  => $profile->bank_account_type ?? '',
             'bankAccountNumber'=> $profile->bank_account_number ?? '',
+            // Location
+            'region'           => $profile->region ?? '',
+            'comuna'           => $profile->comuna ?? '',
             // Stats
             'totalDeliveries'  => $total_deliveries,
             'totalEarned'      => $total_earned,
@@ -5831,6 +5857,8 @@ Dashboard con analíticas"></textarea>
         $bank_name  = sanitize_text_field($p['bankName'] ?? '');
         $bank_type  = sanitize_text_field($p['bankAccountType'] ?? '');
         $bank_num   = sanitize_text_field($p['bankAccountNumber'] ?? '');
+        $region     = sanitize_text_field($p['region'] ?? '');
+        $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
         if ($first_name) wp_update_user(['ID' => $uid, 'first_name' => $first_name]);
         if ($last_name) wp_update_user(['ID' => $uid, 'last_name' => $last_name]);
@@ -5850,6 +5878,8 @@ Dashboard con analíticas"></textarea>
         if ($bank_name !== '') $data['bank_name'] = $bank_name;
         if ($bank_type !== '') $data['bank_account_type'] = $bank_type;
         if ($bank_num !== '') $data['bank_account_number'] = $bank_num;
+        if ($region !== '') $data['region'] = $region;
+        if ($comuna !== '') $data['comuna'] = $comuna;
 
         $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
         if ($exists) {
