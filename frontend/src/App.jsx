@@ -18,6 +18,7 @@ import VendorDetailPage from './pages/VendorDetailPage'
 import CartPage from './pages/CartPage'
 import PlansPage from './pages/PlansPage'
 import ProductDetailPage from './pages/ProductDetailPage'
+import CategoryPage from './pages/CategoryPage'
 import MyOrdersPage from './pages/MyOrdersPage'
 import VendorDashboard from './pages/VendorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
@@ -97,6 +98,7 @@ function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/tiendas" element={<VendorsPage />} />
           <Route path="/tienda/:id" element={<VendorDetailPage />} />
+          <Route path="/categoria/:slug" element={<CategoryPage />} />
           <Route path="/producto/:id" element={<ProductDetailPage />} />
           <Route path="/carrito" element={<CartPage />} />
           <Route path="/planes" element={<PlansPage />} />

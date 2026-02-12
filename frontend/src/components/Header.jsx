@@ -49,12 +49,12 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   };
 
   const categories = [
-    { name: 'Perros', href: '#', icon: '🐕' },
-    { name: 'Gatos', href: '#', icon: '🐱' },
-    { name: 'Alimento', href: '#', icon: '🍖' },
-    { name: 'Farmacia', href: '#', icon: '💊' },
-    { name: 'Accesorios', href: '#', icon: '🎾' },
-    { name: 'Ofertas', href: '#', icon: '🔥' },
+    { name: 'Perros', href: '/categoria/Perros', icon: '🐕' },
+    { name: 'Gatos', href: '/categoria/Gatos', icon: '🐱' },
+    { name: 'Alimento', href: '/categoria/Alimento', icon: '🍖' },
+    { name: 'Farmacia', href: '/categoria/Farmacia', icon: '💊' },
+    { name: 'Accesorios', href: '/categoria/Accesorios', icon: '🎾' },
+    { name: 'Ofertas', href: '/categoria/Ofertas', icon: '🔥' },
   ];
 
   return (
@@ -364,15 +364,15 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
           {/* Navegación Categorías Desktop */}
           <nav className="hidden md:flex items-center justify-center gap-1 py-2 border-t border-gray-100">
             {categories.map((cat) => (
-              <a
+              <Link
                 key={cat.name}
-                href={cat.href}
+                to={cat.href}
                 className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-gray-600 hover:text-[#00A8E8] hover:bg-cyan-50 rounded-full transition-colors no-underline"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               >
                 <span>{cat.icon}</span>
                 {cat.name}
-              </a>
+              </Link>
             ))}
             <Link
               to="/tiendas"
@@ -401,15 +401,15 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
             </div>
             
             {categories.map((cat) => (
-              <a
+              <Link
                 key={cat.name}
-                href={cat.href}
+                to={cat.href}
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-3 py-3 px-4 text-gray-700 hover:bg-gray-50 rounded-xl no-underline font-medium"
               >
                 <span className="text-lg">{cat.icon}</span>
                 {cat.name}
-              </a>
+              </Link>
             ))}
             <Link 
               to="/tiendas" 

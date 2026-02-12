@@ -50,18 +50,18 @@ const HomePage = () => {
   ];
 
   const categories = [
-    { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/tiendas' },
-    { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '/tiendas' },
-    { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '/tiendas' },
-    { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/tiendas' },
-    { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/tiendas' },
-    { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/tiendas' },
-    { name: 'Higiene', emoji: '🧴', count: 'Shampoo y aseo', link: '/tiendas' },
-    { name: 'Camas', emoji: '🛏️', count: 'Descanso ideal', link: '/tiendas' },
-    { name: 'Paseo', emoji: '🦮', count: 'Correas y arneses', link: '/tiendas' },
-    { name: 'Ropa', emoji: '🧥', count: 'Abrigos y disfraces', link: '/tiendas' },
-    { name: 'Ofertas', emoji: '🔥', count: 'Hasta 50% off', link: '/tiendas' },
-    { name: 'Nuevos', emoji: '✨', count: 'Recién llegados', link: '/tiendas' },
+    { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/categoria/Perros' },
+    { name: 'Gatos', emoji: '🐱', count: '+350 productos', link: '/categoria/Gatos' },
+    { name: 'Alimento', emoji: '🍖', count: 'Seco y húmedo', link: '/categoria/Alimento' },
+    { name: 'Snacks', emoji: '🦴', count: 'Premios y dental', link: '/categoria/Snacks' },
+    { name: 'Farmacia', emoji: '💊', count: 'Antiparasitarios', link: '/categoria/Farmacia' },
+    { name: 'Accesorios', emoji: '🎾', count: 'Juguetes y más', link: '/categoria/Accesorios' },
+    { name: 'Higiene', emoji: '🧴', count: 'Shampoo y aseo', link: '/categoria/Higiene' },
+    { name: 'Camas', emoji: '🛏️', count: 'Descanso ideal', link: '/categoria/Camas' },
+    { name: 'Paseo', emoji: '🦮', count: 'Correas y arneses', link: '/categoria/Paseo' },
+    { name: 'Ropa', emoji: '🧥', count: 'Abrigos y disfraces', link: '/categoria/Ropa' },
+    { name: 'Ofertas', emoji: '🔥', count: 'Hasta 50% off', link: '/categoria/Ofertas' },
+    { name: 'Nuevos', emoji: '✨', count: 'Recién llegados', link: '/categoria/Nuevos' },
   ];
 
   const formatPrice = (price) => {
