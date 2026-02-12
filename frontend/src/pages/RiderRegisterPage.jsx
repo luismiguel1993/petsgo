@@ -126,21 +126,21 @@ const RiderRegisterPage = () => {
 
   // =========== STEP INDICATOR ===========
   const StepIndicator = () => (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0', marginBottom: '24px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, marginBottom: '24px', flexWrap: 'wrap', rowGap: 8 }}>
       {[
-        { n: 1, label: 'Datos Básicos', icon: '📝' },
-        { n: 2, label: 'Verificar Email', icon: '📧' },
-        { n: 3, label: 'Subir Documentos', icon: '📋' },
-        { n: 4, label: 'Aprobación', icon: '✅' },
+        { n: 1, label: 'Datos', icon: '📝' },
+        { n: 2, label: 'Email', icon: '📧' },
+        { n: 3, label: 'Docs', icon: '📋' },
+        { n: 4, label: 'Listo', icon: '✅' },
       ].map((s, i) => (
         <React.Fragment key={s.n}>
           {i > 0 && (
-            <div style={{ width: '30px', height: '2px', background: step >= s.n ? '#F59E0B' : '#e5e7eb', flexShrink: 0 }} />
+            <div style={{ flex: '0 1 24px', height: '2px', background: step >= s.n ? '#F59E0B' : '#e5e7eb' }} />
           )}
-          <div style={{ textAlign: 'center', minWidth: '60px' }}>
+          <div style={{ textAlign: 'center', minWidth: '48px' }}>
             <div style={{
-              width: '36px', height: '36px', borderRadius: '50%', margin: '0 auto 4px',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px',
+              width: '32px', height: '32px', borderRadius: '50%', margin: '0 auto 4px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px',
               background: step >= s.n ? '#F59E0B' : '#f3f4f6',
               color: step >= s.n ? '#fff' : '#9ca3af',
               fontWeight: 900, boxShadow: step === s.n ? '0 4px 12px rgba(245,158,11,0.3)' : 'none',
@@ -183,7 +183,7 @@ const RiderRegisterPage = () => {
         {/* ========== STEP 1: DATOS BASICOS ========== */}
         {step === 1 && (
           <form onSubmit={handleSubmitStep1} style={{
-            background: '#fff', borderRadius: '20px', padding: '28px',
+            background: '#fff', borderRadius: '20px', padding: '24px 16px',
             boxShadow: '0 4px 24px rgba(0,0,0,0.08)', border: '1px solid #f0f0f0'
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -341,7 +341,7 @@ const RiderRegisterPage = () => {
         {/* ========== STEP 2: VERIFICAR EMAIL ========== */}
         {step === 2 && (
           <div style={{
-            background: '#fff', borderRadius: '20px', padding: '32px',
+            background: '#fff', borderRadius: '20px', padding: '24px 16px',
             boxShadow: '0 4px 24px rgba(0,0,0,0.08)', border: '1px solid #f0f0f0'
           }}>
             <div style={{ textAlign: 'center', marginBottom: '24px' }}>

@@ -108,7 +108,7 @@ const RegisterPage = () => {
         </div>
 
         <form onSubmit={handleSubmit} style={{
-          background: '#fff', borderRadius: '20px', padding: '28px',
+          background: '#fff', borderRadius: '20px', padding: '24px 16px',
           boxShadow: '0 4px 24px rgba(0,0,0,0.08)', border: '1px solid #f0f0f0'
         }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>

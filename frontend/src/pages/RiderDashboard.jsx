@@ -270,7 +270,7 @@ const RiderDashboard = () => {
     };
     const c = cfgs[riderStatus] || cfgs.pending_email;
     return (
-      <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 14, padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 28 }}>{c.icon}</span>
         <div style={{ flex: 1 }}>
           <strong style={{ color: c.color, fontSize: 14 }}>{c.title}</strong>
@@ -317,7 +317,7 @@ const RiderDashboard = () => {
     const cfg = STATUS_CONFIG[delivery.status] || { label: delivery.status, color: '#6B7280' };
     return (
       <Card style={{ border: `1px solid ${cfg.color}15` }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>Pedido #{delivery.id}</span>
             <p style={{ fontWeight: 700, color: '#2F3A40', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
@@ -331,7 +331,7 @@ const RiderDashboard = () => {
             <MapPin size={14} color="#9ca3af" /> {delivery.address}
           </p>
         )}
-        <div style={{ display: 'flex', gap: 16, fontSize: 13, color: '#6b7280', marginBottom: cfg.next ? 12 : 0 }}>
+        <div style={{ display: 'flex', gap: 8, fontSize: 13, color: '#6b7280', marginBottom: cfg.next ? 12 : 0, flexWrap: 'wrap' }}>
           <span>Total: <strong style={{ color: '#2F3A40' }}>{fmt(delivery.total_amount)}</strong></span>
           <span>Delivery: <strong style={{ color: '#00A8E8' }}>{fmt(delivery.delivery_fee)}</strong></span>
           <span style={{ marginLeft: 'auto', fontSize: 11, color: '#b0b0b0' }}>{fmtDateTime(delivery.created_at)}</span>
@@ -351,8 +351,8 @@ const RiderDashboard = () => {
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 16px' }}>
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <div style={{ width: 48, height: 48, background: '#F97316', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ width: 48, height: 48, background: '#F97316', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Truck size={24} color="#fff" />
         </div>
         <div style={{ flex: 1 }}>
@@ -380,7 +380,7 @@ const RiderDashboard = () => {
       <StatusBanner />
 
       {/* ── Tabs ── */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {isApproved && tabBtn('home', '🏠', 'Inicio')}
         {isApproved && tabBtn('deliveries', '📦', 'Entregas')}
         {isApproved && tabBtn('earnings', '💰', 'Ganancias')}
@@ -405,7 +405,7 @@ const RiderDashboard = () => {
           {/* Bank account notice */}
           {!profile?.bankName && (
             <Card style={{ borderLeft: '4px solid #F97316', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <CreditCard size={24} color="#F97316" />
                 <div style={{ flex: 1 }}>
                   <strong style={{ color: '#2F3A40', fontSize: 14 }}>Configura tu cuenta bancaria</strong>
@@ -504,7 +504,7 @@ const RiderDashboard = () => {
 
           {/* Bank status */}
           <Card style={{ marginBottom: 20, borderLeft: profile?.bankName ? '4px solid #22C55E' : '4px solid #F97316' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <CreditCard size={22} color={profile?.bankName ? '#22C55E' : '#F97316'} />
               <div style={{ flex: 1 }}>
                 <strong style={{ fontSize: 13, color: '#2F3A40' }}>
@@ -531,7 +531,7 @@ const RiderDashboard = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 24 }}>
               {earnings.weekly.map((w, i) => (
                 <Card key={i}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <div>
                       <p style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>
                         <Calendar size={14} color="#9ca3af" style={{ marginRight: 6, verticalAlign: 'middle' }} />
@@ -563,7 +563,7 @@ const RiderDashboard = () => {
                 const statusLabels = { paid: 'Pagado', pending: 'Pendiente', processing: 'Procesando', failed: 'Fallido' };
                 return (
                   <Card key={p.id} style={{ border: `1px solid ${statusColors[p.status] || '#e5e7eb'}20` }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                       <div>
                         <p style={{ fontWeight: 700, color: '#2F3A40', margin: 0, fontSize: 14 }}>
                           Período: {fmtDate(p.period_start)} — {fmtDate(p.period_end)}
@@ -607,7 +607,7 @@ const RiderDashboard = () => {
             <>
               {/* Vehicle info */}
               <Card style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <div>
                     <h3 style={{ fontSize: 15, fontWeight: 800, color: '#2F3A40', margin: '0 0 4px' }}>Vehículo registrado</h3>
                     <span style={{ fontSize: 20 }}>{VEHICLE_LABELS[vehicleType] || vehicleType || 'No definido'}</span>
@@ -721,7 +721,7 @@ const RiderDashboard = () => {
                 const stars = Array.from({ length: 5 }, (_, i) => i < r.rating ? '⭐' : '☆').join('');
                 return (
                   <Card key={r.id}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontSize: 20 }}>{r.rater_type === 'vendor' ? '🏪' : '👤'}</span>
                         <div>
@@ -750,26 +750,26 @@ const RiderDashboard = () => {
             <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <User size={18} color="#F97316" /> Información personal
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Nombre</label>
                 <input value={profileForm.firstName || ''} onChange={e => setProfileForm({ ...profileForm, firstName: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
                   placeholder="Nombre" />
               </div>
-              <div>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Apellido</label>
                 <input value={profileForm.lastName || ''} onChange={e => setProfileForm({ ...profileForm, lastName: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
                   placeholder="Apellido" />
               </div>
-              <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ flex: '1 1 100%' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Teléfono</label>
                 <input value={profileForm.phone || ''} onChange={e => setProfileForm({ ...profileForm, phone: formatPhone(e.target.value) })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1px solid ${profileForm.phone ? (isValidPhone(profileForm.phone) ? '#16a34a' : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }}
                   placeholder="+569XXXXXXXX" />
               </div>
-              <div>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Región</label>
                 <select value={profileForm.region || ''} onChange={e => setProfileForm({ ...profileForm, region: e.target.value, comuna: '' })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
@@ -777,7 +777,7 @@ const RiderDashboard = () => {
                   {REGIONES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </div>
-              <div>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Comuna</label>
                 <select value={profileForm.comuna || ''} onChange={e => setProfileForm({ ...profileForm, comuna: e.target.value })}
                   disabled={!profileForm.region}
@@ -789,20 +789,20 @@ const RiderDashboard = () => {
             </div>
             {/* Read-only info */}
             <div style={{ marginTop: 16, padding: '12px 16px', background: '#f9fafb', borderRadius: 10 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div style={{ flex: '1 1 140px', minWidth: 0 }}>
                   <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Email</span>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{profile?.email || '—'}</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0', wordBreak: 'break-all' }}>{profile?.email || '—'}</p>
                 </div>
-                <div>
+                <div style={{ flex: '1 1 140px' }}>
                   <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Documento</span>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{idType?.toUpperCase()}: {idNumber || '—'}</p>
                 </div>
-                <div>
+                <div style={{ flex: '1 1 140px' }}>
                   <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Vehículo</span>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{VEHICLE_LABELS[vehicleType] || vehicleType || '—'}</p>
                 </div>
-                <div>
+                <div style={{ flex: '1 1 140px' }}>
                   <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>Miembro desde</span>
                   <p style={{ fontSize: 13, fontWeight: 600, color: '#2F3A40', margin: '2px 0 0' }}>{fmtDate(profile?.registeredAt)}</p>
                 </div>
@@ -816,8 +816,8 @@ const RiderDashboard = () => {
               <CreditCard size={18} color="#00A8E8" /> Cuenta bancaria
             </h3>
             <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>Aquí recibirás tus pagos semanales. Asegúrate de ingresar datos válidos.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div style={{ gridColumn: 'span 2' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ flex: '1 1 100%' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Banco</label>
                 <select value={profileForm.bankName || ''} onChange={e => setProfileForm({ ...profileForm, bankName: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
@@ -825,7 +825,7 @@ const RiderDashboard = () => {
                   {BANK_OPTIONS.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
               </div>
-              <div>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Tipo de cuenta</label>
                 <select value={profileForm.bankAccountType || ''} onChange={e => setProfileForm({ ...profileForm, bankAccountType: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, background: '#fff', boxSizing: 'border-box' }}>
@@ -833,7 +833,7 @@ const RiderDashboard = () => {
                   {ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
-              <div>
+              <div style={{ flex: '1 1 180px' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Número de cuenta</label>
                 <div style={{ position: 'relative' }}>
                   <input type={showAccount ? 'text' : 'password'} value={profileForm.bankAccountNumber || ''}
