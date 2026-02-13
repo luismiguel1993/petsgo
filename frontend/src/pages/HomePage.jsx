@@ -4,6 +4,7 @@ import { ShoppingCart, Star, Truck, Heart, Sparkles, ChevronRight, ArrowRight, M
 import { useCart } from '../context/CartContext';
 import { Minus } from 'lucide-react';
 import { getPublicSettings, getCategories } from '../services/api';
+import PromoSlider from '../components/PromoSlider';
 
 const FALLBACK_CATEGORIES = [
   { name: 'Perros', emoji: '🐕', count: '+500 productos', link: '/categoria/Perros' },
@@ -709,6 +710,9 @@ const HomePage = () => {
         </section>
 
       </div>
+
+      {/* Promotional slider — alternates store/rider ads */}
+      <PromoSlider />
     </div>
   );
 };
