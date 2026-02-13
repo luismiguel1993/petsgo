@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff, Check, X, AlertCircle, Truck, Mail, Shield } from 'lucide-react';
-import { registerRider, verifyRiderEmail, resendRiderVerification } from '../services/api';
+import { registerRider, verifyRiderEmail, resendRiderVerification, getRiderPolicy } from '../services/api';
 import { REGIONES, getComunas, validateRut, formatRut, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, sanitizeName, isValidName, checkFormForSqlInjection } from '../utils/chile';
 
 const inputStyle = {
@@ -32,6 +32,9 @@ const RiderRegisterPage = () => {
   const [loading, setLoading] = useState(false);
   const [verifyCode, setVerifyCode] = useState('');
   const [resending, setResending] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsContent, setTermsContent] = useState('');
   const navigate = useNavigate();
 
   const handleChange = (field) => (e) => {
@@ -77,6 +80,7 @@ const RiderRegisterPage = () => {
     if (!form.vehicle) errors.push('Selecciona un vehículo o medio de transporte');
     if (!form.region) errors.push('Región es obligatoria');
     if (!form.comuna) errors.push('Comuna es obligatoria');
+    if (!acceptTerms) errors.push('Debes aceptar los Términos y Condiciones del Rider');
     if (errors.length) { setError(errors.join('. ')); return; }
 
     setLoading(true);
@@ -87,6 +91,7 @@ const RiderRegisterPage = () => {
         id_type: form.id_type, id_number: form.id_number,
         phone: buildFullPhone(form.phone), birth_date: form.birth_date, vehicle: form.vehicle,
         region: form.region, comuna: form.comuna,
+        accept_terms: true,
       });
       setStep(2);
       setSuccess('');
@@ -329,6 +334,27 @@ const RiderRegisterPage = () => {
                   style={{ ...inputStyle, borderColor: form.confirmPassword ? (form.password === form.confirmPassword ? '#16a34a' : '#dc2626') : '#e5e7eb' }} />
               </div>
 
+              {/* Terms acceptance */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px 18px', background: acceptTerms ? '#f0fdf4' : '#fff7ed', border: `1.5px solid ${acceptTerms ? '#86efac' : '#fed7aa'}`, borderRadius: '12px' }}>
+                <input type="checkbox" id="accept_terms" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)}
+                  style={{ width: 18, height: 18, marginTop: 2, accentColor: '#22C55E', cursor: 'pointer', flexShrink: 0 }} />
+                <label htmlFor="accept_terms" style={{ fontSize: '13px', color: '#2F3A40', cursor: 'pointer', lineHeight: 1.5 }}>
+                  He leído y acepto los{' '}
+                  <button type="button" onClick={async () => {
+                    setShowTermsModal(true);
+                    if (!termsContent) {
+                      try {
+                        const res = await getRiderPolicy();
+                        setTermsContent(res.data?.terms || res.data?.rider_terms || 'No se pudieron cargar los términos.');
+                      } catch { setTermsContent('No se pudieron cargar los términos. Intenta más tarde.'); }
+                    }
+                  }} style={{ background: 'none', border: 'none', color: '#F59E0B', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: '13px' }}>
+                    Términos y Condiciones del Rider
+                  </button>
+                  {' '}(comisiones, pagos, obligaciones).
+                </label>
+              </div>
+
               {/* Info box about process */}
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '12px', padding: '14px 18px', fontSize: '12px', color: '#0369a1' }}>
                 <strong>📋 Proceso de registro:</strong>
@@ -443,6 +469,33 @@ const RiderRegisterPage = () => {
           </p>
         </div>
       </div>
+
+      {/* ══════ TERMS MODAL ══════ */}
+      {showTermsModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          onClick={() => setShowTermsModal(false)}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} />
+          <div onClick={e => e.stopPropagation()} style={{
+            position: 'relative', background: '#fff', borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 600,
+            maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontWeight: 900, color: '#2F3A40', fontSize: 18 }}>📋 Términos y Condiciones del Rider</h3>
+              <button onClick={() => setShowTermsModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9ca3af', fontWeight: 700 }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
+              {termsContent || '⏳ Cargando términos...'}
+            </div>
+            <button onClick={() => { setAcceptTerms(true); setShowTermsModal(false); }} style={{
+              marginTop: 16, width: '100%', padding: 14, background: 'linear-gradient(135deg, #22C55E, #16a34a)',
+              color: '#fff', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(34,197,94,0.35)',
+            }}>
+              ✅ He leído y acepto los términos
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

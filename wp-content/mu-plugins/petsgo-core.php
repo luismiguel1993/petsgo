@@ -81,6 +81,9 @@ class PetsGo_Core {
             'petsgo_ticket_count',
             'petsgo_save_legal',
             'petsgo_save_faqs',
+            'petsgo_search_rider_payouts',
+            'petsgo_process_payout',
+            'petsgo_generate_weekly_payouts',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -215,6 +218,62 @@ class PetsGo_Core {
             }
         }
         return '';
+    }
+
+    /**
+     * IP-based rate limiting for public endpoints.
+     * @param string $action   Unique key for the action (e.g. 'register', 'register_rider', 'vendor_lead')
+     * @param int    $max      Max allowed requests in $window seconds (default 3)
+     * @param int    $window   Time window in seconds to count requests (default 1200 = 20 min)
+     * @param int    $cooldown Cooldown in seconds after exceeding limit (default 900 = 15 min)
+     * @return WP_Error|null   Returns WP_Error if rate limited, null if OK
+     */
+    private function check_rate_limit($action, $max = 3, $window = 1200, $cooldown = 900) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $ip_hash = md5($ip . $action);
+        $transient_key  = 'petsgo_rl_' . $ip_hash;
+        $cooldown_key   = 'petsgo_cd_' . $ip_hash;
+
+        // Check if currently in cooldown
+        $cd = get_transient($cooldown_key);
+        if ($cd) {
+            $remaining = intval($cd) - time();
+            if ($remaining <= 0) $remaining = $cooldown;
+            $mins = ceil($remaining / 60);
+            return new WP_Error(
+                'rate_limited',
+                "Demasiadas solicitudes desde tu dirección. Por favor espera {$mins} minutos e intenta nuevamente.",
+                ['status' => 429]
+            );
+        }
+
+        // Get current request log
+        $log = get_transient($transient_key);
+        if (!is_array($log)) $log = [];
+
+        $now = time();
+        // Filter to only requests within the window
+        $log = array_filter($log, function($ts) use ($now, $window) {
+            return ($now - $ts) < $window;
+        });
+
+        if (count($log) >= $max) {
+            // Set cooldown
+            set_transient($cooldown_key, $now + $cooldown, $cooldown);
+            $mins = ceil($cooldown / 60);
+            $this->audit('rate_limit', 'security', 0, "IP {$ip} bloqueada {$mins}min en {$action} ({$max} solicitudes en " . ($window/60) . "min)");
+            return new WP_Error(
+                'rate_limited',
+                "Has excedido el límite de solicitudes. Por favor espera {$mins} minutos e intenta nuevamente.",
+                ['status' => 429]
+            );
+        }
+
+        // Log this request
+        $log[] = $now;
+        set_transient($transient_key, $log, $window);
+
+        return null;
     }
 
     private function check_stock_alert($product_id) {
@@ -482,6 +541,16 @@ class PetsGo_Core {
             'plan_annual_free_months' => '2',
             'free_shipping_min' => '39990',
             'tickets_bcc_email' => '',
+            // ── Rider / Delivery / Comisiones ──
+            'rider_commission_pct'  => '88',   // % que recibe el rider del delivery_fee
+            'store_fee_pct'         => '5',    // % que paga la tienda sobre delivery_fee
+            'petsgo_fee_pct'        => '7',    // % que retiene PetsGo del delivery_fee
+            'delivery_fee_min'      => '2000', // fee mínimo CLP
+            'delivery_fee_max'      => '5000', // fee máximo CLP
+            'delivery_base_rate'    => '2000', // tarifa base CLP
+            'delivery_per_km'       => '400',  // CLP extra por km
+            'payout_day'            => 'thursday',  // día de pago semanal
+            'payout_cycle'          => 'weekly',    // ciclo: weekly
         ];
     }
 
@@ -2318,6 +2387,7 @@ class PetsGo_Core {
                 <button class="petsgo-tab active" data-tab="pd-tab-deliveries" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';">📦 Entregas</button>
                 <button class="petsgo-tab" data-tab="pd-tab-riders" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadRiderDocs();">📋 Documentos Riders</button>
                 <button class="petsgo-tab" data-tab="pd-tab-ratings" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadRiderRatings();">⭐ Valoraciones</button>
+                <button class="petsgo-tab" data-tab="pd-tab-payouts" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadPayouts();">💰 Pagos Riders</button>
             </div>
             <?php endif; ?>
             <?php if (!$is_admin): ?><div class="petsgo-info-bar">📌 Estás viendo solo tus entregas asignadas.</div><?php endif; ?>
@@ -2354,6 +2424,38 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pdrt-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span></div>
                 <table class="petsgo-table"><thead><tr><th>Rider</th><th>Pedido #</th><th>Valoró</th><th>Tipo</th><th>⭐ Rating</th><th>Comentario</th><th>Fecha</th></tr></thead>
                 <tbody id="pdrt-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+            </div>
+            <!-- Pagos Riders Tab -->
+            <div id="pd-tab-payouts" class="pd-tab-content" style="display:none;">
+                <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
+                    <select id="pdp-filter-status"><option value="">Todos los estados</option><option value="pending">⏳ Pendientes</option><option value="paid">✅ Pagados</option><option value="failed">❌ Fallidos</option></select>
+                    <select id="pdp-filter-rider"><option value="">Todos los riders</option>
+                        <?php foreach ($riders as $r): ?><option value="<?php echo $r->ID; ?>"><?php echo esc_html($r->display_name); ?></option><?php endforeach; ?>
+                    </select>
+                    <button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="loadPayouts()">🔍 Buscar</button>
+                    <button class="petsgo-btn petsgo-btn-success petsgo-btn-sm" onclick="generateWeeklyPayouts()" style="margin-left:auto;">📊 Generar Liquidación Semanal</button>
+                    <span class="petsgo-loader" id="pdp-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+                </div>
+                <div id="pdp-summary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+                    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+                        <span style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Total Pendiente</span>
+                        <p id="pdp-total-pending" style="font-size:22px;font-weight:900;color:#F97316;margin:4px 0 0;">$0</p>
+                    </div>
+                    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+                        <span style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Total Pagado (mes)</span>
+                        <p id="pdp-total-paid" style="font-size:22px;font-weight:900;color:#22C55E;margin:4px 0 0;">$0</p>
+                    </div>
+                    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+                        <span style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Riders Activos</span>
+                        <p id="pdp-active-riders" style="font-size:22px;font-weight:900;color:#2F3A40;margin:4px 0 0;">0</p>
+                    </div>
+                    <div style="background:#fff;border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);text-align:center;">
+                        <span style="font-size:11px;color:#888;font-weight:700;text-transform:uppercase;">Comisión Rider</span>
+                        <p style="font-size:22px;font-weight:900;color:#00A8E8;margin:4px 0 0;"><?php echo intval($this->pg_setting('rider_commission_pct', 88)); ?>%</p>
+                    </div>
+                </div>
+                <table class="petsgo-table"><thead><tr><th>ID</th><th>Rider</th><th>Período</th><th>Entregas</th><th>Ganado</th><th>Neto</th><th>Estado</th><th>Pagado</th><th>Acciones</th></tr></thead>
+                <tbody id="pdp-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
             </div>
             <?php endif; ?>
         </div>
@@ -2452,6 +2554,55 @@ class PetsGo_Core {
                         h+='<td>'+PG.esc(d.comment||'Sin comentario')+'</td><td>'+PG.fdate(d.created_at)+'</td></tr>';
                     });
                     $('#pdrt-body').html(h);
+                });
+            };
+            // === Payouts tab ===
+            window.loadPayouts=function(){
+                $('#pdp-loader').addClass('active');
+                PG.post('petsgo_search_rider_payouts',{status:$('#pdp-filter-status').val(),rider_id:$('#pdp-filter-rider').val()},function(r){
+                    $('#pdp-loader').removeClass('active');
+                    if(!r.success||!r.data.length){$('#pdp-body').html('<tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Sin pagos registrados.</td></tr>');updatePayoutSummary([]);return;}
+                    var h='',totalPending=0,totalPaid=0,activeRiders={};
+                    $.each(r.data,function(i,p){
+                        var stColors={pending:'#F97316',paid:'#22C55E',failed:'#EF4444',processing:'#3B82F6'};
+                        var stLabels={pending:'⏳ Pendiente',paid:'✅ Pagado',failed:'❌ Fallido',processing:'🔄 Procesando'};
+                        var stBadge='<span style="background:'+(stColors[p.status]||'#6b7280')+'15;color:'+(stColors[p.status]||'#6b7280')+';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">'+(stLabels[p.status]||p.status)+'</span>';
+                        if(p.status==='pending')totalPending+=parseFloat(p.net_amount);
+                        if(p.status==='paid')totalPaid+=parseFloat(p.net_amount);
+                        activeRiders[p.rider_id]=true;
+                        h+='<tr><td>'+p.id+'</td><td>'+PG.esc(p.rider_name)+'</td>';
+                        h+='<td>'+PG.fdate(p.period_start)+' — '+PG.fdate(p.period_end)+'</td>';
+                        h+='<td>'+p.total_deliveries+'</td>';
+                        h+='<td>'+PG.money(p.total_earned)+'</td><td>'+PG.money(p.net_amount)+'</td>';
+                        h+='<td>'+stBadge+'</td><td>'+(p.paid_at?PG.fdate(p.paid_at):'—')+'</td>';
+                        h+='<td>';
+                        if(p.status==='pending'){
+                            h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-success pdp-action" data-id="'+p.id+'" data-action="paid" title="Marcar pagado">💸 Pagar</button> ';
+                            h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-danger pdp-action" data-id="'+p.id+'" data-action="failed" title="Marcar fallido">❌</button>';
+                        } else h+='<span style="color:#aaa;font-size:11px;">Procesado</span>';
+                        h+='</td></tr>';
+                    });
+                    $('#pdp-body').html(h);
+                    $('#pdp-total-pending').text(PG.money(totalPending));
+                    $('#pdp-total-paid').text(PG.money(totalPaid));
+                    $('#pdp-active-riders').text(Object.keys(activeRiders).length);
+                });
+            };
+            function updatePayoutSummary(data){$('#pdp-total-pending').text('$0');$('#pdp-total-paid').text('$0');$('#pdp-active-riders').text('0');}
+            $(document).on('click','.pdp-action',function(){
+                var id=$(this).data('id'),action=$(this).data('action');
+                var notes='';
+                if(action==='failed'){notes=prompt('Motivo del fallo:');if(notes===null)return;}
+                if(action==='paid'&&!confirm('¿Confirmar pago de este payout?'))return;
+                PG.post('petsgo_process_payout',{payout_id:id,payout_action:action,notes:notes},function(r){
+                    if(r.success)loadPayouts();else alert(r.data);
+                });
+            });
+            window.generateWeeklyPayouts=function(){
+                if(!confirm('¿Generar liquidación semanal (lunes a domingo pasado)? Esto creará pagos pendientes para todos los riders con entregas.'))return;
+                PG.post('petsgo_generate_weekly_payouts',{},function(r){
+                    alert(r.data||r.message||'Procesado');
+                    if(r.success)loadPayouts();
                 });
             };
             <?php endif; ?>
@@ -4399,6 +4550,56 @@ Dashboard con analíticas"></textarea>
                         <div class="field-hint">Monto mínimo de compra para despacho gratis. Ej: 39990 = $39.990. Se muestra en Header y HomePage.</div>
                     </div>
 
+                    <h3 style="margin-top:24px;">💰 Comisiones y Tarifas de Delivery</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+                        <div class="petsgo-field">
+                            <label>% Rider (del fee)</label>
+                            <input type="number" id="ps-rider-pct" value="<?php echo $v('rider_commission_pct'); ?>" min="0" max="100" step="1" style="width:80px;">
+                            <div class="field-hint">% del delivery fee que recibe el rider.</div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>% PetsGo (del fee)</label>
+                            <input type="number" id="ps-petsgo-pct" value="<?php echo $v('petsgo_fee_pct'); ?>" min="0" max="100" step="1" style="width:80px;">
+                            <div class="field-hint">% que retiene PetsGo.</div>
+                        </div>
+                        <div class="petsgo-field">
+                            <label>% Tienda (del fee)</label>
+                            <input type="number" id="ps-store-pct" value="<?php echo $v('store_fee_pct'); ?>" min="0" max="100" step="1" style="width:80px;">
+                            <div class="field-hint">% que paga la tienda.</div>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="petsgo-field">
+                            <label>Fee mínimo (CLP)</label>
+                            <input type="number" id="ps-fee-min" value="<?php echo $v('delivery_fee_min'); ?>" min="0" step="500" style="width:110px;">
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Fee máximo (CLP)</label>
+                            <input type="number" id="ps-fee-max" value="<?php echo $v('delivery_fee_max'); ?>" min="0" step="500" style="width:110px;">
+                        </div>
+                        <div class="petsgo-field">
+                            <label>Tarifa base (CLP)</label>
+                            <input type="number" id="ps-base-rate" value="<?php echo $v('delivery_base_rate'); ?>" min="0" step="100" style="width:110px;">
+                        </div>
+                        <div class="petsgo-field">
+                            <label>CLP por km extra</label>
+                            <input type="number" id="ps-per-km" value="<?php echo $v('delivery_per_km'); ?>" min="0" step="50" style="width:110px;">
+                        </div>
+                    </div>
+                    <div class="petsgo-field">
+                        <label>Día de pago semanal</label>
+                        <select id="ps-payout-day" style="width:160px;">
+                            <?php $pd = $v('payout_day'); foreach(['monday'=>'Lunes','tuesday'=>'Martes','wednesday'=>'Miércoles','thursday'=>'Jueves','friday'=>'Viernes'] as $dv=>$dl): ?>
+                            <option value="<?php echo $dv; ?>" <?php echo $pd===$dv?'selected':''; ?>><?php echo $dl; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="field-hint">Día en que se procesan los pagos a riders. El ciclo es lunes a domingo.</div>
+                    </div>
+                    <div style="margin-top:12px;padding:12px 16px;background:#f0f9ff;border-radius:8px;border-left:4px solid #00A8E8;font-size:12px;color:#1e3a5f;">
+                        <strong>ℹ️ Fórmula:</strong> delivery_fee = tarifa_base + (distancia_km × CLP_por_km), acotado entre fee_min y fee_max.<br>
+                        <strong>Split:</strong> Rider <?php echo $v('rider_commission_pct'); ?>% · PetsGo <?php echo $v('petsgo_fee_pct'); ?>% · Tienda <?php echo $v('store_fee_pct'); ?>%.
+                    </div>
+
                     <h3 style="margin-top:24px;">📝 Footer del Sitio</h3>
                     <div class="petsgo-field">
                         <label>Descripción del footer</label>
@@ -4485,7 +4686,15 @@ Dashboard con analíticas"></textarea>
                     color_danger:$('#ps-color-danger').val(),
                     logo_id:$('#ps-logo-id').val(),
                     plan_annual_free_months:$('#ps-annual-free').val(),
-                    free_shipping_min:$('#ps-free-shipping').val()
+                    free_shipping_min:$('#ps-free-shipping').val(),
+                    rider_commission_pct:$('#ps-rider-pct').val(),
+                    petsgo_fee_pct:$('#ps-petsgo-pct').val(),
+                    store_fee_pct:$('#ps-store-pct').val(),
+                    delivery_fee_min:$('#ps-fee-min').val(),
+                    delivery_fee_max:$('#ps-fee-max').val(),
+                    delivery_base_rate:$('#ps-base-rate').val(),
+                    delivery_per_km:$('#ps-per-km').val(),
+                    payout_day:$('#ps-payout-day').val()
                 },function(r){
                     $('#ps-loader').removeClass('active');
                     var c=r.success?'#d4edda':'#f8d7da',t=r.success?'#155724':'#721c24';
@@ -4516,6 +4725,8 @@ Dashboard con analíticas"></textarea>
                     $settings[$key] = sanitize_hex_color($_POST[$key]) ?: '';
                 } elseif ($key === 'logo_id' || $key === 'plan_annual_free_months' || $key === 'free_shipping_min') {
                     $settings[$key] = intval($_POST[$key]);
+                } elseif (in_array($key, ['rider_commission_pct','store_fee_pct','petsgo_fee_pct','delivery_fee_min','delivery_fee_max','delivery_base_rate','delivery_per_km'])) {
+                    $settings[$key] = strval(intval($_POST[$key]));
                 } elseif (strpos($key, 'social_') === 0 || strpos($key, 'website') !== false) {
                     $settings[$key] = esc_url_raw($_POST[$key]);
                 } else {
@@ -5178,7 +5389,7 @@ Dashboard con analíticas"></textarea>
      * Ensure rider documents, delivery ratings tables, and delivery_method column exist.
      */
     public function ensure_rider_tables() {
-        if (get_option('petsgo_rider_tables_v2', false)) return;
+        if (get_option('petsgo_rider_tables_v3', false)) return;
         global $wpdb;
         $charset = $wpdb->get_charset_collate();
 
@@ -5267,7 +5478,35 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN comuna varchar(60) DEFAULT NULL AFTER region");
         }
 
-        update_option('petsgo_rider_tables_v2', true);
+        // v3: rider_earning per order + delivery_distance_km + acceptance tracking
+        $ocols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_orders", 0);
+        if (!in_array('rider_earning', $ocols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN rider_earning decimal(10,2) DEFAULT 0 AFTER petsgo_commission");
+        }
+        if (!in_array('delivery_distance_km', $ocols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN delivery_distance_km decimal(6,2) DEFAULT NULL AFTER delivery_fee");
+        }
+        if (!in_array('store_fee', $ocols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN store_fee decimal(10,2) DEFAULT 0 AFTER petsgo_commission");
+        }
+        if (!in_array('petsgo_delivery_fee', $ocols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN petsgo_delivery_fee decimal(10,2) DEFAULT 0 AFTER store_fee");
+        }
+
+        // Rider acceptance tracking table
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_rider_delivery_offers (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            order_id bigint(20) NOT NULL,
+            rider_id bigint(20) NOT NULL,
+            status varchar(20) DEFAULT 'pending',
+            offered_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            responded_at datetime DEFAULT NULL,
+            PRIMARY KEY (id),
+            KEY order_rider (order_id, rider_id),
+            KEY rider_id (rider_id)
+        ) {$charset}");
+
+        update_option('petsgo_rider_tables_v3', true);
     }
 
     // ============================================================
@@ -5548,6 +5787,10 @@ Dashboard con analíticas"></textarea>
         // Delivery ratings
         register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/rate-rider',['methods'=>'POST','callback'=>[$this,'api_rate_rider'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/rider/ratings',['methods'=>'GET','callback'=>[$this,'api_get_rider_ratings'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        // Delivery fee calculator (public)
+        register_rest_route('petsgo/v1','/delivery/calculate-fee',['methods'=>'POST','callback'=>[$this,'api_calculate_delivery_fee'],'permission_callback'=>'__return_true']);
+        // Rider policy (public — for registration page & info)
+        register_rest_route('petsgo/v1','/rider/policy',['methods'=>'GET','callback'=>[$this,'api_get_rider_policy'],'permission_callback'=>'__return_true']);
         // Categories (public read)
         register_rest_route('petsgo/v1','/categories',['methods'=>'GET','callback'=>[$this,'api_get_categories'],'permission_callback'=>'__return_true']);
         // Tickets (logged in)
@@ -5730,6 +5973,47 @@ Dashboard con analíticas"></textarea>
             . '<p>PetsGo no será responsable por retrasos en la entrega ocasionados por eventos de fuerza mayor como desastres naturales, restricciones sanitarias, manifestaciones u otros eventos fuera de nuestro control.</p>';
     }
 
+    private function terminos_rider_default_content() {
+        return '<h2>1. Aceptación de Términos</h2>' . "\n"
+            . '<p>Al registrarte como Rider en PetsGo, aceptas los presentes términos y condiciones que regulan tu participación como repartidor independiente en nuestra plataforma.</p>' . "\n\n"
+            . '<h2>2. Relación con PetsGo</h2>' . "\n"
+            . '<p>Tu participación como Rider NO constituye una relación laboral con PetsGo. Actúas como prestador de servicios independiente, responsable de tus propias obligaciones tributarias y previsionales.</p>' . "\n\n"
+            . '<h2>3. Estructura de Comisiones y Pagos</h2>' . "\n"
+            . '<p>Por cada entrega completada, el costo de despacho se distribuye de la siguiente forma:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li><strong>Rider:</strong> Recibe el 88% del costo de despacho.</li>' . "\n"
+            . '<li><strong>PetsGo:</strong> Retiene el 7% como comisión por uso de plataforma.</li>' . "\n"
+            . '<li><strong>Tienda:</strong> Contribuye con el 5% como fee de gestión.</li>' . "\n"
+            . '</ul>' . "\n"
+            . '<p><em>Nota: Los porcentajes pueden ser modificados por PetsGo con previo aviso de al menos 15 días.</em></p>' . "\n\n"
+            . '<h2>4. Ciclo de Pagos</h2>' . "\n"
+            . '<p>Los pagos se procesan de forma semanal:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li>El período de liquidación va de <strong>lunes a domingo</strong>.</li>' . "\n"
+            . '<li>Los pagos se procesan el <strong>jueves</strong> de la semana siguiente.</li>' . "\n"
+            . '<li>El depósito se realiza en la cuenta bancaria registrada en tu perfil.</li>' . "\n"
+            . '<li>Es tu responsabilidad mantener actualizada tu información bancaria.</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>5. Tarifa de Despacho</h2>' . "\n"
+            . '<p>La tarifa de despacho se calcula según la distancia entre la tienda y el cliente, con un rango entre <strong>$2.000 y $5.000 CLP</strong>. La fórmula considera una tarifa base más un monto por kilómetro recorrido.</p>' . "\n\n"
+            . '<h2>6. Obligaciones del Rider</h2>' . "\n"
+            . '<ul>' . "\n"
+            . '<li>Mantener documentos vigentes y actualizados.</li>' . "\n"
+            . '<li>Cumplir con las entregas aceptadas en tiempo y forma.</li>' . "\n"
+            . '<li>Tratar con respeto a clientes, tiendas y personal de PetsGo.</li>' . "\n"
+            . '<li>Mantener su medio de transporte en condiciones adecuadas.</li>' . "\n"
+            . '<li>Informar inmediatamente cualquier incidente durante la entrega.</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>7. Tasa de Aceptación</h2>' . "\n"
+            . '<p>PetsGo monitorea tu tasa de aceptación de entregas. Una tasa de aceptación inferior al 60% de forma sostenida puede resultar en restricciones temporales o desactivación de tu cuenta.</p>' . "\n\n"
+            . '<h2>8. Valoraciones</h2>' . "\n"
+            . '<p>Clientes y tiendas pueden valorar tu servicio de 1 a 5 estrellas. Mantener un rating promedio superior a 3.5 es requisito para continuar como Rider activo.</p>' . "\n\n"
+            . '<h2>9. Desactivación de Cuenta</h2>' . "\n"
+            . '<p>PetsGo se reserva el derecho de desactivar tu cuenta de Rider en caso de incumplimiento grave de estos términos, comportamiento inadecuado, fraude o valoraciones consistentemente negativas.</p>' . "\n\n"
+            . '<h2>10. Modificaciones</h2>' . "\n"
+            . '<p>PetsGo puede modificar estos términos en cualquier momento, notificando los cambios con al menos 15 días de anticipación. El uso continuado de la plataforma después de dicho período implica la aceptación de los nuevos términos.</p>';
+    }
+
     private function help_faqs_defaults() {
         return [
             ['q' => '¿Cómo creo un ticket de soporte?', 'a' => 'Si eres cliente o rider, inicia sesión y ve a la sección "Soporte" en tu perfil. Si eres una tienda, crea el ticket desde el portal de administración.'],
@@ -5743,7 +6027,7 @@ Dashboard con analíticas"></textarea>
     // --- Legal / Contenido público ---
     public function api_get_legal_page($request) {
         $slug = sanitize_key($request->get_param('slug'));
-        $allowed = ['centro-de-ayuda','terminos-y-condiciones','politica-de-privacidad','politica-de-envios'];
+        $allowed = ['centro-de-ayuda','terminos-y-condiciones','politica-de-privacidad','politica-de-envios','terminos-rider'];
         if (!in_array($slug, $allowed)) return new WP_Error('not_found','Página no encontrada',['status'=>404]);
         $opt_key = 'petsgo_legal_' . str_replace('-','_',$slug);
         $content = get_option($opt_key);
@@ -5753,6 +6037,7 @@ Dashboard con analíticas"></textarea>
                 'terminos-y-condiciones' => 'terminos_default_content',
                 'politica-de-privacidad' => 'privacidad_default_content',
                 'politica-de-envios'     => 'envios_default_content',
+                'terminos-rider'         => 'terminos_rider_default_content',
             ];
             if (isset($defaults_map[$slug])) {
                 $content = $this->{$defaults_map[$slug]}();
@@ -5898,6 +6183,10 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $p = $request->get_json_params();
 
+        // Rate limiting
+        $rl = $this->check_rate_limit('register');
+        if ($rl) return $rl;
+
         // Validate required fields
         $errors = [];
         $first_name = sanitize_text_field($p['first_name'] ?? '');
@@ -5910,6 +6199,7 @@ Dashboard con analíticas"></textarea>
         $birth_date = sanitize_text_field($p['birth_date'] ?? '');
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
+        $accept_terms = !empty($p['accept_terms']);
 
         // SQL injection check
         $sql_err = self::check_form_sql_injection($p);
@@ -5923,6 +6213,7 @@ Dashboard con analíticas"></textarea>
         elseif (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
         elseif (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
+        if (!$accept_terms) $errors[] = 'Debes aceptar los términos y condiciones del rider';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (email_exists($email)) $errors[] = 'Este email ya está registrado';
 
@@ -6020,6 +6311,10 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $p = $request->get_json_params();
 
+        // Rate limiting
+        $rl = $this->check_rate_limit('register_rider');
+        if ($rl) return $rl;
+
         $errors = [];
         $first_name = sanitize_text_field($p['first_name'] ?? '');
         $last_name  = sanitize_text_field($p['last_name'] ?? '');
@@ -6102,6 +6397,9 @@ Dashboard con analíticas"></textarea>
         }
         // Step 1: Set status to pending_email (must verify email before uploading docs)
         update_user_meta($uid, 'petsgo_rider_status', 'pending_email');
+        if ($accept_terms) {
+            update_user_meta($uid, 'petsgo_rider_terms_accepted', current_time('mysql'));
+        }
 
         // Generate email verification token
         $verify_token = bin2hex(random_bytes(32));
@@ -6394,7 +6692,7 @@ Dashboard con analíticas"></textarea>
             "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
         ));
         $total_earned = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
+            "SELECT COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
         ));
         $avg_rating = $wpdb->get_var($wpdb->prepare(
             "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $uid
@@ -6405,7 +6703,7 @@ Dashboard con analíticas"></textarea>
         // Current week earnings
         $week_start = date('Y-m-d', strtotime('monday this week'));
         $week_earned = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
+            "SELECT COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
         ));
         $week_deliveries = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
@@ -6416,8 +6714,20 @@ Dashboard con analíticas"></textarea>
         ));
         $pending_from = $last_payout_end ?: '2020-01-01';
         $pending_balance = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at > %s", $uid, $pending_from
+            "SELECT COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered' AND created_at > %s", $uid, $pending_from
         ));
+
+        // Acceptance rate
+        $total_offers = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d", $uid
+        ));
+        $accepted_offers = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d AND status='accepted'", $uid
+        ));
+        $acceptance_rate = $total_offers > 0 ? round(($accepted_offers / $total_offers) * 100, 1) : 100;
+
+        // Terms acceptance
+        $terms_accepted = get_user_meta($uid, 'petsgo_rider_terms_accepted', true);
 
         $registered_at = $user->user_registered;
 
@@ -6450,6 +6760,9 @@ Dashboard con analíticas"></textarea>
             'weekEarned'       => $week_earned,
             'weekDeliveries'   => $week_deliveries,
             'pendingBalance'   => $pending_balance,
+            'acceptanceRate'   => $acceptance_rate,
+            'totalOffers'      => $total_offers,
+            'termsAccepted'    => $terms_accepted ? true : false,
         ]);
     }
 
@@ -6520,9 +6833,16 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $uid = get_current_user_id();
 
+        // Commission config
+        $rider_pct  = floatval($this->pg_setting('rider_commission_pct', 88));
+        $store_pct  = floatval($this->pg_setting('store_fee_pct', 5));
+        $petsgo_pct = floatval($this->pg_setting('petsgo_fee_pct', 7));
+        $payout_day = $this->pg_setting('payout_day', 'thursday');
+
         // All delivered orders for this rider (history)
         $deliveries = $wpdb->get_results($wpdb->prepare(
-            "SELECT o.id, o.total_amount, o.delivery_fee, o.status, o.created_at,
+            "SELECT o.id, o.total_amount, o.delivery_fee, o.rider_earning, o.store_fee,
+                    o.petsgo_delivery_fee, o.delivery_distance_km, o.status, o.created_at,
                     v.store_name, u.display_name AS customer_name, o.shipping_address AS address
              FROM {$wpdb->prefix}petsgo_orders o
              JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
@@ -6531,13 +6851,13 @@ Dashboard con analíticas"></textarea>
              ORDER BY o.created_at DESC", $uid
         ));
 
-        // Weekly earnings breakdown
+        // Weekly earnings breakdown — use rider_earning when available, fallback delivery_fee
         $weekly = $wpdb->get_results($wpdb->prepare(
             "SELECT YEARWEEK(created_at,1) as yw,
                     MIN(DATE(created_at)) AS week_start,
                     MAX(DATE(created_at)) AS week_end,
                     COUNT(*) AS deliveries,
-                    SUM(delivery_fee) AS earned
+                    SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END) AS earned
              FROM {$wpdb->prefix}petsgo_orders
              WHERE rider_id=%d AND status='delivered'
              GROUP BY YEARWEEK(created_at,1)
@@ -6550,22 +6870,236 @@ Dashboard con analíticas"></textarea>
             "SELECT * FROM {$wpdb->prefix}petsgo_rider_payouts WHERE rider_id=%d ORDER BY period_end DESC LIMIT 20", $uid
         ));
 
-        // Summary stats
+        // Summary stats — use rider_earning when available
         $total_earned = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(delivery_fee),0) FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
+            "SELECT COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0)
+             FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $uid
         ));
         $total_paid = (float) $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(net_amount),0) FROM {$wpdb->prefix}petsgo_rider_payouts WHERE rider_id=%d AND status='paid'", $uid
         ));
 
+        // Acceptance rate
+        $total_offers = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d", $uid
+        ));
+        $accepted_offers = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d AND status='accepted'", $uid
+        ));
+        $acceptance_rate = $total_offers > 0 ? round(($accepted_offers / $total_offers) * 100, 1) : 100;
+
+        // Current week stats
+        $week_start = date('Y-m-d', strtotime('monday this week'));
+        $current_week = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(*) AS deliveries,
+                    COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) AS earned
+             FROM {$wpdb->prefix}petsgo_orders
+             WHERE rider_id=%d AND status='delivered' AND created_at >= %s", $uid, $week_start
+        ));
+
+        // Next payout date (next Thursday)
+        $next_payout = $this->get_next_payout_date($payout_day);
+
         return rest_ensure_response([
-            'deliveries'   => $deliveries,
-            'weekly'       => $weekly,
-            'payouts'      => $payouts,
-            'totalEarned'  => $total_earned,
-            'totalPaid'    => $total_paid,
+            'deliveries'     => $deliveries,
+            'weekly'         => $weekly,
+            'payouts'        => $payouts,
+            'totalEarned'    => $total_earned,
+            'totalPaid'      => $total_paid,
             'pendingBalance' => $total_earned - $total_paid,
+            'acceptanceRate' => $acceptance_rate,
+            'totalOffers'    => $total_offers,
+            'currentWeek'    => [
+                'deliveries' => (int) ($current_week->deliveries ?? 0),
+                'earned'     => (float) ($current_week->earned ?? 0),
+                'start'      => $week_start,
+                'end'        => date('Y-m-d', strtotime('sunday this week')),
+            ],
+            'nextPayout'     => $next_payout,
+            'commission'     => [
+                'rider_pct'  => $rider_pct,
+                'store_pct'  => $store_pct,
+                'petsgo_pct' => $petsgo_pct,
+                'payout_day' => $payout_day,
+            ],
         ]);
+    }
+
+    /** Calculate next payout date */
+    private function get_next_payout_date($day = 'thursday') {
+        $days_map = ['monday'=>1,'tuesday'=>2,'wednesday'=>3,'thursday'=>4,'friday'=>5,'saturday'=>6,'sunday'=>7];
+        $target = $days_map[$day] ?? 4;
+        $today = new \DateTime();
+        $current_day = (int) $today->format('N');
+        $diff = $target - $current_day;
+        if ($diff <= 0) $diff += 7;
+        $next = clone $today;
+        $next->modify("+{$diff} days");
+        return $next->format('Y-m-d');
+    }
+
+    /** API: Calculate delivery fee based on distance */
+    public function api_calculate_delivery_fee($request) {
+        $p = $request->get_json_params();
+        $distance_km = floatval($p['distance_km'] ?? 0);
+
+        $base_rate = floatval($this->pg_setting('delivery_base_rate', 2000));
+        $per_km    = floatval($this->pg_setting('delivery_per_km', 400));
+        $fee_min   = floatval($this->pg_setting('delivery_fee_min', 2000));
+        $fee_max   = floatval($this->pg_setting('delivery_fee_max', 5000));
+
+        $calculated = $base_rate + ($distance_km * $per_km);
+        $fee = max($fee_min, min($fee_max, round($calculated)));
+
+        // Commission splits preview
+        $rider_pct  = floatval($this->pg_setting('rider_commission_pct', 88));
+        $store_pct  = floatval($this->pg_setting('store_fee_pct', 5));
+        $petsgo_pct = floatval($this->pg_setting('petsgo_fee_pct', 7));
+
+        return rest_ensure_response([
+            'delivery_fee'   => $fee,
+            'distance_km'    => $distance_km,
+            'breakdown' => [
+                'base_rate'      => $base_rate,
+                'per_km'         => $per_km,
+                'rider_earning'  => round($fee * $rider_pct / 100),
+                'store_fee'      => round($fee * $store_pct / 100),
+                'petsgo_fee'     => round($fee * $petsgo_pct / 100),
+            ],
+        ]);
+    }
+
+    /** API: Get rider commission policy (public) */
+    public function api_get_rider_policy() {
+        $rider_pct  = floatval($this->pg_setting('rider_commission_pct', 88));
+        $store_pct  = floatval($this->pg_setting('store_fee_pct', 5));
+        $petsgo_pct = floatval($this->pg_setting('petsgo_fee_pct', 7));
+        $fee_min    = floatval($this->pg_setting('delivery_fee_min', 2000));
+        $fee_max    = floatval($this->pg_setting('delivery_fee_max', 5000));
+        $base_rate  = floatval($this->pg_setting('delivery_base_rate', 2000));
+        $per_km     = floatval($this->pg_setting('delivery_per_km', 400));
+        $payout_day = $this->pg_setting('payout_day', 'thursday');
+
+        $terms_content = get_option('petsgo_legal_terminos_rider', '');
+
+        return rest_ensure_response([
+            'rider_pct'   => $rider_pct,
+            'store_pct'   => $store_pct,
+            'petsgo_pct'  => $petsgo_pct,
+            'fee_min'     => $fee_min,
+            'fee_max'     => $fee_max,
+            'base_rate'   => $base_rate,
+            'per_km'      => $per_km,
+            'payout_day'  => $payout_day,
+            'payout_cycle'=> 'weekly',
+            'terms'       => $terms_content,
+        ]);
+    }
+
+    // ── AJAX: Search rider payouts (Admin) ──
+    public function petsgo_search_rider_payouts() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $rider_id = intval($_POST['rider_id'] ?? 0);
+
+        $where = '1=1';
+        $args = [];
+        if ($status) { $where .= " AND p.status = %s"; $args[] = $status; }
+        if ($rider_id) { $where .= " AND p.rider_id = %d"; $args[] = $rider_id; }
+
+        $sql = "SELECT p.*, u.display_name AS rider_name
+                FROM {$wpdb->prefix}petsgo_rider_payouts p
+                JOIN {$wpdb->users} u ON p.rider_id = u.ID
+                WHERE {$where}
+                ORDER BY p.created_at DESC LIMIT 200";
+
+        $payouts = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
+        wp_send_json_success($payouts);
+    }
+
+    // ── AJAX: Process individual payout (mark as paid) ──
+    public function petsgo_process_payout() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+
+        $payout_id = intval($_POST['payout_id'] ?? 0);
+        $action = sanitize_text_field($_POST['payout_action'] ?? 'paid');
+        if (!$payout_id) wp_send_json_error('ID requerido');
+
+        $payout = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_rider_payouts WHERE id=%d", $payout_id));
+        if (!$payout) wp_send_json_error('Payout no encontrado');
+
+        if ($action === 'paid') {
+            $wpdb->update("{$wpdb->prefix}petsgo_rider_payouts", [
+                'status' => 'paid', 'paid_at' => current_time('mysql'),
+            ], ['id' => $payout_id]);
+            $this->audit('payout_paid', 'payout', $payout_id, "Rider #{$payout->rider_id} · \${$payout->net_amount}");
+        } elseif ($action === 'failed') {
+            $notes = sanitize_text_field($_POST['notes'] ?? '');
+            $wpdb->update("{$wpdb->prefix}petsgo_rider_payouts", [
+                'status' => 'failed', 'notes' => $notes,
+            ], ['id' => $payout_id]);
+            $this->audit('payout_failed', 'payout', $payout_id, "Rider #{$payout->rider_id} · {$notes}");
+        }
+
+        wp_send_json_success('Payout actualizado');
+    }
+
+    // ── AJAX: Generate weekly payouts for all riders ──
+    public function petsgo_generate_weekly_payouts() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+
+        // Calculate period: last Monday to Sunday
+        $period_end   = date('Y-m-d', strtotime('last sunday'));
+        $period_start = date('Y-m-d', strtotime($period_end . ' -6 days'));
+
+        // Check if already generated for this period
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_payouts WHERE period_start=%s AND period_end=%s",
+            $period_start, $period_end
+        ));
+        if ($exists > 0) {
+            wp_send_json_error("Ya existen payouts para el período {$period_start} a {$period_end}");
+            return;
+        }
+
+        // Get all riders with delivered orders in this period
+        $riders = $wpdb->get_results($wpdb->prepare(
+            "SELECT rider_id,
+                    COUNT(*) AS total_deliveries,
+                    SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END) AS total_earned
+             FROM {$wpdb->prefix}petsgo_orders
+             WHERE status='delivered' AND rider_id > 0
+               AND DATE(created_at) BETWEEN %s AND %s
+             GROUP BY rider_id",
+            $period_start, $period_end
+        ));
+
+        $count = 0;
+        foreach ($riders as $r) {
+            $net = floatval($r->total_earned);
+            $wpdb->insert("{$wpdb->prefix}petsgo_rider_payouts", [
+                'rider_id'         => $r->rider_id,
+                'period_start'     => $period_start,
+                'period_end'       => $period_end,
+                'total_deliveries' => $r->total_deliveries,
+                'total_earned'     => $net,
+                'total_tips'       => 0,
+                'total_deductions' => 0,
+                'net_amount'       => $net,
+                'status'           => 'pending',
+            ], ['%d','%s','%s','%d','%f','%f','%f','%f','%s']);
+            $count++;
+        }
+
+        $this->audit('payouts_generated', 'payout', 0, "Período {$period_start} → {$period_end}: {$count} riders");
+        wp_send_json_success("✅ {$count} payouts generados para {$period_start} a {$period_end}");
     }
 
     public function api_get_rider_deliveries() {
@@ -6943,7 +7477,23 @@ Dashboard con analíticas"></textarea>
         if ($delivery_method === 'pickup') $del = 0; // Retiro en tienda = sin costo envío
         $shipping_address = sanitize_textarea_field($p['shipping_address'] ?? '');
 
-        $wpdb->insert("{$wpdb->prefix}petsgo_orders",['customer_id'=>$uid,'vendor_id'=>$p['vendor_id'],'total_amount'=>$total,'petsgo_commission'=>$comm,'delivery_fee'=>$del,'delivery_method'=>$delivery_method,'shipping_address'=>$shipping_address,'status'=>'pending'],['%d','%d','%f','%f','%f','%s','%s','%s']);
+        // ── Calcular splits del delivery fee ──
+        $rider_pct   = floatval($this->pg_setting('rider_commission_pct', 88));
+        $store_pct   = floatval($this->pg_setting('store_fee_pct', 5));
+        $petsgo_pct  = floatval($this->pg_setting('petsgo_fee_pct', 7));
+        $rider_earning     = round($del * ($rider_pct / 100), 2);
+        $store_fee         = round($del * ($store_pct / 100), 2);
+        $petsgo_del_fee    = round($del * ($petsgo_pct / 100), 2);
+        $dist_km = floatval($p['delivery_distance_km'] ?? 0) ?: null;
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_orders",[
+            'customer_id'=>$uid,'vendor_id'=>$p['vendor_id'],'total_amount'=>$total,
+            'petsgo_commission'=>$comm,'rider_earning'=>$rider_earning,
+            'store_fee'=>$store_fee,'petsgo_delivery_fee'=>$petsgo_del_fee,
+            'delivery_fee'=>$del,'delivery_distance_km'=>$dist_km,
+            'delivery_method'=>$delivery_method,'shipping_address'=>$shipping_address,
+            'status'=>'pending'
+        ],['%d','%d','%f','%f','%f','%f','%f','%f','%f','%s','%s','%s']);
         $order_id = $wpdb->insert_id;
         $this->audit('order_create', 'order', $order_id, 'Total: $'.number_format($total,0,',','.'));
 
@@ -7044,6 +7594,10 @@ Dashboard con analíticas"></textarea>
     public function api_submit_vendor_lead($request) {
         global $wpdb;
         $p = $request->get_json_params();
+
+        // Rate limiting
+        $rl = $this->check_rate_limit('vendor_lead');
+        if ($rl) return $rl;
 
         $store_name   = sanitize_text_field($p['storeName'] ?? '');
         $contact_name = sanitize_text_field($p['contactName'] ?? '');
@@ -8012,6 +8566,7 @@ Dashboard con analíticas"></textarea>
             'terminos_y_condiciones' => ['title' => 'Términos y Condiciones', 'icon' => '📋', 'desc' => 'Términos de uso del marketplace PetsGo.'],
             'politica_de_privacidad' => ['title' => 'Política de Privacidad', 'icon' => '🔒', 'desc' => 'Política de privacidad y protección de datos.'],
             'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
+            'terminos_rider'         => ['title' => 'Términos del Rider', 'icon' => '🚴', 'desc' => 'Términos y condiciones que el rider debe aceptar al registrarse. Incluye políticas de pago, comisiones y responsabilidades.'],
         ];
         // Auto-populate defaults if never saved
         $legal_defaults = [
@@ -8019,6 +8574,7 @@ Dashboard con analíticas"></textarea>
             'terminos_y_condiciones' => 'terminos_default_content',
             'politica_de_privacidad' => 'privacidad_default_content',
             'politica_de_envios'     => 'envios_default_content',
+            'terminos_rider'         => 'terminos_rider_default_content',
         ];
         foreach ($legal_defaults as $key => $method) {
             if (false === get_option('petsgo_legal_' . $key)) {

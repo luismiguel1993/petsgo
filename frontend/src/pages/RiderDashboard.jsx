@@ -398,10 +398,11 @@ const RiderDashboard = () => {
       {tab === 'home' && isApproved && (
         <>
           {/* Quick stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
-            <StatBox label="Esta semana" value={fmt(profile?.weekEarned || 0)} sub={`${profile?.weekDeliveries || 0} entregas`} color="#F97316" icon={TrendingUp} />
-            <StatBox label="Saldo pendiente" value={fmt(profile?.pendingBalance || 0)} sub="Próximo pago semanal" color="#22C55E" icon={Wallet} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
+            <StatBox label="Esta semana" value={fmt(earnings?.currentWeek?.earned || profile?.weekEarned || 0)} sub={`${earnings?.currentWeek?.deliveries || profile?.weekDeliveries || 0} entregas`} color="#F97316" icon={TrendingUp} />
+            <StatBox label="Saldo pendiente" value={fmt(earnings?.pendingBalance || profile?.pendingBalance || 0)} sub={earnings?.nextPayout ? `Pago: ${fmtDate(earnings.nextPayout)}` : 'Próximo pago semanal'} color="#22C55E" icon={Wallet} />
             <StatBox label="Total ganado" value={fmt(profile?.totalEarned || 0)} sub={`${profile?.totalDeliveries || 0} entregas totales`} color="#2F3A40" icon={DollarSign} />
+            <StatBox label="Aceptación" value={`${profile?.acceptanceRate ?? earnings?.acceptanceRate ?? 100}%`} sub={`${profile?.totalOffers ?? earnings?.totalOffers ?? 0} ofertas`} color="#8B5CF6" icon={CheckCircle2} />
             <StatBox label="Rating" value={avgRating ? `⭐ ${avgRating}` : '—'} sub={`${profile?.totalRatings || 0} valoraciones`} color="#F59E0B" icon={Star} />
           </div>
 
@@ -499,11 +500,62 @@ const RiderDashboard = () => {
       {tab === 'earnings' && isApproved && (
         <>
           {/* Summary cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
             <StatBox label="Total ganado" value={fmt(earnings?.totalEarned || 0)} color="#2F3A40" icon={DollarSign} />
             <StatBox label="Total pagado" value={fmt(earnings?.totalPaid || 0)} color="#22C55E" icon={Banknote} />
             <StatBox label="Saldo pendiente" value={fmt(earnings?.pendingBalance || 0)} color="#F97316" icon={Wallet} />
+            <StatBox label="Tasa aceptación" value={`${earnings?.acceptanceRate ?? 100}%`} sub={`${earnings?.totalOffers || 0} ofertas`} color="#8B5CF6" icon={TrendingUp} />
           </div>
+
+          {/* Current week */}
+          {earnings?.currentWeek && (
+            <Card style={{ marginBottom: 20, borderLeft: '4px solid #F59E0B' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 4px', fontSize: 14 }}>📅 Semana actual</h4>
+                  <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                    {fmtDate(earnings.currentWeek.start)} — {fmtDate(earnings.currentWeek.end)} · {earnings.currentWeek.deliveries} entrega{earnings.currentWeek.deliveries !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontWeight: 900, color: '#F59E0B', margin: 0, fontSize: 22 }}>{fmt(earnings.currentWeek.earned)}</p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Commission info */}
+          {earnings?.commission && (
+            <Card style={{ marginBottom: 20, background: '#f0f9ff' }}>
+              <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                📊 Estructura de comisiones
+              </h4>
+              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+                <div style={{ flex: '1 1 80px', textAlign: 'center', padding: 12, background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                  <p style={{ fontSize: 24, fontWeight: 900, color: '#22C55E', margin: 0 }}>{earnings.commission.rider_pct}%</p>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Tú recibes</span>
+                </div>
+                <div style={{ flex: '1 1 80px', textAlign: 'center', padding: 12, background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                  <p style={{ fontSize: 24, fontWeight: 900, color: '#00A8E8', margin: 0 }}>{earnings.commission.petsgo_pct}%</p>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>PetsGo</span>
+                </div>
+                <div style={{ flex: '1 1 80px', textAlign: 'center', padding: 12, background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb' }}>
+                  <p style={{ fontSize: 24, fontWeight: 900, color: '#F97316', margin: 0 }}>{earnings.commission.store_pct}%</p>
+                  <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Tienda</span>
+                </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                <p style={{ fontSize: 12, color: '#6b7280', margin: 0 }}>
+                  💸 Pagos cada semana · Ciclo <strong>lunes a domingo</strong>
+                </p>
+                {earnings?.nextPayout && (
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#22C55E', background: '#e8f5e9', padding: '4px 12px', borderRadius: 8 }}>
+                    Próximo pago: {fmtDate(earnings.nextPayout)}
+                  </span>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* Bank status */}
           <Card style={{ marginBottom: 20, borderLeft: profile?.bankName ? '4px solid #22C55E' : '4px solid #F97316' }}>
@@ -557,7 +609,7 @@ const RiderDashboard = () => {
             <Card style={{ textAlign: 'center', padding: 40 }}>
               <Banknote size={40} color="#d1d5db" style={{ marginBottom: 8 }} />
               <p style={{ color: '#9ca3af', fontWeight: 700, margin: 0 }}>No hay pagos registrados aún</p>
-              <p style={{ color: '#d1d5db', fontSize: 12, margin: '4px 0 0' }}>Los pagos se procesan semanalmente.</p>
+              <p style={{ color: '#d1d5db', fontSize: 12, margin: '4px 0 0' }}>Los pagos se procesan semanalmente los {earnings?.commission?.payout_day === 'thursday' ? 'jueves' : earnings?.commission?.payout_day || 'jueves'}.</p>
             </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

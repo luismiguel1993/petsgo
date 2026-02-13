@@ -233,6 +233,14 @@ export const updateRiderProfile = (data) =>
 export const getRiderEarnings = () =>
   api.get('/rider/earnings');
 
+/** Política de comisiones y términos del rider */
+export const getRiderPolicy = () =>
+  api.get('/rider/policy');
+
+/** Calcular tarifa de delivery por distancia */
+export const calculateDeliveryFee = (distanceKm) =>
+  api.post('/delivery/calculate-fee', { distance_km: distanceKm });
+
 /** Valoraciones del rider */
 export const getRiderRatings = () =>
   api.get('/rider/ratings');
