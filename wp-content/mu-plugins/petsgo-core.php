@@ -8361,16 +8361,56 @@ Dashboard con analíticas"></textarea>
         check_ajax_referer('petsgo_ajax');
         if (!$this->is_admin()) wp_send_json_error('Sin permisos');
         global $wpdb;
-        $status = sanitize_text_field($_POST['status'] ?? '');
-        $search = sanitize_text_field($_POST['search'] ?? '');
-        $sql = "SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE 1=1";
-        $args = [];
-        if ($status) { $sql .= " AND status=%s"; $args[] = $status; }
-        if ($search) { $sql .= " AND (ticket_number LIKE %s OR subject LIKE %s OR user_name LIKE %s)"; $args[] = '%'.$wpdb->esc_like($search).'%'; $args[] = '%'.$wpdb->esc_like($search).'%'; $args[] = '%'.$wpdb->esc_like($search).'%'; }
-        $sql .= " ORDER BY FIELD(status,'abierto','en_proceso','resuelto','cerrado'), created_at DESC LIMIT 200";
+        $status   = sanitize_text_field($_POST['status'] ?? '');
+        $search   = sanitize_text_field($_POST['search'] ?? '');
+        $page     = max(1, intval($_POST['page'] ?? 1));
+        $per_page = max(5, min(100, intval($_POST['per_page'] ?? 20)));
+        $tbl = "{$wpdb->prefix}petsgo_tickets";
+
+        // --- build WHERE ---
+        $where = " WHERE 1=1";
+        $args  = [];
+        if ($status === 'todos') {
+            // include all statuses
+        } elseif ($status) {
+            $where .= " AND status=%s"; $args[] = $status;
+        } else {
+            // default: exclude cerrado
+            $where .= " AND status != 'cerrado'";
+        }
+        if ($search) {
+            $like = '%' . $wpdb->esc_like($search) . '%';
+            $where .= " AND (ticket_number LIKE %s OR subject LIKE %s OR user_name LIKE %s)";
+            $args[] = $like; $args[] = $like; $args[] = $like;
+        }
+
+        // --- total count for pagination ---
+        $count_sql = "SELECT COUNT(*) FROM {$tbl}{$where}";
+        if ($args) $count_sql = $wpdb->prepare($count_sql, ...$args);
+        $total = (int) $wpdb->get_var($count_sql);
+        $total_pages = max(1, ceil($total / $per_page));
+        if ($page > $total_pages) $page = $total_pages;
+        $offset = ($page - 1) * $per_page;
+
+        // --- fetch page ---
+        $sql = "SELECT * FROM {$tbl}{$where} ORDER BY FIELD(status,'abierto','en_proceso','resuelto','cerrado'), created_at DESC LIMIT {$per_page} OFFSET {$offset}";
         if ($args) $sql = $wpdb->prepare($sql, ...$args);
         $rows = $wpdb->get_results($sql);
-        wp_send_json_success($rows);
+
+        // --- global stats (always from ALL tickets) ---
+        $stats = [];
+        $st_rows = $wpdb->get_results("SELECT status, COUNT(*) as cnt FROM {$tbl} GROUP BY status");
+        foreach (['abierto','en_proceso','resuelto','cerrado'] as $s) $stats[$s] = 0;
+        foreach ($st_rows as $sr) $stats[$sr->status] = (int) $sr->cnt;
+
+        wp_send_json_success([
+            'tickets'     => $rows,
+            'total'       => $total,
+            'page'        => $page,
+            'per_page'    => $per_page,
+            'total_pages' => $total_pages,
+            'stats'       => $stats,
+        ]);
     }
 
     public function petsgo_update_ticket() {
@@ -8561,24 +8601,34 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $admins = get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]);
         ?>
+        <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
         <div class="wrap petsgo-wrap">
             <h1>🎫 Tickets de Soporte</h1>
             <p>Gestiona las solicitudes de clientes, tiendas y riders.</p>
 
-            <div class="petsgo-search-bar">
-                <input type="text" id="tk-search" placeholder="Buscar por N°, asunto o nombre...">
+            <div class="petsgo-search-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                <input type="text" id="tk-search" placeholder="Buscar por N°, asunto o nombre..." style="flex:1;min-width:200px;">
                 <select id="tk-status-filter">
-                    <option value="">Todos los estados</option>
+                    <option value="">Activos (sin cerrados)</option>
                     <option value="abierto">🟡 Abierto</option>
                     <option value="en_proceso">🔵 En Proceso</option>
                     <option value="resuelto">🟢 Resuelto</option>
                     <option value="cerrado">⚫ Cerrado</option>
+                    <option value="todos">📋 Todos los estados</option>
                 </select>
-                <button class="petsgo-btn petsgo-btn-primary" onclick="loadTickets()">🔍 Buscar</button>
+                <select id="tk-per-page" style="width:auto;">
+                    <option value="10">10 / pág</option>
+                    <option value="20" selected>20 / pág</option>
+                    <option value="50">50 / pág</option>
+                    <option value="100">100 / pág</option>
+                </select>
+                <button class="petsgo-btn petsgo-btn-primary" onclick="loadTickets(1)">🔍 Buscar</button>
+                <button class="petsgo-btn" onclick="pgExportTicketsPDF()" style="background:#dc3545;color:#fff;" title="Exportar resultados a PDF">📄 PDF</button>
             </div>
 
             <!-- Stats -->
-            <div class="petsgo-cards" id="tk-stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px;"></div>
+            <div class="petsgo-cards" id="tk-stats" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;"></div>
 
             <table class="petsgo-table" id="tk-table">
                 <thead>
@@ -8588,6 +8638,12 @@ Dashboard con analíticas"></textarea>
                 </thead>
                 <tbody id="tk-body"></tbody>
             </table>
+
+            <!-- Pagination -->
+            <div id="tk-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">
+                <span id="tk-page-info" style="font-size:13px;color:#666;"></span>
+                <div id="tk-page-btns" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+            </div>
 
             <!-- Detail Modal -->
             <div id="tk-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
@@ -8611,20 +8667,23 @@ Dashboard con analíticas"></textarea>
         <script>
         jQuery(function($){
             var admins = <?php echo json_encode($admins); ?>;
+            var _tkPage = 1;
 
-            function loadTickets(){
-                PG.post('petsgo_search_tickets',{status:$('#tk-status-filter').val(),search:$('#tk-search').val()},function(r){
+            function loadTickets(page){
+                _tkPage = page || _tkPage || 1;
+                var perPage = parseInt($('#tk-per-page').val()) || 20;
+                PG.post('petsgo_search_tickets',{status:$('#tk-status-filter').val(),search:$('#tk-search').val(),page:_tkPage,per_page:perPage},function(r){
                     if(!r.success) return;
-                    var data=r.data, open=0,proc=0,resolved=0,total=data.length;
+                    var resp = r.data;
+                    var data = resp.tickets;
+                    var stats = resp.stats;
+                    var totalAll = (stats.abierto||0)+(stats.en_proceso||0)+(stats.resuelto||0)+(stats.cerrado||0);
                     var html='';
                     var roleBadge={cliente:'background:#cce5ff;color:#004085',tienda:'background:#d4edda;color:#155724',rider:'background:#fff3cd;color:#856404',admin:'background:#f8d7da;color:#721c24'};
                     var priBadge={baja:'background:#d4edda;color:#155724',media:'background:#fff3cd;color:#856404',alta:'background:#ffe0cc;color:#cc5500',urgente:'background:#f8d7da;color:#721c24'};
                     var stBadge={abierto:'background:#fff3cd;color:#856404',en_proceso:'background:#cce5ff;color:#004085',resuelto:'background:#d4edda;color:#155724',cerrado:'background:#e2e3e5;color:#383d41'};
                     var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                     $.each(data,function(i,t){
-                        if(t.status=='abierto') open++;
-                        if(t.status=='en_proceso') proc++;
-                        if(t.status=='resuelto') resolved++;
                         var assignOpts='<option value="">Sin asignar</option>';
                         $.each(admins,function(_,a){ assignOpts+='<option value="'+a.ID+'" '+(t.assigned_to==a.ID?'selected':'')+'>'+a.display_name+'</option>'; });
                         html+='<tr>';
@@ -8648,16 +8707,44 @@ Dashboard con analíticas"></textarea>
                         html+='</tr>';
                     });
                     $('#tk-body').html(html||'<tr><td colspan="10" style="text-align:center;color:#999;padding:30px;">No hay tickets</td></tr>');
+
+                    // Stats cards (global – always from all tickets)
                     $('#tk-stats').html(
-                        '<div class="petsgo-card" style="border-left:4px solid #FFC400;"><h2>'+open+'</h2><p>Abiertos</p></div>'+
-                        '<div class="petsgo-card" style="border-left:4px solid #00A8E8;"><h2>'+proc+'</h2><p>En Proceso</p></div>'+
-                        '<div class="petsgo-card" style="border-left:4px solid #28a745;"><h2>'+resolved+'</h2><p>Resueltos</p></div>'+
-                        '<div class="petsgo-card" style="border-left:4px solid #6c757d;"><h2>'+total+'</h2><p>Total</p></div>'
+                        '<div class="petsgo-card" style="border-left:4px solid #FFC400;"><h2>'+(stats.abierto||0)+'</h2><p>🟡 Abiertos</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #00A8E8;"><h2>'+(stats.en_proceso||0)+'</h2><p>🔵 En Proceso</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #28a745;"><h2>'+(stats.resuelto||0)+'</h2><p>🟢 Resueltos</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #6c757d;"><h2>'+(stats.cerrado||0)+'</h2><p>⚫ Cerrados</p></div>'+
+                        '<div class="petsgo-card" style="border-left:4px solid #17a2b8;"><h2>'+totalAll+'</h2><p>📋 Total</p></div>'
                     );
+
+                    // Pagination
+                    var from = resp.total ? ((resp.page-1)*resp.per_page+1) : 0;
+                    var to   = Math.min(resp.page*resp.per_page, resp.total);
+                    $('#tk-page-info').text('Mostrando '+from+' – '+to+' de '+resp.total+' ticket'+(resp.total!=1?'s':''));
+                    var pb='';
+                    if(resp.total_pages > 1){
+                        pb+='<button class="petsgo-btn petsgo-btn-sm" '+(resp.page<=1?'disabled':'')+' onclick="loadTickets('+(resp.page-1)+')">◀ Anterior</button>';
+                        var maxBtns=7, startP=Math.max(1,resp.page-3), endP=Math.min(resp.total_pages,startP+maxBtns-1);
+                        if(endP-startP<maxBtns-1) startP=Math.max(1,endP-maxBtns+1);
+                        if(startP>1) pb+='<button class="petsgo-btn petsgo-btn-sm" onclick="loadTickets(1)">1</button><span style="padding:0 4px;">…</span>';
+                        for(var p=startP;p<=endP;p++){
+                            pb+='<button class="petsgo-btn petsgo-btn-sm'+(p==resp.page?' petsgo-btn-primary':'')+'" onclick="loadTickets('+p+')">'+p+'</button>';
+                        }
+                        if(endP<resp.total_pages) pb+='<span style="padding:0 4px;">…</span><button class="petsgo-btn petsgo-btn-sm" onclick="loadTickets('+resp.total_pages+')">'+resp.total_pages+'</button>';
+                        pb+='<button class="petsgo-btn petsgo-btn-sm" '+(resp.page>=resp.total_pages?'disabled':'')+' onclick="loadTickets('+(resp.page+1)+')">Siguiente ▶</button>';
+                    }
+                    $('#tk-page-btns').html(pb);
+
                     window._pgTickets = data;
+                    window._pgTicketsMeta = resp;
                 });
             }
-            loadTickets();
+            window.loadTickets = loadTickets;
+            loadTickets(1);
+
+            // Reset page on filter change
+            $('#tk-status-filter,#tk-per-page').on('change',function(){ loadTickets(1); });
+            $('#tk-search').on('keydown',function(e){ if(e.key==='Enter') loadTickets(1); });
 
             window.pgTicketStatus = function(id,status){
                 PG.post('petsgo_update_ticket',{id:id,status:status},function(r){
@@ -8687,9 +8774,6 @@ Dashboard con analíticas"></textarea>
                     '<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>'
                 );
                 $('#tk-reply-id').val(id);
-                // Load replies
-                $.post(ajaxurl,{action:'petsgo_search_tickets',_ajax_nonce:PG.nonce,search:t.ticket_number},function(){});
-                // Load replies via simple fetch
                 var repliesHtml='<p style="color:#999;font-size:13px;">Cargando respuestas…</p>';
                 $('#tk-replies').html(repliesHtml);
                 // Use REST to get replies
@@ -8715,6 +8799,70 @@ Dashboard con analíticas"></textarea>
                 PG.post('petsgo_add_ticket_reply',{ticket_id:$('#tk-reply-id').val(),message:msg},function(r){
                     if(r.success){$('#tk-reply-msg').val('');pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();}else{alert(r.data);}
                 });
+            };
+
+            // PDF Export — current search results
+            window.pgExportTicketsPDF = function(){
+                var tickets = window._pgTickets || [];
+                if(!tickets.length){ alert('No hay tickets para exportar'); return; }
+                var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
+                var meta = window._pgTicketsMeta || {};
+                var doc = new jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+                // Header
+                doc.setFontSize(16);
+                doc.setTextColor(0,168,232);
+                doc.text('PetsGo - Reporte de Tickets',14,18);
+                doc.setFontSize(9);
+                doc.setTextColor(100);
+                var filterTxt = 'Filtro: '+ ($('#tk-status-filter option:selected').text()) + ' | Búsqueda: '+ ($('#tk-search').val()||'(todas)');
+                doc.text(filterTxt, 14, 25);
+                doc.text('Generado: '+new Date().toLocaleString('es-CL'), 14, 30);
+                if(meta.stats){
+                    doc.text('Abiertos: '+(meta.stats.abierto||0)+' | En Proceso: '+(meta.stats.en_proceso||0)+' | Resueltos: '+(meta.stats.resuelto||0)+' | Cerrados: '+(meta.stats.cerrado||0)+' | Total: '+meta.total, 14, 35);
+                }
+                // Table
+                var rows = [];
+                tickets.forEach(function(t){
+                    rows.push([
+                        t.ticket_number,
+                        t.user_name,
+                        t.user_role||'',
+                        t.subject.length>40 ? t.subject.substring(0,40)+'…' : t.subject,
+                        t.category||'',
+                        t.priority||'',
+                        stLabel[t.status]||t.status,
+                        t.assigned_name||'Sin asignar',
+                        new Date(t.created_at).toLocaleDateString('es-CL')
+                    ]);
+                });
+                doc.autoTable({
+                    startY: 40,
+                    head:[['N° Ticket','Solicitante','Rol','Asunto','Categoría','Prioridad','Estado','Asignado','Fecha']],
+                    body: rows,
+                    styles:{fontSize:8,cellPadding:2,font:'helvetica'},
+                    headStyles:{fillColor:[0,168,232],textColor:255,fontStyle:'bold'},
+                    alternateRowStyles:{fillColor:[248,249,250]},
+                    columnStyles:{3:{cellWidth:50}},
+                    margin:{left:14,right:14},
+                    didParseCell:function(data){
+                        if(data.section==='body' && data.column.index===6){
+                            var s=data.cell.raw;
+                            if(s==='Abierto'){data.cell.styles.textColor=[133,100,4];data.cell.styles.fillColor=[255,243,205];}
+                            else if(s==='En Proceso'){data.cell.styles.textColor=[0,64,133];data.cell.styles.fillColor=[204,229,255];}
+                            else if(s==='Resuelto'){data.cell.styles.textColor=[21,87,36];data.cell.styles.fillColor=[212,237,218];}
+                            else if(s==='Cerrado'){data.cell.styles.textColor=[56,61,65];data.cell.styles.fillColor=[226,227,229];}
+                        }
+                    }
+                });
+                // Footer
+                var pageCount = doc.internal.getNumberOfPages();
+                for(var i=1;i<=pageCount;i++){
+                    doc.setPage(i);
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text('PetsGo Tickets — Página '+i+' de '+pageCount, doc.internal.pageSize.getWidth()/2, doc.internal.pageSize.getHeight()-8,{align:'center'});
+                }
+                doc.save('PetsGo_Tickets_'+new Date().toISOString().slice(0,10)+'.pdf');
             };
 
             // Auto-refresh notification count
