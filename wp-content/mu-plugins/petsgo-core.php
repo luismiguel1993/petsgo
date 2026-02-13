@@ -8008,7 +8008,7 @@ Dashboard con analíticas"></textarea>
     public function page_legal() {
         if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         $pages = [
-            'centro_de_ayuda'        => ['title' => 'Centro de Ayuda', 'icon' => '❓', 'desc' => 'Información para que los clientes, riders y tiendas sepan cómo usar el soporte y crear tickets.'],
+            'centro_de_ayuda'        => ['title' => 'Centro de Ayuda', 'icon' => '🆘', 'desc' => 'Información para que los clientes, riders y tiendas sepan cómo usar el soporte y crear tickets.'],
             'terminos_y_condiciones' => ['title' => 'Términos y Condiciones', 'icon' => '📋', 'desc' => 'Términos de uso del marketplace PetsGo.'],
             'politica_de_privacidad' => ['title' => 'Política de Privacidad', 'icon' => '🔒', 'desc' => 'Política de privacidad y protección de datos.'],
             'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
