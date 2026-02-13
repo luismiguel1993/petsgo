@@ -569,6 +569,10 @@ class PetsGo_Core {
         $user = wp_get_current_user();
         return in_array('petsgo_rider', (array)$user->roles);
     }
+    private function is_support() {
+        $user = wp_get_current_user();
+        return in_array('petsgo_support', (array)$user->roles);
+    }
     private function get_my_vendor_id() {
         global $wpdb;
         return (int) $wpdb->get_var($wpdb->prepare(
@@ -8485,23 +8489,27 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_ticket_count() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $tbl = "{$wpdb->prefix}petsgo_tickets";
         $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE status IN ('abierto','en_proceso')");
         $latest = $wpdb->get_row("SELECT id, ticket_number, subject, user_name, user_role, priority, created_at FROM {$tbl} ORDER BY id DESC LIMIT 1");
+        // Pending tickets list for startup modal (last 15)
+        $pending = $wpdb->get_results("SELECT id, ticket_number, subject, user_name, user_role, priority, status, created_at FROM {$tbl} WHERE status IN ('abierto','en_proceso') ORDER BY FIELD(priority,'urgente','alta','media','baja'), created_at DESC LIMIT 15");
         wp_send_json_success([
-            'count'  => $open,
-            'latest' => $latest,
+            'count'   => $open,
+            'latest'  => $latest,
+            'pending' => $pending,
         ]);
     }
 
     /**
-     * Global admin toast notification for new tickets.
+     * Global admin toast notification + startup modal for new/pending tickets.
      * Injected on ALL admin pages via admin_footer hook.
+     * Visible only to admin and support roles.
      */
     public function admin_ticket_notifier() {
-        if (!$this->is_admin()) return;
+        if (!$this->is_admin() && !$this->is_support()) return;
         $nonce = wp_create_nonce('petsgo_ajax');
         $tickets_url = admin_url('admin.php?page=petsgo-tickets');
         ?>
@@ -8522,6 +8530,43 @@ Dashboard con analíticas"></textarea>
         .pg-ticket-toast.hiding{animation:pgToastOut .35s ease forwards}
         @keyframes pgToastIn{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
         @keyframes pgToastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(60px)}}
+        /* ── Startup Modal: Pending Tickets ── */
+        #pg-pending-modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:170000;display:flex;align-items:center;justify-content:center;animation:pgModalFadeIn .3s ease}
+        #pg-pending-modal{background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.25);width:660px;max-width:94vw;max-height:82vh;display:flex;flex-direction:column;animation:pgModalSlideIn .35s ease;font-family:'Poppins','Segoe UI',sans-serif}
+        #pg-pending-modal .pgm-header{display:flex;align-items:center;justify-content:space-between;padding:20px 24px 16px;border-bottom:1px solid #eee}
+        #pg-pending-modal .pgm-header h2{margin:0;font-size:18px;color:#2F3A40;font-weight:700}
+        #pg-pending-modal .pgm-header .pgm-badge{background:#dc3545;color:#fff;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:700;margin-left:10px}
+        #pg-pending-modal .pgm-header .pgm-close{background:none;border:none;font-size:24px;cursor:pointer;color:#999;padding:0 4px;line-height:1}
+        #pg-pending-modal .pgm-header .pgm-close:hover{color:#333}
+        #pg-pending-modal .pgm-body{padding:12px 24px 8px;overflow-y:auto;flex:1}
+        #pg-pending-modal .pgm-empty{text-align:center;padding:40px 20px;color:#999;font-size:15px}
+        #pg-pending-modal .pgm-ticket-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;transition:background .15s;border-bottom:1px solid #f2f2f2}
+        #pg-pending-modal .pgm-ticket-row:hover{background:#f0f9ff}
+        #pg-pending-modal .pgm-ticket-row:last-child{border-bottom:none}
+        #pg-pending-modal .pgm-pri{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+        #pg-pending-modal .pgm-pri.baja{background:#28a745}
+        #pg-pending-modal .pgm-pri.media{background:#ffc107}
+        #pg-pending-modal .pgm-pri.alta{background:#cc5500}
+        #pg-pending-modal .pgm-pri.urgente{background:#dc3545;box-shadow:0 0 6px rgba(220,53,69,.5)}
+        #pg-pending-modal .pgm-info{flex:1;min-width:0}
+        #pg-pending-modal .pgm-info .pgm-num{font-weight:700;font-size:13px;color:#00A8E8;margin-right:6px}
+        #pg-pending-modal .pgm-info .pgm-subj{font-size:13px;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+        #pg-pending-modal .pgm-info .pgm-meta{font-size:11px;color:#999;margin-top:2px}
+        #pg-pending-modal .pgm-status{font-size:11px;padding:3px 10px;border-radius:12px;font-weight:600;white-space:nowrap}
+        #pg-pending-modal .pgm-status.abierto{background:#fff3cd;color:#856404}
+        #pg-pending-modal .pgm-status.en_proceso{background:#cce5ff;color:#004085}
+        #pg-pending-modal .pgm-footer{padding:14px 24px;border-top:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+        #pg-pending-modal .pgm-footer .pgm-btn{padding:8px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:.2s}
+        #pg-pending-modal .pgm-footer .pgm-btn-primary{background:#00A8E8;color:#fff}
+        #pg-pending-modal .pgm-footer .pgm-btn-primary:hover{background:#0090c7}
+        #pg-pending-modal .pgm-footer .pgm-btn-secondary{background:#f0f0f0;color:#555}
+        #pg-pending-modal .pgm-footer .pgm-btn-secondary:hover{background:#e0e0e0}
+        @keyframes pgModalFadeIn{from{opacity:0}to{opacity:1}}
+        @keyframes pgModalSlideIn{from{opacity:0;transform:translateY(-30px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+        #pg-pending-modal-overlay.hiding{animation:pgModalFadeOut .25s ease forwards}
+        #pg-pending-modal-overlay.hiding #pg-pending-modal{animation:pgModalSlideOut .25s ease forwards}
+        @keyframes pgModalFadeOut{from{opacity:1}to{opacity:0}}
+        @keyframes pgModalSlideOut{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-20px) scale(.96)}}
         </style>
         <div id="pg-ticket-toast-wrap"></div>
         <script>
@@ -8531,15 +8576,68 @@ Dashboard con analíticas"></textarea>
                 ajaxUrl='<?php echo admin_url("admin-ajax.php"); ?>',
                 ticketsUrl='<?php echo esc_js($tickets_url); ?>',
                 storageKey='pgLastTicketId',
+                modalSessionKey='pgPendingModalShown',
                 wrap=document.getElementById('pg-ticket-toast-wrap');
 
             function getLastId(){ return parseInt(localStorage.getItem(storageKey)||'0',10); }
             function setLastId(id){ localStorage.setItem(storageKey, String(id)); }
 
+            // ── Startup Modal ──
+            function showPendingModal(pending, totalOpen){
+                if(!pending||!pending.length) return;
+                // Only show once per session
+                if(sessionStorage.getItem(modalSessionKey)) return;
+                sessionStorage.setItem(modalSessionKey,'1');
+
+                var priLabels={baja:'Baja',media:'Media',alta:'Alta',urgente:'Urgente'};
+                var statusLabels={abierto:'Abierto',en_proceso:'En Proceso'};
+                var roleLabels={cliente:'Cliente',tienda:'Tienda',rider:'Rider',admin:'Admin',support:'Soporte'};
+
+                var rows='';
+                for(var i=0;i<pending.length;i++){
+                    var t=pending[i];
+                    var subj=t.subject.length>45?t.subject.substring(0,45)+'…':t.subject;
+                    var dateStr=new Date(t.created_at).toLocaleDateString('es-CL',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+                    rows+='<div class="pgm-ticket-row">'+
+                        '<span class="pgm-pri '+(t.priority||'media')+'" title="'+(priLabels[t.priority]||t.priority)+'"></span>'+
+                        '<div class="pgm-info">'+
+                            '<span class="pgm-subj"><span class="pgm-num">'+t.ticket_number+'</span>'+subj+'</span>'+
+                            '<span class="pgm-meta">'+t.user_name+' ('+(roleLabels[t.user_role]||t.user_role)+') &middot; '+dateStr+'</span>'+
+                        '</div>'+
+                        '<span class="pgm-status '+(t.status||'')+'">'+(statusLabels[t.status]||t.status)+'</span>'+
+                    '</div>';
+                }
+
+                var overlay=document.createElement('div');
+                overlay.id='pg-pending-modal-overlay';
+                overlay.innerHTML=
+                    '<div id="pg-pending-modal">'+
+                        '<div class="pgm-header">'+
+                            '<h2>🎫 Tickets Pendientes<span class="pgm-badge">'+totalOpen+'</span></h2>'+
+                            '<button class="pgm-close" title="Cerrar">&times;</button>'+
+                        '</div>'+
+                        '<div class="pgm-body">'+rows+'</div>'+
+                        '<div class="pgm-footer">'+
+                            '<button class="pgm-btn pgm-btn-secondary" id="pgm-dismiss">Cerrar</button>'+
+                            '<a href="'+ticketsUrl+'" class="pgm-btn pgm-btn-primary">🎫 Ir a Tickets</a>'+
+                        '</div>'+
+                    '</div>';
+                document.body.appendChild(overlay);
+
+                function closeModal(){
+                    overlay.classList.add('hiding');
+                    setTimeout(function(){ if(overlay.parentNode) overlay.parentNode.removeChild(overlay); },300);
+                }
+                overlay.querySelector('.pgm-close').addEventListener('click',closeModal);
+                overlay.querySelector('#pgm-dismiss').addEventListener('click',closeModal);
+                overlay.addEventListener('click',function(e){ if(e.target===overlay) closeModal(); });
+            }
+
+            // ── Toast ──
             function showToast(ticket){
                 var priBorder = ticket.priority==='urgente'?'urgent':(ticket.priority==='alta'?'alta':'');
                 var priLabel = {baja:'🟢 Baja',media:'🟡 Media',alta:'🟠 Alta',urgente:'🔴 Urgente'};
-                var roleLabel = {cliente:'Cliente',tienda:'Tienda',rider:'Rider',admin:'Admin'};
+                var roleLabel = {cliente:'Cliente',tienda:'Tienda',rider:'Rider',admin:'Admin',support:'Soporte'};
                 var subj = ticket.subject.length>50 ? ticket.subject.substring(0,50)+'…' : ticket.subject;
                 var div = document.createElement('div');
                 div.className = 'pg-ticket-toast' + (priBorder?' '+priBorder:'');
@@ -8554,11 +8652,8 @@ Dashboard con analíticas"></textarea>
                     '<a href="'+ticketsUrl+'" class="pg-toast-link">🎫 Ver Tickets</a>'+
                     '<span class="pg-toast-time">'+new Date(ticket.created_at).toLocaleString('es-CL')+'</span>';
                 wrap.appendChild(div);
-                // Close button
                 div.querySelector('.pg-toast-close').addEventListener('click',function(){ dismissToast(div); });
-                // Auto-dismiss after 20 seconds
                 setTimeout(function(){ dismissToast(div); }, 20000);
-                // Play notification sound
                 try{
                     var ctx=new(window.AudioContext||window.webkitAudioContext)();
                     var o=ctx.createOscillator(),g=ctx.createGain();
@@ -8578,15 +8673,22 @@ Dashboard con analíticas"></textarea>
                 setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 400);
             }
 
+            var firstPoll=true;
             function pollTickets(){
                 jQuery.post(ajaxUrl,{action:'petsgo_ticket_count',_ajax_nonce:nonce},function(r){
-                    if(!r||!r.success||!r.data||!r.data.latest) return;
+                    if(!r||!r.success||!r.data) return;
+
+                    // Startup modal — show on first poll if pending tickets exist
+                    if(firstPoll && r.data.pending && r.data.pending.length>0){
+                        showPendingModal(r.data.pending, r.data.count);
+                    }
+                    firstPoll=false;
+
+                    if(!r.data.latest) return;
                     var latestId = parseInt(r.data.latest.id,10);
                     var lastId = getLastId();
-                    // First load — just set baseline, don't alert
                     if(!lastId){ setLastId(latestId); return; }
                     if(latestId > lastId){
-                        // Show notifications for new tickets
                         showToast(r.data.latest);
                         setLastId(latestId);
                     }
