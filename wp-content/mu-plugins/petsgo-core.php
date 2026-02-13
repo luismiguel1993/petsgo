@@ -5610,7 +5610,7 @@ Dashboard con analíticas"></textarea>
 
     // --- Contenido por defecto Centro de Ayuda ---
     private function centro_ayuda_default_content() {
-        return '<h2>❓ ¿Cómo crear un ticket de soporte?</h2>' . "\n"
+        return '<h2>¿Cómo crear un ticket de soporte?</h2>' . "\n"
             . '<p>Si necesitas ayuda con algún pedido, producto, envío o cuenta, puedes crear un ticket de soporte según tu rol en la plataforma. Nuestro equipo revisa los tickets en un plazo máximo de <strong>24 horas hábiles</strong>.</p>' . "\n\n"
             . '<h3>🛒 Clientes</h3>' . "\n"
             . '<ol>' . "\n"
@@ -5643,6 +5643,93 @@ Dashboard con analíticas"></textarea>
             . '<p>💡 <strong>Consejo:</strong> Para reclamos formales siempre recomendamos crear un ticket para mejor seguimiento. También puedes contactarnos por WhatsApp para consultas rápidas.</p>';
     }
 
+    private function terminos_default_content() {
+        return '<h2>1. Aceptación de los Términos</h2>' . "\n"
+            . '<p>Al acceder y utilizar PetsGo, aceptas estar sujeto a estos términos y condiciones de uso. Si no estás de acuerdo con alguno de estos términos, no utilices nuestro marketplace.</p>' . "\n\n"
+            . '<h2>2. Descripción del Servicio</h2>' . "\n"
+            . '<p>PetsGo es un marketplace en línea que conecta tiendas de mascotas con clientes, facilitando la compra y despacho de productos para mascotas en Chile. PetsGo actúa como intermediario entre compradores y vendedores.</p>' . "\n\n"
+            . '<h2>3. Registro y Cuentas</h2>' . "\n"
+            . '<p>Para utilizar ciertas funcionalidades, debes crear una cuenta proporcionando información veraz y actualizada. Eres responsable de mantener la confidencialidad de tu contraseña y de todas las actividades realizadas bajo tu cuenta.</p>' . "\n\n"
+            . '<h2>4. Compras y Pagos</h2>' . "\n"
+            . '<p>Los precios de los productos son establecidos por cada tienda vendedora. PetsGo se reserva el derecho de aplicar cargos por servicio o despacho según las políticas vigentes. Todos los pagos se procesan de manera segura a través de los medios de pago habilitados.</p>' . "\n\n"
+            . '<h2>5. Despacho</h2>' . "\n"
+            . '<p>Los tiempos de despacho dependerán de la disponibilidad del producto, la ubicación del cliente y la cobertura del servicio. PetsGo hará su mejor esfuerzo para cumplir con los plazos estimados pero no garantiza tiempos exactos de entrega.</p>' . "\n\n"
+            . '<h2>6. Devoluciones y Reembolsos</h2>' . "\n"
+            . '<p>Los clientes pueden solicitar devoluciones dentro de los plazos establecidos por la ley de protección al consumidor chilena. Los productos deben devolverse en su estado original y con su embalaje.</p>' . "\n\n"
+            . '<h2>7. Responsabilidad</h2>' . "\n"
+            . '<p>PetsGo no se hace responsable por la calidad de los productos vendidos por las tiendas adheridas, actuando únicamente como plataforma intermediaria. Cada tienda es responsable de sus productos y servicios.</p>' . "\n\n"
+            . '<h2>8. Propiedad Intelectual</h2>' . "\n"
+            . '<p>Todo el contenido del marketplace, incluyendo logos, diseños y textos, son propiedad de PetsGo SpA y están protegidos por las leyes de propiedad intelectual de Chile.</p>' . "\n\n"
+            . '<h2>9. Modificaciones</h2>' . "\n"
+            . '<p>PetsGo se reserva el derecho de modificar estos términos en cualquier momento. Las modificaciones entrarán en vigencia al ser publicadas en el sitio web. El uso continuado del servicio después de cualquier modificación constituye aceptación de los nuevos términos.</p>' . "\n\n"
+            . '<h2>10. Legislación Aplicable</h2>' . "\n"
+            . '<p>Estos términos se rigen por las leyes de la República de Chile. Cualquier controversia será resuelta por los tribunales ordinarios de justicia con sede en Santiago de Chile.</p>';
+    }
+
+    private function privacidad_default_content() {
+        return '<h2>1. Información que Recopilamos</h2>' . "\n"
+            . '<p>Recopilamos la información personal que nos proporcionas al registrarte, como nombre, correo electrónico, teléfono, dirección de despacho y datos de pago. También recopilamos información de uso del sitio de manera automática.</p>' . "\n\n"
+            . '<h2>2. Uso de la Información</h2>' . "\n"
+            . '<p>Tu información personal se utiliza para:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li>Procesar y gestionar tus pedidos</li>' . "\n"
+            . '<li>Comunicarnos contigo sobre el estado de tus compras</li>' . "\n"
+            . '<li>Mejorar nuestros servicios y la experiencia de usuario</li>' . "\n"
+            . '<li>Enviar notificaciones relevantes sobre tu cuenta</li>' . "\n"
+            . '<li>Cumplir con obligaciones legales y tributarias</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>3. Compartir Información</h2>' . "\n"
+            . '<p>Compartimos tu información solo con:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li>Tiendas vendedoras (nombre y dirección de despacho para cumplir tu pedido)</li>' . "\n"
+            . '<li>Riders (dirección de despacho para la entrega)</li>' . "\n"
+            . '<li>Procesadores de pago autorizados</li>' . "\n"
+            . '<li>Autoridades competentes cuando sea requerido por ley</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>4. Protección de Datos</h2>' . "\n"
+            . '<p>Implementamos medidas de seguridad técnicas y organizativas para proteger tu información personal contra acceso no autorizado, pérdida o destrucción. Utilizamos encriptación SSL para todas las comunicaciones y almacenamos los datos de manera segura.</p>' . "\n\n"
+            . '<h2>5. Cookies</h2>' . "\n"
+            . '<p>Utilizamos cookies y tecnologías similares para mejorar la experiencia de navegación, recordar tus preferencias y analizar el uso del sitio. Puedes configurar tu navegador para rechazar cookies, aunque esto podría afectar la funcionalidad del sitio.</p>' . "\n\n"
+            . '<h2>6. Derechos del Usuario</h2>' . "\n"
+            . '<p>De acuerdo con la Ley N° 19.628 sobre Protección de la Vida Privada de Chile, tienes derecho a:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li>Acceder a tus datos personales</li>' . "\n"
+            . '<li>Solicitar la rectificación de datos inexactos</li>' . "\n"
+            . '<li>Solicitar la eliminación de tus datos</li>' . "\n"
+            . '<li>Oponerte al tratamiento de tus datos para fines de marketing</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>7. Retención de Datos</h2>' . "\n"
+            . '<p>Conservamos tu información personal mientras tu cuenta esté activa o según sea necesario para cumplir con obligaciones legales y tributarias. Puedes solicitar la eliminación de tu cuenta en cualquier momento.</p>' . "\n\n"
+            . '<h2>8. Contacto</h2>' . "\n"
+            . '<p>Para consultas sobre privacidad, puedes contactarnos a través de nuestro Centro de Ayuda o escribirnos a contacto@petsgo.cl.</p>' . "\n\n"
+            . '<h2>9. Cambios en la Política</h2>' . "\n"
+            . '<p>Podemos actualizar esta política periódicamente. Te notificaremos sobre cambios significativos a través de tu correo electrónico registrado o mediante un aviso en nuestro sitio web.</p>';
+    }
+
+    private function envios_default_content() {
+        return '<h2>1. Cobertura de Despacho</h2>' . "\n"
+            . '<p>PetsGo realiza despachos a domicilio dentro de las zonas de cobertura habilitadas. La disponibilidad de despacho depende de la ubicación de la tienda vendedora y la dirección del cliente.</p>' . "\n\n"
+            . '<h2>2. Tipos de Despacho</h2>' . "\n"
+            . '<p>Ofrecemos las siguientes modalidades de despacho:</p>' . "\n"
+            . '<ul>' . "\n"
+            . '<li><strong>Despacho Express:</strong> Entrega en el mismo día para pedidos realizados antes de las 14:00 hrs (sujeto a disponibilidad).</li>' . "\n"
+            . '<li><strong>Despacho Estándar:</strong> Entrega en 1-3 días hábiles.</li>' . "\n"
+            . '<li><strong>Retiro en Tienda:</strong> Puedes retirar tu pedido directamente en la tienda vendedora (cuando aplique).</li>' . "\n"
+            . '</ul>' . "\n\n"
+            . '<h2>3. Costos de Despacho</h2>' . "\n"
+            . '<p>El costo de despacho se calcula según la distancia entre la tienda y tu dirección. Los pedidos que superen el monto mínimo establecido para despacho gratuito no tendrán cargo por envío. El monto mínimo puede variar y se muestra al momento de la compra.</p>' . "\n\n"
+            . '<h2>4. Seguimiento del Pedido</h2>' . "\n"
+            . '<p>Una vez despachado tu pedido, podrás hacer seguimiento en tiempo real desde la sección &quot;Mis Pedidos&quot; en tu cuenta. Recibirás notificaciones por correo electrónico sobre el estado de tu pedido.</p>' . "\n\n"
+            . '<h2>5. Recepción del Pedido</h2>' . "\n"
+            . '<p>Al momento de la entrega, el rider verificará que la dirección sea correcta. En caso de no encontrarse nadie en el domicilio, el rider intentará comunicarse contigo. Si no es posible realizar la entrega tras los intentos correspondientes, el pedido será devuelto a la tienda.</p>' . "\n\n"
+            . '<h2>6. Problemas con el Despacho</h2>' . "\n"
+            . '<p>Si tu pedido llega dañado, incompleto o con productos incorrectos, debes reportarlo dentro de las primeras 24 horas a través de un ticket de soporte. PetsGo gestionará la solución correspondiente (reenvío, reembolso o cambio) junto con la tienda vendedora.</p>' . "\n\n"
+            . '<h2>7. Restricciones de Despacho</h2>' . "\n"
+            . '<p>Algunos productos pueden tener restricciones de despacho según su naturaleza (productos frescos, refrigerados, de gran tamaño, etc.). Estas restricciones serán informadas en la ficha de cada producto.</p>' . "\n\n"
+            . '<h2>8. Fuerza Mayor</h2>' . "\n"
+            . '<p>PetsGo no será responsable por retrasos en la entrega ocasionados por eventos de fuerza mayor como desastres naturales, restricciones sanitarias, manifestaciones u otros eventos fuera de nuestro control.</p>';
+    }
+
     private function help_faqs_defaults() {
         return [
             ['q' => '¿Cómo creo un ticket de soporte?', 'a' => 'Si eres cliente o rider, inicia sesión y ve a la sección "Soporte" en tu perfil. Si eres una tienda, crea el ticket desde el portal de administración.'],
@@ -5660,11 +5747,20 @@ Dashboard con analíticas"></textarea>
         if (!in_array($slug, $allowed)) return new WP_Error('not_found','Página no encontrada',['status'=>404]);
         $opt_key = 'petsgo_legal_' . str_replace('-','_',$slug);
         $content = get_option($opt_key);
-        if ($slug === 'centro-de-ayuda' && false === $content) {
-            $content = $this->centro_ayuda_default_content();
-            update_option($opt_key, $content);
+        if (false === $content) {
+            $defaults_map = [
+                'centro-de-ayuda'        => 'centro_ayuda_default_content',
+                'terminos-y-condiciones' => 'terminos_default_content',
+                'politica-de-privacidad' => 'privacidad_default_content',
+                'politica-de-envios'     => 'envios_default_content',
+            ];
+            if (isset($defaults_map[$slug])) {
+                $content = $this->{$defaults_map[$slug]}();
+                update_option($opt_key, $content);
+            } else {
+                $content = '';
+            }
         }
-        if (false === $content) $content = '';
         $titles = [
             'centro-de-ayuda'        => 'Centro de Ayuda',
             'terminos-y-condiciones' => 'Términos y Condiciones',
@@ -7918,8 +8014,16 @@ Dashboard con analíticas"></textarea>
             'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
         ];
         // Auto-populate defaults if never saved
-        if (false === get_option('petsgo_legal_centro_de_ayuda')) {
-            update_option('petsgo_legal_centro_de_ayuda', $this->centro_ayuda_default_content());
+        $legal_defaults = [
+            'centro_de_ayuda'        => 'centro_ayuda_default_content',
+            'terminos_y_condiciones' => 'terminos_default_content',
+            'politica_de_privacidad' => 'privacidad_default_content',
+            'politica_de_envios'     => 'envios_default_content',
+        ];
+        foreach ($legal_defaults as $key => $method) {
+            if (false === get_option('petsgo_legal_' . $key)) {
+                update_option('petsgo_legal_' . $key, $this->{$method}());
+            }
         }
         if (false === get_option('petsgo_help_faqs')) {
             update_option('petsgo_help_faqs', $this->help_faqs_defaults());
