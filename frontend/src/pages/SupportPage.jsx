@@ -87,7 +87,13 @@ const SupportPage = () => {
   const openDetail = async (ticketId) => {
     try {
       const res = await getTicketDetail(ticketId);
-      setSelectedTicket(res.data?.data || res.data);
+      const d = res.data?.data || res.data;
+      // API returns { ticket: {...}, replies: [...] }
+      if (d.ticket) {
+        setSelectedTicket({ ...d.ticket, replies: d.replies || [] });
+      } else {
+        setSelectedTicket(d);
+      }
       setView('detail');
       setReplyText('');
     } catch (err) {
@@ -103,7 +109,12 @@ const SupportPage = () => {
       setReplyText('');
       // Recargar detalle
       const res = await getTicketDetail(selectedTicket.id);
-      setSelectedTicket(res.data?.data || res.data);
+      const d = res.data?.data || res.data;
+      if (d.ticket) {
+        setSelectedTicket({ ...d.ticket, replies: d.replies || [] });
+      } else {
+        setSelectedTicket(d);
+      }
     } catch (err) {
       alert('Error al enviar respuesta');
     } finally {
