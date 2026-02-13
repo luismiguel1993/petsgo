@@ -9,7 +9,9 @@ import { useAuth } from '../context/AuthContext';
 import {
   getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
   getRiderRatings, getRiderStatus, getRiderProfile, updateRiderProfile, getRiderEarnings,
+  getRiderStats,
 } from '../services/api';
+import { Download, BarChart3 } from 'lucide-react';
 import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
 
 /* ───── constants ───── */
@@ -110,6 +112,13 @@ const RiderDashboard = () => {
 
   /* ── earnings ── */
   const [earnings, setEarnings] = useState(null);
+
+  /* ── stats/report ── */
+  const [riderStats, setRiderStats] = useState(null);
+  const [statsRange, setStatsRange] = useState('month');
+  const [statsFrom, setStatsFrom] = useState('');
+  const [statsTo, setStatsTo] = useState('');
+  const [statsLoading, setStatsLoading] = useState(false);
 
   /* ── identity (from status) ── */
   const [idType, setIdType] = useState('');
@@ -387,6 +396,7 @@ const RiderDashboard = () => {
         {isApproved && tabBtn('home', '🏠', 'Inicio')}
         {isApproved && tabBtn('deliveries', '📦', 'Entregas')}
         {isApproved && tabBtn('earnings', '💰', 'Ganancias')}
+        {isApproved && tabBtn('stats', '📊', 'Estadísticas')}
         {tabBtn('documents', '📋', 'Documentos')}
         {isApproved && tabBtn('ratings', '⭐', 'Valoraciones')}
         {tabBtn('profile', '👤', 'Perfil')}
@@ -643,6 +653,42 @@ const RiderDashboard = () => {
             </div>
           )}
         </>
+      )}
+
+      {/* ══════════════════════════════════════════════
+         TAB: ESTADÍSTICAS / REPORTES
+      ══════════════════════════════════════════════ */}
+      {tab === 'stats' && isApproved && (
+        <RiderStatsTab
+          stats={riderStats}
+          loading={statsLoading}
+          range={statsRange}
+          customFrom={statsFrom}
+          customTo={statsTo}
+          riderName={profile?.firstName ? `${profile.firstName} ${profile.lastName}` : user?.display_name || 'Rider'}
+          onRangeChange={async (r, f, t) => {
+            setStatsRange(r);
+            if (f !== undefined) setStatsFrom(f);
+            if (t !== undefined) setStatsTo(t);
+            setStatsLoading(true);
+            try {
+              const params = { range: r };
+              if (r === 'custom') { params.from = f || statsFrom; params.to = t || statsTo; }
+              const { data } = await getRiderStats(params);
+              setRiderStats(data);
+            } catch { /* keep old */ }
+            setStatsLoading(false);
+          }}
+          onLoad={async () => {
+            if (riderStats) return;
+            setStatsLoading(true);
+            try {
+              const { data } = await getRiderStats({ range: statsRange });
+              setRiderStats(data);
+            } catch { /* */ }
+            setStatsLoading(false);
+          }}
+        />
       )}
 
       {/* ══════════════════════════════════════════════
@@ -947,6 +993,319 @@ const RiderDashboard = () => {
         </>
       )}
     </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════
+   RIDER STATS TAB — Reportes con filtros + PDF
+═══════════════════════════════════════════════ */
+const RANGE_LABELS = { week: 'Esta Semana', month: 'Este Mes', year: 'Este Año', custom: 'Personalizado' };
+const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName, onRangeChange, onLoad }) => {
+  React.useEffect(() => { onLoad(); }, []);
+
+  const exportPDF = async () => {
+    if (!stats) return;
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    const { summary, weekly, monthly, lifetime, payouts, dateFrom, dateTo, rider } = stats;
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const green = [34, 197, 94];
+    const dark = [47, 58, 64];
+    const orange = [249, 115, 22];
+    let y = 15;
+
+    // Header
+    doc.setFillColor(...green);
+    doc.rect(0, 0, 210, 38, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text('PetsGo - Mi Reporte de Entregas', 14, 18);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(riderName, 14, 26);
+    doc.text(`Período: ${fmtDate(dateFrom)} — ${fmtDate(dateTo)} (${RANGE_LABELS[range] || range})`, 14, 33);
+    y = 46;
+
+    // Summary
+    doc.setTextColor(...dark);
+    doc.setFontSize(13);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Resumen del Período', 14, y); y += 8;
+    autoTable(doc, {
+      startY: y,
+      head: [['Métrica', 'Valor']],
+      body: [
+        ['Entregas', String(summary.deliveries)],
+        ['Ganado', fmt(summary.earned)],
+        ['Km recorridos', summary.totalKm + ' km'],
+        ['Promedio/entrega', fmt(summary.avgEarning)],
+        ['Km promedio', summary.avgKm + ' km'],
+        ['Pagado en período', fmt(summary.totalPaidPeriod)],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: green, textColor: 255, fontStyle: 'bold', fontSize: 10 },
+      styles: { fontSize: 10, cellPadding: 4 },
+      columnStyles: { 0: { fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Lifetime
+    doc.setFont('helvetica', 'bold');
+    doc.text('Estadísticas Globales', 14, y); y += 8;
+    autoTable(doc, {
+      startY: y,
+      head: [['Métrica', 'Valor']],
+      body: [
+        ['Total entregas', String(lifetime.deliveries)],
+        ['Total ganado', fmt(lifetime.earned)],
+        ['Tasa aceptación', lifetime.acceptanceRate + '%'],
+        ['Rating', lifetime.avgRating ? '⭐ ' + lifetime.avgRating : '—'],
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: orange, textColor: 255 },
+      styles: { fontSize: 10, cellPadding: 4 },
+      columnStyles: { 0: { fontStyle: 'bold' } },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    // Weekly
+    if (weekly?.length > 0) {
+      if (y > 240) { doc.addPage(); y = 15; }
+      doc.text('Desglose Semanal', 14, y); y += 8;
+      autoTable(doc, {
+        startY: y,
+        head: [['Semana', 'Entregas', 'Ganado', 'Km']],
+        body: weekly.map(w => [`${fmtDate(w.week_start)} — ${fmtDate(w.week_end)}`, String(w.deliveries), fmt(w.earned), (parseFloat(w.km) || 0).toFixed(1) + ' km']),
+        theme: 'striped', headStyles: { fillColor: dark, textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 3 }, margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable.finalY + 10;
+    }
+
+    // Monthly
+    if (monthly?.length > 0) {
+      if (y > 240) { doc.addPage(); y = 15; }
+      doc.text('Desglose Mensual', 14, y); y += 8;
+      autoTable(doc, {
+        startY: y,
+        head: [['Mes', 'Entregas', 'Ganado', 'Km']],
+        body: monthly.map(m => { const [yr, mo] = m.month.split('-'); return [MONTH_NAMES[parseInt(mo)-1]+' '+yr, String(m.deliveries), fmt(m.earned), (parseFloat(m.km)||0).toFixed(1)+' km']; }),
+        theme: 'striped', headStyles: { fillColor: [139, 92, 246], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 3 }, margin: { left: 14, right: 14 },
+      });
+    }
+
+    // Footer
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`PetsGo · Generado ${new Date().toLocaleDateString('es-CL')} · Página ${i}/${pages}`, 14, 290);
+    }
+
+    doc.save(`Mi_Reporte_${dateFrom}_${dateTo}.pdf`);
+  };
+
+  return (
+    <>
+      {/* Range selector */}
+      <Card style={{ marginBottom: 16, padding: '14px 20px' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {['week', 'month', 'year', 'custom'].map(r => (
+            <button key={r} onClick={() => r !== 'custom' && onRangeChange(r)}
+              style={{
+                padding: '7px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer',
+                background: range === r ? '#F97316' : '#f3f4f6',
+                color: range === r ? '#fff' : '#6b7280',
+                boxShadow: range === r ? '0 2px 8px rgba(249,115,22,0.3)' : 'none',
+              }}>
+              {RANGE_LABELS[r]}
+            </button>
+          ))}
+          {range === 'custom' && (
+            <>
+              <input type="date" value={customFrom} onChange={e => onRangeChange('custom', e.target.value, undefined)}
+                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12 }} />
+              <span style={{ color: '#9ca3af' }}>—</span>
+              <input type="date" value={customTo} onChange={e => onRangeChange('custom', undefined, e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #d1d5db', fontSize: 12 }} />
+              <button onClick={() => onRangeChange('custom', customFrom, customTo)}
+                style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: '#00A8E8', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                Aplicar
+              </button>
+            </>
+          )}
+          <button onClick={exportPDF} disabled={!stats || loading}
+            style={{ marginLeft: 'auto', padding: '7px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: stats ? 1 : 0.5 }}>
+            <Download size={14} /> Exportar PDF
+          </button>
+        </div>
+      </Card>
+
+      {loading ? (
+        <Card style={{ textAlign: 'center', padding: 60 }}>
+          <div style={{ fontSize: 32 }}>⏳</div>
+          <p style={{ color: '#9ca3af', fontWeight: 700, marginTop: 8 }}>Cargando estadísticas...</p>
+        </Card>
+      ) : !stats ? (
+        <Card style={{ textAlign: 'center', padding: 60 }}>
+          <BarChart3 size={48} color="#d1d5db" style={{ marginBottom: 8 }} />
+          <p style={{ color: '#9ca3af', fontWeight: 700 }}>No se pudieron cargar las estadísticas</p>
+        </Card>
+      ) : (
+        <>
+          {/* Period header */}
+          <p style={{ fontSize: 12, color: '#9ca3af', fontWeight: 600, margin: '0 0 16px', textAlign: 'right' }}>
+            📅 {fmtDate(stats.dateFrom)} — {fmtDate(stats.dateTo)}
+          </p>
+
+          {/* KPI cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginBottom: 24 }}>
+            <StatBox label="Entregas" value={stats.summary.deliveries} color="#00A8E8" icon={Package} />
+            <StatBox label="Ganado" value={fmt(stats.summary.earned)} color="#22C55E" icon={DollarSign} />
+            <StatBox label="Km recorridos" value={`${stats.summary.totalKm} km`} color="#8B5CF6" icon={MapPin} />
+            <StatBox label="Prom./entrega" value={fmt(stats.summary.avgEarning)} color="#F97316" icon={TrendingUp} />
+          </div>
+
+          {/* Lifetime banner */}
+          <Card style={{ marginBottom: 20, background: '#f0f9ff', border: '1px solid #bae6fd' }}>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-around' }}>
+              {[
+                { label: 'Total entregas', value: stats.lifetime.deliveries },
+                { label: 'Total ganado', value: fmt(stats.lifetime.earned) },
+                { label: 'Aceptación', value: stats.lifetime.acceptanceRate + '%' },
+                { label: 'Rating', value: stats.lifetime.avgRating ? '⭐ ' + stats.lifetime.avgRating : '—' },
+              ].map((s, i) => (
+                <div key={i} style={{ textAlign: 'center', padding: 8 }}>
+                  <p style={{ fontWeight: 900, color: '#2F3A40', margin: 0, fontSize: 18 }}>{s.value}</p>
+                  <span style={{ fontSize: 10, color: '#0369a1', fontWeight: 600 }}>{s.label} (global)</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Weekly bar chart */}
+          {stats.weekly?.length > 0 && (() => {
+            const maxE = Math.max(...stats.weekly.map(w => parseFloat(w.earned) || 0), 1);
+            return (
+              <div style={{ marginBottom: 24 }}>
+                <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14 }}>📊 Ganancias Semanales</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {stats.weekly.map((w, i) => {
+                    const pct = (parseFloat(w.earned) / maxE) * 100;
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ width: 140, fontSize: 11, fontWeight: 600, color: '#6b7280', flexShrink: 0 }}>
+                          {fmtDate(w.week_start)} — {fmtDate(w.week_end)}
+                        </span>
+                        <div style={{ flex: 1, background: '#f3f4f6', borderRadius: 6, height: 24, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.max(pct, 2)}%`, background: 'linear-gradient(90deg, #F97316, #F59E0B)', height: '100%', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8, transition: 'width 0.5s', minWidth: 50 }}>
+                            <span style={{ fontSize: 10, fontWeight: 800, color: '#fff' }}>{fmt(w.earned)}</span>
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, color: '#9ca3af', width: 55, textAlign: 'right', flexShrink: 0 }}>{w.deliveries} ent.</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Monthly table */}
+          {stats.monthly?.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14 }}>📅 Desglose Mensual</h4>
+              <Card style={{ padding: 0, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
+                      <th style={{ textAlign: 'left', padding: '10px 14px', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>Mes</th>
+                      <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>Entregas</th>
+                      <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>Ganado</th>
+                      <th style={{ textAlign: 'right', padding: '10px 14px', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>Km</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stats.monthly.map((m, i) => {
+                      const [yr, mo] = m.month.split('-');
+                      return (
+                        <tr key={i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={{ padding: '10px 14px', fontWeight: 700, color: '#2F3A40' }}>{MONTH_NAMES[parseInt(mo) - 1]} {yr}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: '#2F3A40' }}>{m.deliveries}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 800, color: '#22C55E' }}>{fmt(m.earned)}</td>
+                          <td style={{ padding: '10px 14px', textAlign: 'right', color: '#8B5CF6' }}>{(parseFloat(m.km) || 0).toFixed(1)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </Card>
+            </div>
+          )}
+
+          {/* Daily breakdown (for week/month) */}
+          {stats.daily?.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14 }}>📆 Desglose Diario</h4>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {stats.daily.map((d, i) => {
+                  const dayName = new Date(d.day + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric' });
+                  return (
+                    <Card key={i} style={{ flex: '1 1 80px', textAlign: 'center', padding: '10px 8px', minWidth: 70 }}>
+                      <p style={{ fontWeight: 900, color: '#F97316', margin: 0, fontSize: 16 }}>{fmt(d.earned)}</p>
+                      <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{dayName}</span>
+                      <span style={{ fontSize: 10, color: '#d1d5db', display: 'block' }}>{d.deliveries} ent.</span>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Payouts in period */}
+          {stats.payouts?.length > 0 && (
+            <div>
+              <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14 }}>💸 Pagos en el Período</h4>
+              {stats.payouts.map(p => {
+                const colors = { paid: '#22C55E', pending: '#F97316', failed: '#EF4444' };
+                const labels = { paid: 'Pagado', pending: 'Pendiente', failed: 'Fallido' };
+                return (
+                  <Card key={p.id} style={{ marginBottom: 8, borderLeft: `4px solid ${colors[p.status] || '#e5e7eb'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#2F3A40' }}>{fmtDate(p.period_start)} — {fmtDate(p.period_end)}</span>
+                        <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>{p.total_deliveries} entregas</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 900, color: colors[p.status], fontSize: 16 }}>{fmt(p.net_amount)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: colors[p.status], background: (colors[p.status] || '#6b7280') + '15', padding: '2px 8px', borderRadius: 6 }}>{labels[p.status] || p.status}</span>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {stats.summary.deliveries === 0 && (
+            <Card style={{ textAlign: 'center', padding: 40 }}>
+              <Package size={48} color="#d1d5db" style={{ marginBottom: 8 }} />
+              <p style={{ color: '#9ca3af', fontWeight: 700 }}>Sin entregas en este período</p>
+              <p style={{ color: '#d1d5db', fontSize: 12 }}>Selecciona otro rango de fechas</p>
+            </Card>
+          )}
+        </>
+      )}
+    </>
   );
 };
 

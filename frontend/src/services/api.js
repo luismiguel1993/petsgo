@@ -245,6 +245,18 @@ export const calculateDeliveryFee = (distanceKm) =>
 export const getRiderRatings = () =>
   api.get('/rider/ratings');
 
+/** Estadísticas/reporte del rider (propio) — range: week|month|year|custom */
+export const getRiderStats = (params = {}) =>
+  api.get('/rider/stats', { params });
+
+/** Admin: lista de riders con resumen */
+export const getAdminRiders = () =>
+  api.get('/admin/riders');
+
+/** Admin: estadísticas de un rider específico */
+export const getAdminRiderStats = (riderId, params = {}) =>
+  api.get(`/admin/rider/${riderId}/stats`, { params });
+
 /** Valorar un rider (desde cliente o vendor) */
 export const rateRider = (orderId, rating, comment) =>
   api.post(`/orders/${orderId}/rate-rider`, { rating, comment });

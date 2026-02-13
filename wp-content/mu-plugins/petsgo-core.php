@@ -5791,6 +5791,12 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/delivery/calculate-fee',['methods'=>'POST','callback'=>[$this,'api_calculate_delivery_fee'],'permission_callback'=>'__return_true']);
         // Rider policy (public — for registration page & info)
         register_rest_route('petsgo/v1','/rider/policy',['methods'=>'GET','callback'=>[$this,'api_get_rider_policy'],'permission_callback'=>'__return_true']);
+        // Rider stats report (rider or admin)
+        register_rest_route('petsgo/v1','/rider/stats',['methods'=>'GET','callback'=>[$this,'api_get_rider_stats'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        // Admin: view any rider's stats
+        register_rest_route('petsgo/v1','/admin/rider/(?P<rider_id>\d+)/stats',['methods'=>'GET','callback'=>[$this,'api_admin_rider_stats'],'permission_callback'=>function(){return current_user_can('manage_options');}]);
+        // Admin: list all riders with summary stats
+        register_rest_route('petsgo/v1','/admin/riders',['methods'=>'GET','callback'=>[$this,'api_admin_list_riders'],'permission_callback'=>function(){return current_user_can('manage_options');}]);
         // Categories (public read)
         register_rest_route('petsgo/v1','/categories',['methods'=>'GET','callback'=>[$this,'api_get_categories'],'permission_callback'=>'__return_true']);
         // Tickets (logged in)
@@ -6994,6 +7000,218 @@ Dashboard con analíticas"></textarea>
             'payout_cycle'=> 'weekly',
             'terms'       => $terms_content,
         ]);
+    }
+
+    // ── Rider Stats Report (reusable core) ──
+    private function build_rider_stats($rider_id, $params) {
+        global $wpdb;
+        $range   = sanitize_text_field($params['range'] ?? 'month');   // week|month|year|custom
+        $from    = sanitize_text_field($params['from'] ?? '');
+        $to      = sanitize_text_field($params['to'] ?? '');
+
+        // Determine date boundaries
+        $now = current_time('Y-m-d');
+        switch ($range) {
+            case 'week':
+                $date_from = date('Y-m-d', strtotime('monday this week'));
+                $date_to   = date('Y-m-d', strtotime('sunday this week'));
+                break;
+            case 'month':
+                $date_from = date('Y-m-01');
+                $date_to   = date('Y-m-t');
+                break;
+            case 'year':
+                $date_from = date('Y-01-01');
+                $date_to   = date('Y-12-31');
+                break;
+            case 'custom':
+                $date_from = $from ?: date('Y-m-01');
+                $date_to   = $to ?: $now;
+                break;
+            default:
+                $date_from = date('Y-m-01');
+                $date_to   = $now;
+        }
+
+        $tbl = $wpdb->prefix . 'petsgo_orders';
+
+        // Summary for the period
+        $summary = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(*) AS deliveries,
+                    COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) AS earned,
+                    COALESCE(SUM(delivery_fee),0) AS total_delivery_fees,
+                    COALESCE(SUM(delivery_distance_km),0) AS total_km,
+                    COALESCE(AVG(delivery_distance_km),0) AS avg_km,
+                    COALESCE(AVG(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) AS avg_earning
+             FROM {$tbl}
+             WHERE rider_id=%d AND status='delivered' AND DATE(created_at) BETWEEN %s AND %s",
+            $rider_id, $date_from, $date_to
+        ));
+
+        // Weekly aggregation
+        $weekly = $wpdb->get_results($wpdb->prepare(
+            "SELECT YEARWEEK(created_at,1) AS yw,
+                    MIN(DATE(created_at)) AS week_start,
+                    MAX(DATE(created_at)) AS week_end,
+                    COUNT(*) AS deliveries,
+                    SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END) AS earned,
+                    SUM(delivery_distance_km) AS km
+             FROM {$tbl}
+             WHERE rider_id=%d AND status='delivered' AND DATE(created_at) BETWEEN %s AND %s
+             GROUP BY YEARWEEK(created_at,1)
+             ORDER BY yw ASC",
+            $rider_id, $date_from, $date_to
+        ));
+
+        // Monthly aggregation
+        $monthly = $wpdb->get_results($wpdb->prepare(
+            "SELECT DATE_FORMAT(created_at,'%%Y-%%m') AS month,
+                    COUNT(*) AS deliveries,
+                    SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END) AS earned,
+                    SUM(delivery_distance_km) AS km
+             FROM {$tbl}
+             WHERE rider_id=%d AND status='delivered' AND DATE(created_at) BETWEEN %s AND %s
+             GROUP BY DATE_FORMAT(created_at,'%%Y-%%m')
+             ORDER BY month ASC",
+            $rider_id, $date_from, $date_to
+        ));
+
+        // Daily aggregation (for weekly/monthly ranges)
+        $daily = [];
+        if (in_array($range, ['week', 'month', 'custom'])) {
+            $daily = $wpdb->get_results($wpdb->prepare(
+                "SELECT DATE(created_at) AS day,
+                        COUNT(*) AS deliveries,
+                        SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END) AS earned
+                 FROM {$tbl}
+                 WHERE rider_id=%d AND status='delivered' AND DATE(created_at) BETWEEN %s AND %s
+                 GROUP BY DATE(created_at)
+                 ORDER BY day ASC",
+                $rider_id, $date_from, $date_to
+            ));
+        }
+
+        // Rider info
+        $user = get_userdata($rider_id);
+        $prof = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $rider_id
+        ));
+
+        // Lifetime totals
+        $lifetime = $wpdb->get_row($wpdb->prepare(
+            "SELECT COUNT(*) AS deliveries,
+                    COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) AS earned
+             FROM {$tbl} WHERE rider_id=%d AND status='delivered'", $rider_id
+        ));
+
+        // Acceptance rate
+        $total_offers   = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d", $rider_id));
+        $accepted       = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_delivery_offers WHERE rider_id=%d AND status='accepted'", $rider_id));
+        $acceptance_rate = $total_offers > 0 ? round(($accepted / $total_offers) * 100, 1) : 100;
+
+        // Average rating
+        $avg_rating = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $rider_id
+        ));
+        $total_ratings = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $rider_id
+        ));
+
+        // Payouts in period
+        $payouts = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_rider_payouts
+             WHERE rider_id=%d AND period_start >= %s AND period_end <= %s
+             ORDER BY period_end DESC",
+            $rider_id, $date_from, $date_to
+        ));
+
+        $total_paid_period = 0;
+        foreach ($payouts as $p) { if ($p->status === 'paid') $total_paid_period += (float) $p->net_amount; }
+
+        return [
+            'rider' => [
+                'id'       => $rider_id,
+                'name'     => $user ? $user->display_name : 'Rider #' . $rider_id,
+                'email'    => $user ? $user->user_email : '',
+                'phone'    => $prof->phone ?? '',
+                'vehicle'  => $prof->vehicle ?? '',
+                'region'   => $prof->region ?? '',
+                'comuna'   => $prof->comuna ?? '',
+            ],
+            'range'      => $range,
+            'dateFrom'   => $date_from,
+            'dateTo'     => $date_to,
+            'summary'    => [
+                'deliveries'       => (int) ($summary->deliveries ?? 0),
+                'earned'           => (float) ($summary->earned ?? 0),
+                'totalDeliveryFees'=> (float) ($summary->total_delivery_fees ?? 0),
+                'totalKm'          => round((float) ($summary->total_km ?? 0), 1),
+                'avgKm'            => round((float) ($summary->avg_km ?? 0), 1),
+                'avgEarning'       => round((float) ($summary->avg_earning ?? 0)),
+                'totalPaidPeriod'  => $total_paid_period,
+            ],
+            'weekly'     => $weekly,
+            'monthly'    => $monthly,
+            'daily'      => $daily,
+            'payouts'    => $payouts,
+            'lifetime'   => [
+                'deliveries'     => (int) ($lifetime->deliveries ?? 0),
+                'earned'         => (float) ($lifetime->earned ?? 0),
+                'acceptanceRate' => $acceptance_rate,
+                'totalOffers'    => $total_offers,
+                'avgRating'      => $avg_rating ? round($avg_rating, 2) : null,
+                'totalRatings'   => $total_ratings,
+            ],
+        ];
+    }
+
+    /** API: Rider's own stats */
+    public function api_get_rider_stats($request) {
+        $uid = get_current_user_id();
+        $data = $this->build_rider_stats($uid, $request->get_params());
+        return rest_ensure_response($data);
+    }
+
+    /** API: Admin views any rider's stats */
+    public function api_admin_rider_stats($request) {
+        $rider_id = (int) $request['rider_id'];
+        $data = $this->build_rider_stats($rider_id, $request->get_params());
+        return rest_ensure_response($data);
+    }
+
+    /** API: Admin list all riders with summary */
+    public function api_admin_list_riders() {
+        global $wpdb;
+        $riders = get_users(['role' => 'petsgo_rider', 'number' => 200]);
+        $result = [];
+        foreach ($riders as $r) {
+            $prof = $wpdb->get_row($wpdb->prepare(
+                "SELECT vehicle, region, comuna, phone FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $r->ID
+            ));
+            $stats = $wpdb->get_row($wpdb->prepare(
+                "SELECT COUNT(*) AS deliveries,
+                        COALESCE(SUM(CASE WHEN rider_earning > 0 THEN rider_earning ELSE delivery_fee END),0) AS earned
+                 FROM {$wpdb->prefix}petsgo_orders WHERE rider_id=%d AND status='delivered'", $r->ID
+            ));
+            $avg_rating = (float) $wpdb->get_var($wpdb->prepare(
+                "SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_delivery_ratings WHERE rider_id=%d", $r->ID
+            ));
+            $rider_status = get_user_meta($r->ID, 'petsgo_rider_status', true) ?: 'pending';
+            $result[] = [
+                'id'         => $r->ID,
+                'name'       => $r->display_name,
+                'email'      => $r->user_email,
+                'phone'      => $prof->phone ?? '',
+                'vehicle'    => $prof->vehicle ?? '',
+                'region'     => $prof->region ?? '',
+                'status'     => $rider_status,
+                'deliveries' => (int) ($stats->deliveries ?? 0),
+                'earned'     => (float) ($stats->earned ?? 0),
+                'avgRating'  => $avg_rating ? round($avg_rating, 2) : null,
+                'registered' => $r->user_registered,
+            ];
+        }
+        return rest_ensure_response($result);
     }
 
     // ── AJAX: Search rider payouts (Admin) ──
