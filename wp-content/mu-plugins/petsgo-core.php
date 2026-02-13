@@ -48,6 +48,7 @@ class PetsGo_Core {
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
         add_action('admin_menu', [$this, 'register_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'admin_assets']);
+        add_action('admin_footer', [$this, 'admin_ticket_notifier']);
         // AJAX handlers
         $ajax_actions = [
             'petsgo_search_products', 'petsgo_save_product', 'petsgo_delete_product',
@@ -8486,8 +8487,132 @@ Dashboard con analíticas"></textarea>
         check_ajax_referer('petsgo_ajax');
         if (!$this->is_admin()) wp_send_json_error('Sin permisos');
         global $wpdb;
-        $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_tickets WHERE status IN ('abierto','en_proceso')");
-        wp_send_json_success(['count' => $open]);
+        $tbl = "{$wpdb->prefix}petsgo_tickets";
+        $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE status IN ('abierto','en_proceso')");
+        $latest = $wpdb->get_row("SELECT id, ticket_number, subject, user_name, user_role, priority, created_at FROM {$tbl} ORDER BY id DESC LIMIT 1");
+        wp_send_json_success([
+            'count'  => $open,
+            'latest' => $latest,
+        ]);
+    }
+
+    /**
+     * Global admin toast notification for new tickets.
+     * Injected on ALL admin pages via admin_footer hook.
+     */
+    public function admin_ticket_notifier() {
+        if (!$this->is_admin()) return;
+        $nonce = wp_create_nonce('petsgo_ajax');
+        $tickets_url = admin_url('admin.php?page=petsgo-tickets');
+        ?>
+        <style>
+        #pg-ticket-toast-wrap{position:fixed;top:40px;right:24px;z-index:160000;display:flex;flex-direction:column;gap:10px;pointer-events:none}
+        .pg-ticket-toast{pointer-events:auto;background:#fff;border-left:5px solid #00A8E8;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:16px 50px 16px 18px;max-width:420px;min-width:300px;animation:pgToastIn .4s ease;position:relative;font-family:'Poppins','Segoe UI',sans-serif}
+        .pg-ticket-toast.urgent{border-left-color:#dc3545}
+        .pg-ticket-toast.alta{border-left-color:#cc5500}
+        .pg-ticket-toast .pg-toast-close{position:absolute;top:8px;right:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#999;padding:0;line-height:1}
+        .pg-ticket-toast .pg-toast-close:hover{color:#333}
+        .pg-ticket-toast .pg-toast-icon{font-size:22px;margin-right:10px;vertical-align:middle}
+        .pg-ticket-toast .pg-toast-title{font-weight:700;font-size:14px;color:#2F3A40;margin-bottom:4px}
+        .pg-ticket-toast .pg-toast-body{font-size:13px;color:#555;line-height:1.4;margin-bottom:8px}
+        .pg-ticket-toast .pg-toast-body strong{color:#333}
+        .pg-ticket-toast .pg-toast-link{display:inline-block;background:#00A8E8;color:#fff;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;transition:.2s}
+        .pg-ticket-toast .pg-toast-link:hover{background:#0090c7;color:#fff}
+        .pg-ticket-toast .pg-toast-time{font-size:11px;color:#aaa;position:absolute;bottom:8px;right:12px}
+        .pg-ticket-toast.hiding{animation:pgToastOut .35s ease forwards}
+        @keyframes pgToastIn{from{opacity:0;transform:translateX(60px)}to{opacity:1;transform:translateX(0)}}
+        @keyframes pgToastOut{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(60px)}}
+        </style>
+        <div id="pg-ticket-toast-wrap"></div>
+        <script>
+        (function(){
+            if(typeof jQuery==='undefined') return;
+            var nonce='<?php echo $nonce; ?>',
+                ajaxUrl='<?php echo admin_url("admin-ajax.php"); ?>',
+                ticketsUrl='<?php echo esc_js($tickets_url); ?>',
+                storageKey='pgLastTicketId',
+                wrap=document.getElementById('pg-ticket-toast-wrap');
+
+            function getLastId(){ return parseInt(localStorage.getItem(storageKey)||'0',10); }
+            function setLastId(id){ localStorage.setItem(storageKey, String(id)); }
+
+            function showToast(ticket){
+                var priBorder = ticket.priority==='urgente'?'urgent':(ticket.priority==='alta'?'alta':'');
+                var priLabel = {baja:'🟢 Baja',media:'🟡 Media',alta:'🟠 Alta',urgente:'🔴 Urgente'};
+                var roleLabel = {cliente:'Cliente',tienda:'Tienda',rider:'Rider',admin:'Admin'};
+                var subj = ticket.subject.length>50 ? ticket.subject.substring(0,50)+'…' : ticket.subject;
+                var div = document.createElement('div');
+                div.className = 'pg-ticket-toast' + (priBorder?' '+priBorder:'');
+                div.innerHTML =
+                    '<button class="pg-toast-close" title="Cerrar">&times;</button>'+
+                    '<div class="pg-toast-title"><span class="pg-toast-icon">🎫</span> Nuevo Ticket: '+ticket.ticket_number+'</div>'+
+                    '<div class="pg-toast-body">'+
+                        '<strong>'+ticket.user_name+'</strong> ('+(roleLabel[ticket.user_role]||ticket.user_role)+')<br>'+
+                        subj+'<br>'+
+                        'Prioridad: '+(priLabel[ticket.priority]||ticket.priority)+
+                    '</div>'+
+                    '<a href="'+ticketsUrl+'" class="pg-toast-link">🎫 Ver Tickets</a>'+
+                    '<span class="pg-toast-time">'+new Date(ticket.created_at).toLocaleString('es-CL')+'</span>';
+                wrap.appendChild(div);
+                // Close button
+                div.querySelector('.pg-toast-close').addEventListener('click',function(){ dismissToast(div); });
+                // Auto-dismiss after 20 seconds
+                setTimeout(function(){ dismissToast(div); }, 20000);
+                // Play notification sound
+                try{
+                    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+                    var o=ctx.createOscillator(),g=ctx.createGain();
+                    o.connect(g);g.connect(ctx.destination);
+                    o.type='sine';o.frequency.setValueAtTime(880,ctx.currentTime);
+                    o.frequency.setValueAtTime(1100,ctx.currentTime+0.1);
+                    g.gain.setValueAtTime(0.15,ctx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);
+                    o.start(ctx.currentTime);o.stop(ctx.currentTime+0.5);
+                }catch(e){}
+            }
+
+            function dismissToast(el){
+                if(el._dismissed) return;
+                el._dismissed=true;
+                el.classList.add('hiding');
+                setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 400);
+            }
+
+            function pollTickets(){
+                jQuery.post(ajaxUrl,{action:'petsgo_ticket_count',_ajax_nonce:nonce},function(r){
+                    if(!r||!r.success||!r.data||!r.data.latest) return;
+                    var latestId = parseInt(r.data.latest.id,10);
+                    var lastId = getLastId();
+                    // First load — just set baseline, don't alert
+                    if(!lastId){ setLastId(latestId); return; }
+                    if(latestId > lastId){
+                        // Show notifications for new tickets
+                        showToast(r.data.latest);
+                        setLastId(latestId);
+                    }
+                    // Update badge in menu
+                    var count = r.data.count || 0;
+                    var badge = document.getElementById('petsgo-ticket-badge-global');
+                    var menuLink = document.querySelector('a[href*="petsgo-tickets"]');
+                    if(count > 0 && menuLink){
+                        if(!badge){
+                            badge = document.createElement('span');
+                            badge.id = 'petsgo-ticket-badge-global';
+                            badge.style.cssText = 'background:#dc3545;color:#fff;border-radius:50%;padding:2px 7px;font-size:11px;font-weight:700;margin-left:6px;';
+                            menuLink.appendChild(badge);
+                        }
+                        badge.textContent = count;
+                    } else if(badge){
+                        badge.textContent = '';
+                    }
+                });
+            }
+            // Initial poll after 2 seconds, then every 30 seconds
+            setTimeout(pollTickets, 2000);
+            setInterval(pollTickets, 30000);
+        })();
+        </script>
+        <?php
     }
 
     // ============================================================
