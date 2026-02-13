@@ -460,6 +460,21 @@ const PlansPage = () => {
                 </div>
 
                 <div style={{ position: 'relative' }}>
+                  <div style={iconWrapStyle}><Sparkles size={18} /></div>
+                  <div style={selectArrowStyle}><ChevronDown size={16} /></div>
+                  <select
+                    required value={formData.plan}
+                    onChange={(e) => handleChange('plan', e.target.value)}
+                    style={{ ...selectStyle, color: formData.plan ? '#374151' : '#9ca3af' }}
+                    onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
+                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
+                  >
+                    <option value="" disabled>¿En qué plan estás interesado?</option>
+                    {plans.map(p => <option key={p.id || p.plan_name} value={p.plan_name} style={{ color: '#374151' }}>{p.plan_name}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ position: 'relative' }}>
                   <div style={{ ...iconWrapStyle, top: '20px', transform: 'none' }}><MessageSquare size={18} /></div>
                   <textarea
                     placeholder="Cuéntanos sobre tu tienda y qué productos vendes..."
@@ -469,16 +484,6 @@ const PlansPage = () => {
                     onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                   />
                 </div>
-
-                {formData.plan && (
-                  <div style={{
-                    background: '#f0f9ff', borderRadius: '10px', padding: '10px 16px',
-                    fontSize: '13px', color: '#0284c7', fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                  }}>
-                    <Check size={16} /> Plan seleccionado: <strong>{formData.plan}</strong>
-                  </div>
-                )}
 
                 {formError && (
                   <div style={{
