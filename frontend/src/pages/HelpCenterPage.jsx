@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  LifeBuoy, MessageSquare, ShoppingBag, Truck, User, Store,
-  ChevronDown, ChevronUp, ArrowRight, HelpCircle, Shield, FileText,
+  LifeBuoy, MessageSquare, Truck,
+  ChevronDown, ChevronUp, Shield, FileText,
 } from 'lucide-react';
 import { getLegalPage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -17,7 +17,7 @@ const DEFAULT_FAQS = [
 ];
 
 const HelpCenterPage = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const site = useSite();
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -36,53 +36,22 @@ const HelpCenterPage = () => {
   // Use admin-managed FAQs if available, otherwise defaults
   const faqs = (site.faqs && site.faqs.length > 0) ? site.faqs : DEFAULT_FAQS;
 
-  const ticketGuides = [
-    {
-      icon: User,
-      role: 'Clientes',
-      color: '#00A8E8',
-      bg: '#EFF6FF',
-      steps: [
-        'Inicia sesión en tu cuenta de PetsGo',
-        'Ve a tu perfil y selecciona "Soporte"',
-        'Haz clic en "Nuevo Ticket"',
-        'Selecciona la categoría y prioridad',
-        'Describe tu problema con detalle',
-        'Envía y recibirás un correo de confirmación',
-      ],
-      cta: { text: 'Ir a Soporte', link: '/soporte' },
-    },
-    {
-      icon: Truck,
-      role: 'Riders',
-      color: '#FFC400',
-      bg: '#FFFBEB',
-      steps: [
-        'Inicia sesión con tu cuenta de rider',
-        'Ve a tu perfil y selecciona "Soporte"',
-        'Haz clic en "Nuevo Ticket"',
-        'Indica la categoría (entregas, pagos, cuenta, etc.)',
-        'Describe el problema e incluye el N° de pedido si aplica',
-        'Envía y haz seguimiento desde la misma sección',
-      ],
-      cta: { text: 'Ir a Soporte', link: '/soporte' },
-    },
-    {
-      icon: Store,
-      role: 'Tiendas',
-      color: '#22C55E',
-      bg: '#F0FDF4',
-      steps: [
-        'Ingresa al Portal de Administración de PetsGo',
-        'En el menú lateral, busca "🎫 Tickets"',
-        'Los tickets de tus clientes aparecerán aquí',
-        'Para crear un ticket propio, usa el botón correspondiente',
-        'El equipo de PetsGo revisará y responderá tu solicitud',
-        'Recibirás notificaciones por correo sobre actualizaciones',
-      ],
-      cta: null,
-    },
-  ];
+  /* CSS for admin-editable HTML content */
+  const contentCSS = `
+    .help-content h2 { font-size:20px; font-weight:800; color:#2F3A40; margin:24px 0 12px; display:flex; align-items:center; gap:8px; }
+    .help-content h2:first-child { margin-top:0; }
+    .help-content h3 { font-size:16px; font-weight:700; color:#00A8E8; margin:20px 0 8px; }
+    .help-content p  { font-size:14px; color:#374151; line-height:1.8; margin:0 0 12px; }
+    .help-content ol { padding-left:24px; margin:0 0 16px; }
+    .help-content ol li { font-size:13px; color:#6b7280; line-height:1.8; margin-bottom:6px; padding-left:4px; }
+    .help-content ol li::marker { color:#00A8E8; font-weight:700; }
+    .help-content hr { border:none; border-top:1px solid #f0f0f0; margin:24px 0; }
+    .help-content ul { padding-left:20px; margin:0 0 16px; }
+    .help-content ul li { font-size:13px; color:#6b7280; line-height:1.8; margin-bottom:6px; }
+    .help-content strong { color:#2F3A40; }
+    .help-content a { color:#00A8E8; text-decoration:underline; }
+    .help-content img { max-width:100%; height:auto; border-radius:8px; margin:12px 0; }
+  `;
 
   const st = {
     page: { maxWidth: '960px', margin: '0 auto', padding: '32px 16px', fontFamily: 'Poppins, sans-serif' },
@@ -113,82 +82,17 @@ const HelpCenterPage = () => {
         )}
       </div>
 
-      {/* Custom admin content */}
-      {content && (
-        <div style={{ ...st.card, marginBottom: '24px' }}>
-          <div
-            dangerouslySetInnerHTML={{ __html: content }}
-            style={{ lineHeight: 1.8, fontSize: '14px', color: '#374151' }}
-          />
+      <style>{contentCSS}</style>
+
+      {/* Contenido gestionable desde el backend */}
+      {loading && (
+        <div style={{ textAlign: 'center', color: '#999', margin: '32px 0', fontSize: '14px' }}>Cargando...</div>
+      )}
+      {!loading && content && (
+        <div style={{ ...st.card, marginBottom: '32px' }} className="help-content">
+          <div dangerouslySetInnerHTML={{ __html: content }} />
         </div>
       )}
-
-      {/* How to create a ticket — per role */}
-      <div style={{ marginBottom: '32px' }}>
-        <h2 style={st.sectionTitle}>
-          <HelpCircle size={22} color="#00A8E8" /> ¿Cómo crear un ticket de soporte?
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
-          {ticketGuides.map((guide) => {
-            const Icon = guide.icon;
-            return (
-              <div key={guide.role} style={{
-                ...st.card, display: 'flex', flexDirection: 'column',
-              }}>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px',
-                }}>
-                  <div style={{
-                    width: '44px', height: '44px', borderRadius: '12px', background: guide.bg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <Icon size={22} color={guide.color} />
-                  </div>
-                  <h3 style={{ fontWeight: 800, fontSize: '16px', color: '#2F3A40' }}>{guide.role}</h3>
-                </div>
-                <ol style={{
-                  paddingLeft: '20px', margin: 0, flex: 1,
-                  listStyle: 'none', counterReset: 'step',
-                }}>
-                  {guide.steps.map((step, i) => (
-                    <li key={i} style={{
-                      fontSize: '13px', color: '#6b7280', marginBottom: '10px', paddingLeft: '8px',
-                      counterIncrement: 'step', position: 'relative', lineHeight: 1.5,
-                    }}>
-                      <span style={{
-                        position: 'absolute', left: '-20px', top: '0',
-                        width: '20px', height: '20px', borderRadius: '50%',
-                        background: guide.bg, color: guide.color,
-                        fontSize: '11px', fontWeight: 800, display: 'flex',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {i + 1}
-                      </span>
-                      {step}
-                    </li>
-                  ))}
-                </ol>
-                {guide.cta && isAuthenticated && (
-                  <Link to={guide.cta.link} style={{
-                    display: 'flex', alignItems: 'center', gap: '6px', marginTop: '14px',
-                    fontSize: '13px', fontWeight: 700, color: guide.color, textDecoration: 'none',
-                  }}>
-                    {guide.cta.text} <ArrowRight size={14} />
-                  </Link>
-                )}
-                {guide.cta && !isAuthenticated && (
-                  <Link to="/login" style={{
-                    display: 'flex', alignItems: 'center', gap: '6px', marginTop: '14px',
-                    fontSize: '13px', fontWeight: 700, color: guide.color, textDecoration: 'none',
-                  }}>
-                    Iniciar Sesión <ArrowRight size={14} />
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       {/* FAQ */}
       <div style={{ marginBottom: '32px' }}>

@@ -5608,12 +5608,63 @@ Dashboard con analíticas"></textarea>
         ]);
     }
 
+    // --- Contenido por defecto Centro de Ayuda ---
+    private function centro_ayuda_default_content() {
+        return '<h2>❓ ¿Cómo crear un ticket de soporte?</h2>' . "\n"
+            . '<p>Si necesitas ayuda con algún pedido, producto, envío o cuenta, puedes crear un ticket de soporte según tu rol en la plataforma. Nuestro equipo revisa los tickets en un plazo máximo de <strong>24 horas hábiles</strong>.</p>' . "\n\n"
+            . '<h3>🛒 Clientes</h3>' . "\n"
+            . '<ol>' . "\n"
+            . '<li>Inicia sesión en tu cuenta de PetsGo</li>' . "\n"
+            . '<li>Ve a tu perfil y selecciona &quot;Soporte&quot;</li>' . "\n"
+            . '<li>Haz clic en &quot;Nuevo Ticket&quot;</li>' . "\n"
+            . '<li>Selecciona la categoría y prioridad</li>' . "\n"
+            . '<li>Describe tu problema con detalle</li>' . "\n"
+            . '<li>Envía y recibirás un correo de confirmación</li>' . "\n"
+            . '</ol>' . "\n\n"
+            . '<h3>🚚 Riders</h3>' . "\n"
+            . '<ol>' . "\n"
+            . '<li>Inicia sesión con tu cuenta de rider</li>' . "\n"
+            . '<li>Ve a tu perfil y selecciona &quot;Soporte&quot;</li>' . "\n"
+            . '<li>Haz clic en &quot;Nuevo Ticket&quot;</li>' . "\n"
+            . '<li>Indica la categoría (entregas, pagos, cuenta, etc.)</li>' . "\n"
+            . '<li>Describe el problema e incluye el N° de pedido si aplica</li>' . "\n"
+            . '<li>Envía y haz seguimiento desde la misma sección</li>' . "\n"
+            . '</ol>' . "\n\n"
+            . '<h3>🏪 Tiendas</h3>' . "\n"
+            . '<ol>' . "\n"
+            . '<li>Ingresa al Portal de Administración de PetsGo</li>' . "\n"
+            . '<li>En el menú lateral, busca &quot;🎫 Tickets&quot;</li>' . "\n"
+            . '<li>Los tickets de tus clientes aparecerán aquí</li>' . "\n"
+            . '<li>Para crear un ticket propio, usa el botón correspondiente</li>' . "\n"
+            . '<li>El equipo de PetsGo revisará y responderá tu solicitud</li>' . "\n"
+            . '<li>Recibirás notificaciones por correo sobre actualizaciones</li>' . "\n"
+            . '</ol>' . "\n\n"
+            . '<hr />' . "\n"
+            . '<p>💡 <strong>Consejo:</strong> Para reclamos formales siempre recomendamos crear un ticket para mejor seguimiento. También puedes contactarnos por WhatsApp para consultas rápidas.</p>';
+    }
+
+    private function help_faqs_defaults() {
+        return [
+            ['q' => '¿Cómo creo un ticket de soporte?', 'a' => 'Si eres cliente o rider, inicia sesión y ve a la sección "Soporte" en tu perfil. Si eres una tienda, crea el ticket desde el portal de administración.'],
+            ['q' => '¿Cuánto tardan en responder mi ticket?', 'a' => 'Nuestro equipo revisa los tickets en un plazo máximo de 24 horas hábiles. Los tickets urgentes son atendidos con mayor prioridad.'],
+            ['q' => '¿Puedo dar seguimiento a mi reclamo?', 'a' => 'Sí, puedes ver el estado de todos tus tickets y agregar mensajes adicionales desde la sección "Soporte" en tu perfil.'],
+            ['q' => '¿Qué tipo de problemas puedo reportar?', 'a' => 'Puedes reportar problemas con pedidos, pagos, entregas, tu cuenta, productos y cualquier otra consulta relacionada con PetsGo.'],
+            ['q' => '¿Puedo contactar directamente por WhatsApp?', 'a' => 'Sí, puedes contactarnos por WhatsApp para consultas rápidas. Sin embargo, para reclamos formales te recomendamos crear un ticket para mejor seguimiento.'],
+        ];
+    }
+
     // --- Legal / Contenido público ---
     public function api_get_legal_page($request) {
         $slug = sanitize_key($request->get_param('slug'));
         $allowed = ['centro-de-ayuda','terminos-y-condiciones','politica-de-privacidad','politica-de-envios'];
         if (!in_array($slug, $allowed)) return new WP_Error('not_found','Página no encontrada',['status'=>404]);
-        $content = get_option('petsgo_legal_' . str_replace('-','_',$slug), '');
+        $opt_key = 'petsgo_legal_' . str_replace('-','_',$slug);
+        $content = get_option($opt_key);
+        if ($slug === 'centro-de-ayuda' && false === $content) {
+            $content = $this->centro_ayuda_default_content();
+            update_option($opt_key, $content);
+        }
+        if (false === $content) $content = '';
         $titles = [
             'centro-de-ayuda'        => 'Centro de Ayuda',
             'terminos-y-condiciones' => 'Términos y Condiciones',
@@ -7866,6 +7917,13 @@ Dashboard con analíticas"></textarea>
             'politica_de_privacidad' => ['title' => 'Política de Privacidad', 'icon' => '🔒', 'desc' => 'Política de privacidad y protección de datos.'],
             'politica_de_envios'     => ['title' => 'Política de Envíos', 'icon' => '🚚', 'desc' => 'Política de despacho a domicilio.'],
         ];
+        // Auto-populate defaults if never saved
+        if (false === get_option('petsgo_legal_centro_de_ayuda')) {
+            update_option('petsgo_legal_centro_de_ayuda', $this->centro_ayuda_default_content());
+        }
+        if (false === get_option('petsgo_help_faqs')) {
+            update_option('petsgo_help_faqs', $this->help_faqs_defaults());
+        }
         $faqs = get_option('petsgo_help_faqs', []);
         if (!is_array($faqs)) $faqs = [];
         ?>
