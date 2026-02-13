@@ -102,12 +102,43 @@ const PromoSlider = () => {
         .promo-slider.promo-hidden {
           animation: promoSlideOut 0.4s cubic-bezier(0.55, 0, 1, 0.45) forwards;
         }
-        @media (max-width: 640px) {
+        .promo-slider .promo-title { font-size: 15px; }
+        .promo-slider .promo-text  { font-size: 13px; }
+        .promo-slider .promo-icon-wrap { width: 40px; height: 40px; }
+        .promo-slider .promo-paw  { width: 64px; height: 64px; }
+
+        /* Tablet */
+        @media (max-width: 768px) {
           .promo-slider {
-            left: 10px;
-            bottom: 80px;
-            max-width: calc(100vw - 20px);
+            max-width: 290px;
+            bottom: 90px;
           }
+        }
+        /* Mobile */
+        @media (max-width: 480px) {
+          .promo-slider {
+            left: 8px;
+            right: 8px;
+            bottom: 72px;
+            max-width: none;
+            width: auto;
+            border-radius: 14px;
+          }
+          .promo-slider .promo-title { font-size: 14px; }
+          .promo-slider .promo-text  { font-size: 12px; }
+          .promo-slider .promo-icon-wrap { width: 34px; height: 34px; }
+          .promo-slider .promo-paw  { width: 48px; height: 48px; }
+        }
+        /* Very small */
+        @media (max-width: 360px) {
+          .promo-slider {
+            left: 6px;
+            right: 6px;
+            bottom: 64px;
+            border-radius: 12px;
+          }
+          .promo-slider .promo-title { font-size: 13px; }
+          .promo-slider .promo-text  { font-size: 11px; }
         }
       `}</style>
       <div className={`promo-slider ${visible ? 'promo-visible' : 'promo-hidden'}`}>
@@ -130,18 +161,18 @@ const PromoSlider = () => {
           </button>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
-            <div style={{
+            <div className="promo-icon-wrap" style={{
               width: '40px', height: '40px', borderRadius: '12px',
               background: 'rgba(255,255,255,0.2)', display: 'flex',
               alignItems: 'center', justifyContent: 'center',
             }}>
               <Icon size={22} color="#fff" />
             </div>
-            <h4 style={{ fontSize: '15px', fontWeight: 800, color: '#fff', margin: 0, lineHeight: 1.3 }}>
+            <h4 className="promo-title" style={{ fontSize: '15px', fontWeight: 800, color: '#fff', margin: 0, lineHeight: 1.3 }}>
               {promo.title}
             </h4>
           </div>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', margin: '0 0 14px', lineHeight: 1.5 }}>
+          <p className="promo-text" style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', margin: '0 0 14px', lineHeight: 1.5 }}>
             {promo.text}
           </p>
           <Link
@@ -161,6 +192,7 @@ const PromoSlider = () => {
 
           {/* Paw print watermark */}
           <PawPrint
+            className="promo-paw"
             size={64}
             color="rgba(255,255,255,0.12)"
             strokeWidth={1.5}
