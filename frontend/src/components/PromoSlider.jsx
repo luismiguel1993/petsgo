@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Store, Bike, ArrowRight, X } from 'lucide-react';
+import { Store, Bike, ArrowRight, X, PawPrint } from 'lucide-react';
 
 const PROMOS = [
   {
@@ -17,9 +17,9 @@ const PROMOS = [
   {
     id: 'rider',
     icon: Bike,
-    color: '#FFC400',
-    ctaColor: '#b38a00',
-    bg: 'linear-gradient(135deg, #FFC400, #E5A800)',
+    color: '#22C55E',
+    ctaColor: '#16A34A',
+    bg: 'linear-gradient(135deg, #22C55E, #16A34A)',
     title: '¿Quieres ser Rider?',
     text: 'Gana dinero entregando pedidos de mascotas. ¡Regístrate hoy!',
     cta: 'Registrarme',
@@ -151,13 +151,24 @@ const PromoSlider = () => {
               background: '#fff', color: promo.ctaColor || promo.color, padding: '10px 20px',
               borderRadius: '10px', fontSize: '13px', fontWeight: 700,
               textDecoration: 'none', transition: 'transform 0.2s, box-shadow 0.2s',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)', position: 'relative', zIndex: 2,
             }}
             onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)'; }}
           >
             {promo.cta} <ArrowRight size={14} />
           </Link>
+
+          {/* Paw print watermark */}
+          <PawPrint
+            size={64}
+            color="rgba(255,255,255,0.12)"
+            strokeWidth={1.5}
+            style={{
+              position: 'absolute', bottom: '8px', right: '12px',
+              transform: 'rotate(-20deg)', pointerEvents: 'none',
+            }}
+          />
         </div>
         {/* Progress bar */}
         {visible && (
