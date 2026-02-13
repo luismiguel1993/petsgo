@@ -7,6 +7,7 @@ const PROMOS = [
     id: 'tienda',
     icon: Store,
     color: '#00A8E8',
+    ctaColor: '#0077B6',
     bg: 'linear-gradient(135deg, #00A8E8, #0077B6)',
     title: '¿Tienes una tienda de mascotas?',
     text: 'Únete a PetsGo y empieza a vender. ¡Inscripción sin costo!',
@@ -16,8 +17,9 @@ const PROMOS = [
   {
     id: 'rider',
     icon: Bike,
-    color: '#22C55E',
-    bg: 'linear-gradient(135deg, #22C55E, #16A34A)',
+    color: '#FFC400',
+    ctaColor: '#b38a00',
+    bg: 'linear-gradient(135deg, #FFC400, #E5A800)',
     title: '¿Quieres ser Rider?',
     text: 'Gana dinero entregando pedidos de mascotas. ¡Regístrate hoy!',
     cta: 'Registrarme',
@@ -146,7 +148,7 @@ const PromoSlider = () => {
             to={promo.link}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              background: '#fff', color: promo.color, padding: '10px 20px',
+              background: '#fff', color: promo.ctaColor || promo.color, padding: '10px 20px',
               borderRadius: '10px', fontSize: '13px', fontWeight: 700,
               textDecoration: 'none', transition: 'transform 0.2s, box-shadow 0.2s',
               boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
