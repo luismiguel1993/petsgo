@@ -9029,12 +9029,31 @@ Dashboard con analíticas"></textarea>
             };
 
             // PDF Export — current search results
+            // Preload logo for PDF
+            var pgLogoDataUrl = null;
+            (function(){
+                var img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = function(){
+                    var c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    pgLogoDataUrl = c.toDataURL('image/png');
+                };
+                img.src = '<?php echo esc_js(plugins_url("petsgo-lib/logo-petsgo.png", __FILE__)); ?>';
+            })();
+
             window.pgExportTicketsPDF = function(){
                 var tickets = window._pgTickets || [];
                 if(!tickets.length){ alert('No hay tickets para exportar'); return; }
                 var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                 var meta = window._pgTicketsMeta || {};
                 var doc = new jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+                var pageW = doc.internal.pageSize.getWidth();
+                // Logo top-right
+                if(pgLogoDataUrl){
+                    try{ doc.addImage(pgLogoDataUrl, 'PNG', pageW - 52, 6, 38, 26); }catch(e){}
+                }
                 // Header
                 doc.setFontSize(16);
                 doc.setTextColor(0,168,232);
@@ -9081,10 +9100,11 @@ Dashboard con analíticas"></textarea>
                         }
                     }
                 });
-                // Footer
+                // Footer + logo on every page
                 var pageCount = doc.internal.getNumberOfPages();
                 for(var i=1;i<=pageCount;i++){
                     doc.setPage(i);
+                    if(pgLogoDataUrl && i>1){ try{ doc.addImage(pgLogoDataUrl,'PNG',pageW-52,6,38,26); }catch(e){} }
                     doc.setFontSize(8);
                     doc.setTextColor(150);
                     doc.text('PetsGo Tickets — Página '+i+' de '+pageCount, doc.internal.pageSize.getWidth()/2, doc.internal.pageSize.getHeight()-8,{align:'center'});
