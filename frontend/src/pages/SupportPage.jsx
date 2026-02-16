@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import {
   LifeBuoy, Send, MessageSquare, Clock, CheckCircle2, AlertCircle,
-  ChevronDown, ChevronUp, ArrowLeft, PawPrint, XCircle, Loader2,
+  ChevronDown, ChevronUp, ArrowLeft, PawPrint, XCircle, Loader2, Paperclip, ImageIcon, X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { createTicket, getTickets, getTicketDetail, addTicketReply } from '../services/api';
@@ -41,12 +41,28 @@ const SupportPage = () => {
   const [replyText, setReplyText] = useState('');
   const [sendingReply, setSendingReply] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [replyImageFile, setReplyImageFile] = useState(null);
+  const [replyImagePreview, setReplyImagePreview] = useState(null);
+  const fileInputRef = useRef(null);
+  const replyFileRef = useRef(null);
   const [form, setForm] = useState({
     subject: '',
     description: '',
     category: 'general',
     priority: 'media',
   });
+
+  const handleImageSelect = (file, setFile, setPreview) => {
+    if (!file) { setFile(null); setPreview(null); return; }
+    if (file.size > 5 * 1024 * 1024) { alert('La imagen no puede superar 5 MB'); return; }
+    if (!file.type.startsWith('image/')) { alert('Solo se permiten imágenes'); return; }
+    setFile(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setPreview(reader.result);
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => {
     if (isAuthenticated) loadTickets();
@@ -69,9 +85,11 @@ const SupportPage = () => {
     if (!form.subject.trim() || !form.description.trim()) return;
     setSubmitting(true);
     try {
-      await createTicket(form);
+      await createTicket(form, imageFile);
       setSuccessMsg('¡Ticket creado exitosamente! Te llegará un correo de confirmación.');
       setForm({ subject: '', description: '', category: 'general', priority: 'media' });
+      setImageFile(null); setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setTimeout(() => {
         setSuccessMsg('');
         setView('list');
@@ -105,8 +123,10 @@ const SupportPage = () => {
     if (!replyText.trim() || !selectedTicket) return;
     setSendingReply(true);
     try {
-      await addTicketReply(selectedTicket.id, replyText);
+      await addTicketReply(selectedTicket.id, replyText, replyImageFile);
       setReplyText('');
+      setReplyImageFile(null); setReplyImagePreview(null);
+      if (replyFileRef.current) replyFileRef.current.value = '';
       // Recargar detalle
       const res = await getTicketDetail(selectedTicket.id);
       const d = res.data?.data || res.data;
@@ -372,6 +392,63 @@ const SupportPage = () => {
                 />
               </div>
 
+              {/* Imagen de evidencia (opcional) */}
+              <div style={{ marginBottom: '28px' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#6b7280', marginBottom: '6px' }}>
+                  📎 Adjuntar Imagen (opcional)
+                </label>
+                <p style={{ fontSize: '11px', color: '#9ca3af', marginBottom: '8px' }}>
+                  Puedes adjuntar una captura de pantalla o foto como evidencia. Máx 5 MB.
+                </p>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={e => handleImageSelect(e.target.files[0], setImageFile, setImagePreview)}
+                  style={{ display: 'none' }}
+                />
+                {!imagePreview ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px',
+                      borderRadius: '10px', border: '2px dashed #d1d5db', background: '#fafafa',
+                      color: '#6b7280', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
+                      fontFamily: 'Poppins, sans-serif', transition: 'all 0.2s',
+                    }}
+                  >
+                    <ImageIcon size={18} /> Seleccionar imagen...
+                  </button>
+                ) : (
+                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                    <img
+                      src={imagePreview}
+                      alt="Vista previa"
+                      style={{
+                        maxWidth: '100%', maxHeight: '200px', borderRadius: '10px',
+                        border: '2px solid #e5e7eb',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                      style={{
+                        position: 'absolute', top: '-8px', right: '-8px', width: '24px', height: '24px',
+                        borderRadius: '50%', background: '#EF4444', color: '#fff', border: 'none',
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: '14px', fontWeight: 700,
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                    <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                      {imageFile?.name}
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={submitting || !form.subject.trim() || !form.description.trim()}
@@ -431,6 +508,23 @@ const SupportPage = () => {
                 <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
                   {selectedTicket.description}
                 </p>
+                {selectedTicket.image_url && (
+                  <div style={{ marginTop: '12px' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <Paperclip size={14} /> Evidencia adjunta:
+                    </p>
+                    <a href={selectedTicket.image_url} target="_blank" rel="noopener noreferrer">
+                      <img
+                        src={selectedTicket.image_url}
+                        alt="Evidencia"
+                        style={{
+                          maxWidth: '100%', maxHeight: '250px', borderRadius: '10px',
+                          border: '2px solid #e5e7eb', cursor: 'pointer',
+                        }}
+                      />
+                    </a>
+                  </div>
+                )}
                 <p style={{ fontSize: '11px', color: '#d1d5db', fontWeight: 500, marginTop: '12px' }}>
                   Creado: {new Date(selectedTicket.created_at).toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   {selectedTicket.assigned_name && (
@@ -480,6 +574,18 @@ const SupportPage = () => {
                       <p style={{ fontSize: '13px', color: '#374151', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                         {reply.message}
                       </p>
+                      {reply.image_url && (
+                        <a href={reply.image_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginTop: '8px' }}>
+                          <img
+                            src={reply.image_url}
+                            alt="Adjunto"
+                            style={{
+                              maxWidth: '200px', maxHeight: '150px', borderRadius: '8px',
+                              border: '1px solid #e5e7eb', cursor: 'pointer',
+                            }}
+                          />
+                        </a>
+                      )}
                     </div>
                   );
                 })}
@@ -490,19 +596,59 @@ const SupportPage = () => {
           {/* Responder (solo si no está cerrado) */}
           {selectedTicket.status !== 'cerrado' && (
             <div style={{ ...st.card, padding: '20px 24px' }}>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                <textarea
-                  value={replyText}
-                  onChange={e => setReplyText(e.target.value)}
-                  placeholder="Escribe tu respuesta..."
-                  rows={3}
-                  className="sp-input"
-                  style={{
-                    flex: 1, padding: '12px 14px', borderRadius: '10px',
-                    border: '2px solid #e5e7eb', fontSize: '13px', fontWeight: 500,
-                    fontFamily: 'Poppins, sans-serif', resize: 'vertical',
-                  }}
-                />
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <textarea
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    placeholder="Escribe tu respuesta..."
+                    rows={3}
+                    className="sp-input"
+                    style={{
+                      width: '100%', padding: '12px 14px', borderRadius: '10px',
+                      border: '2px solid #e5e7eb', fontSize: '13px', fontWeight: 500,
+                      fontFamily: 'Poppins, sans-serif', resize: 'vertical',
+                    }}
+                  />
+                  {/* Adjuntar imagen en respuesta */}
+                  <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                      ref={replyFileRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={e => handleImageSelect(e.target.files[0], setReplyImageFile, setReplyImagePreview)}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => replyFileRef.current?.click()}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px',
+                        borderRadius: '8px', border: '1px dashed #d1d5db', background: '#fafafa',
+                        color: '#6b7280', fontWeight: 600, fontSize: '11px', cursor: 'pointer',
+                        fontFamily: 'Poppins, sans-serif',
+                      }}
+                    >
+                      <Paperclip size={14} /> Adjuntar imagen
+                    </button>
+                    {replyImagePreview && (
+                      <div style={{ position: 'relative', display: 'inline-block' }}>
+                        <img src={replyImagePreview} alt="Preview" style={{ height: '40px', borderRadius: '6px', border: '1px solid #e5e7eb' }} />
+                        <button
+                          type="button"
+                          onClick={() => { setReplyImageFile(null); setReplyImagePreview(null); if (replyFileRef.current) replyFileRef.current.value = ''; }}
+                          style={{
+                            position: 'absolute', top: '-6px', right: '-6px', width: '18px', height: '18px',
+                            borderRadius: '50%', background: '#EF4444', color: '#fff', border: 'none',
+                            cursor: 'pointer', fontSize: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 <button
                   onClick={handleReply}
                   disabled={sendingReply || !replyText.trim()}

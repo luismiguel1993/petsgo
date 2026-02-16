@@ -312,9 +312,16 @@ export const getCategories = () =>
 // TICKETS / SOPORTE
 // ==========================================
 
-/** Crear ticket de soporte */
-export const createTicket = (data) =>
-  api.post('/tickets', data);
+/** Crear ticket de soporte (con imagen opcional) */
+export const createTicket = (data, imageFile) => {
+  if (imageFile) {
+    const fd = new FormData();
+    Object.keys(data).forEach(k => fd.append(k, data[k]));
+    fd.append('image', imageFile);
+    return api.post('/tickets', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  }
+  return api.post('/tickets', data);
+};
 
 /** Obtener mis tickets (cliente) o todos (admin) */
 export const getTickets = () =>
@@ -324,9 +331,16 @@ export const getTickets = () =>
 export const getTicketDetail = (id) =>
   api.get(`/tickets/${id}`);
 
-/** Agregar respuesta a un ticket */
-export const addTicketReply = (id, message) =>
-  api.post(`/tickets/${id}/reply`, { message });
+/** Agregar respuesta a un ticket (con imagen opcional) */
+export const addTicketReply = (id, message, imageFile) => {
+  if (imageFile) {
+    const fd = new FormData();
+    fd.append('message', message);
+    fd.append('image', imageFile);
+    return api.post(`/tickets/${id}/reply`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  }
+  return api.post(`/tickets/${id}/reply`, { message });
+};
 
 // ==========================================
 // CONTENIDO LEGAL / AYUDA

@@ -41,6 +41,7 @@ class PetsGo_Core {
         add_action('init', [$this, 'ensure_rider_tables']);
         add_action('init', [$this, 'ensure_category_table']);
         add_action('init', [$this, 'ensure_ticket_tables']);
+        add_action('init', [$this, 'ensure_ticket_images_columns']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
@@ -5617,6 +5618,44 @@ Dashboard con analíticas"></textarea>
     }
 
     /**
+     * Ensure image_url column exists in tickets & ticket_replies (v2 migration).
+     */
+    public function ensure_ticket_images_columns() {
+        if (get_option('petsgo_tickets_v2')) return;
+        global $wpdb;
+        $cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_tickets", 0);
+        if (!in_array('image_url', $cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_tickets ADD COLUMN image_url text DEFAULT NULL AFTER description");
+        }
+        $rcols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_ticket_replies", 0);
+        if (!in_array('image_url', $rcols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_ticket_replies ADD COLUMN image_url text DEFAULT NULL AFTER message");
+        }
+        update_option('petsgo_tickets_v2', true);
+    }
+
+    /**
+     * Handle ticket image upload. Returns URL on success, null on no-file.
+     */
+    private function handle_ticket_image_upload($field_name = 'image') {
+        if (empty($_FILES[$field_name]) || empty($_FILES[$field_name]['tmp_name'])) return null;
+        $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!in_array($_FILES[$field_name]['type'], $allowed)) return null;
+        if ($_FILES[$field_name]['size'] > 5 * 1024 * 1024) return null; // 5MB max
+
+        $upload_dir = wp_upload_dir();
+        $target_dir = $upload_dir['basedir'] . '/petsgo-tickets/';
+        if (!file_exists($target_dir)) wp_mkdir_p($target_dir);
+        $ext = pathinfo($_FILES[$field_name]['name'], PATHINFO_EXTENSION);
+        $filename = 'ticket_' . time() . '_' . wp_rand(1000,9999) . '.' . strtolower($ext);
+        $target = $target_dir . $filename;
+        if (move_uploaded_file($_FILES[$field_name]['tmp_name'], $target)) {
+            return $upload_dir['baseurl'] . '/petsgo-tickets/' . $filename;
+        }
+        return null;
+    }
+
+    /**
      * Schedule daily cron for subscription renewal reminders.
      */
     public function schedule_renewal_cron() {
@@ -8279,8 +8318,11 @@ Dashboard con analíticas"></textarea>
             return new WP_Error('missing_fields', 'Asunto y descripción son obligatorios.', ['status' => 400]);
         }
 
+        // Handle optional image upload
+        $image_url = $this->handle_ticket_image_upload('image');
+
         $ticket_number = $this->generate_ticket_number();
-        $wpdb->insert("{$wpdb->prefix}petsgo_tickets", [
+        $insert_data = [
             'ticket_number' => $ticket_number,
             'user_id'       => $user->ID,
             'user_name'     => $user->display_name ?: $user->user_login,
@@ -8291,7 +8333,9 @@ Dashboard con analíticas"></textarea>
             'category'      => $category,
             'priority'      => $priority,
             'status'        => 'abierto',
-        ]);
+        ];
+        if ($image_url) $insert_data['image_url'] = $image_url;
+        $wpdb->insert("{$wpdb->prefix}petsgo_tickets", $insert_data);
         $ticket_id = $wpdb->insert_id;
 
         // Send email to ticket creator
@@ -8353,13 +8397,17 @@ Dashboard con analíticas"></textarea>
         elseif (in_array('petsgo_vendor', $roles)) $role_label = 'tienda';
         elseif (in_array('petsgo_rider', $roles)) $role_label = 'rider';
 
-        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", [
+        // Handle optional image upload in reply
+        $image_url = $this->handle_ticket_image_upload('image');
+        $reply_data = [
             'ticket_id' => $id,
             'user_id'   => $user->ID,
             'user_name' => $user->display_name ?: $user->user_login,
             'user_role' => $role_label,
             'message'   => $message,
-        ]);
+        ];
+        if ($image_url) $reply_data['image_url'] = $image_url;
+        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", $reply_data);
         // If admin replies, mark as en_proceso
         if ($is_admin && $ticket->status === 'abierto') {
             $wpdb->update("{$wpdb->prefix}petsgo_tickets", ['status' => 'en_proceso'], ['id' => $id]);
@@ -8475,13 +8523,17 @@ Dashboard con analíticas"></textarea>
         $message = sanitize_textarea_field($_POST['message'] ?? '');
         if (!$id || !$message) wp_send_json_error('Datos inválidos');
         $user = wp_get_current_user();
-        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", [
+        // Handle optional image upload in admin reply
+        $image_url = $this->handle_ticket_image_upload('image');
+        $reply_data = [
             'ticket_id' => $id,
             'user_id'   => $user->ID,
             'user_name' => $user->display_name ?: $user->user_login,
             'user_role' => 'admin',
             'message'   => $message,
-        ]);
+        ];
+        if ($image_url) $reply_data['image_url'] = $image_url;
+        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", $reply_data);
         // Update ticket status
         $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
         if ($ticket && $ticket->status === 'abierto') {
@@ -8891,10 +8943,15 @@ Dashboard con analíticas"></textarea>
                     <hr style="margin:20px 0;">
                     <h4>💬 Respuestas</h4>
                     <div id="tk-replies" style="max-height:250px;overflow-y:auto;margin-bottom:16px;"></div>
-                    <div style="display:flex;gap:8px;">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <input type="hidden" id="tk-reply-id">
-                        <textarea id="tk-reply-msg" rows="3" style="flex:1;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
-                        <button class="petsgo-btn petsgo-btn-primary" onclick="pgTicketReply()" style="align-self:flex-end;">📤 Enviar</button>
+                        <textarea id="tk-reply-msg" rows="3" style="flex:1;min-width:300px;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
+                        <div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end;">
+                            <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;cursor:pointer;">
+                                📎 <input type="file" id="tk-reply-file" accept="image/*" style="width:130px;font-size:11px;">
+                            </label>
+                            <button class="petsgo-btn petsgo-btn-primary" onclick="pgTicketReply()">📤 Enviar</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -9006,7 +9063,8 @@ Dashboard con analíticas"></textarea>
                     '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Estado</td><td style="padding:6px 10px;border:1px solid #eee;">'+(stLabel[t.status]||t.status)+'</td></tr>'+
                     '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asignado a</td><td style="padding:6px 10px;border:1px solid #eee;">'+(t.assigned_name||'Sin asignar')+'</td></tr>'+
                     '</table>'+
-                    '<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>'
+                    '<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>'+
+                    (t.image_url ? '<div style="margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">📎 Evidencia adjunta:</p><a href="'+t.image_url+'" target="_blank"><img src="'+t.image_url+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee;margin-top:6px;cursor:pointer;" alt="Evidencia"></a></div>' : '')
                 );
                 $('#tk-reply-id').val(id);
                 var repliesHtml='<p style="color:#999;font-size:13px;">Cargando respuestas…</p>';
@@ -9019,7 +9077,9 @@ Dashboard con analíticas"></textarea>
                             var isAdmin=rp.user_role=='admin';
                             rh+='<div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;'+(isAdmin?'background:#e8f4fd;border-left:3px solid #00A8E8;':'background:#f8f9fa;border-left:3px solid #ccc;')+'">';
                             rh+='<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><strong style="font-size:13px;">'+rp.user_name+' <span style="color:#999;font-weight:400;">('+rp.user_role+')</span></strong><span style="font-size:11px;color:#999;">'+new Date(rp.created_at).toLocaleString('es-CL')+'</span></div>';
-                            rh+='<p style="margin:0;font-size:13px;">'+rp.message.replace(/\n/g,'<br>')+'</p></div>';
+                            rh+='<p style="margin:0;font-size:13px;">'+rp.message.replace(/\n/g,'<br>')+'</p>';
+                            if(rp.image_url) rh+='<a href="'+rp.image_url+'" target="_blank"><img src="'+rp.image_url+'" style="max-width:200px;max-height:150px;border-radius:6px;margin-top:6px;border:1px solid #eee;" alt="Adjunto"></a>';
+                            rh+='</div>';
                         });
                         $('#tk-replies').html(rh);
                     } else {
@@ -9031,9 +9091,16 @@ Dashboard con analíticas"></textarea>
             window.pgTicketReply = function(){
                 var msg=$('#tk-reply-msg').val().trim();
                 if(!msg){alert('Escribe un mensaje');return;}
-                PG.post('petsgo_add_ticket_reply',{ticket_id:$('#tk-reply-id').val(),message:msg},function(r){
-                    if(r.success){$('#tk-reply-msg').val('');pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();}else{alert(r.data);}
-                });
+                var fd = new FormData();
+                fd.append('action','petsgo_add_ticket_reply');
+                fd.append('_ajax_nonce', PG.nonce);
+                fd.append('ticket_id',$('#tk-reply-id').val());
+                fd.append('message',msg);
+                var fileInput = document.getElementById('tk-reply-file');
+                if(fileInput && fileInput.files[0]) fd.append('image', fileInput.files[0]);
+                $.ajax({url:PG.ajaxUrl, type:'POST', data:fd, processData:false, contentType:false, success:function(r){
+                    if(r.success){$('#tk-reply-msg').val('');if(fileInput)fileInput.value='';pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();}else{alert(r.data);}
+                }});
             };
 
             // PDF Export — current search results
