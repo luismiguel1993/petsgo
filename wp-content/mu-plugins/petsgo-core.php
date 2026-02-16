@@ -9052,19 +9052,19 @@ Dashboard con analíticas"></textarea>
                 var pageW = doc.internal.pageSize.getWidth();
                 // Logo top-right
                 if(pgLogoDataUrl){
-                    try{ doc.addImage(pgLogoDataUrl, 'PNG', pageW - 52, 6, 38, 26); }catch(e){}
+                    try{ doc.addImage(pgLogoDataUrl, 'PNG', pageW - 52, 8, 38, 26); }catch(e){}
                 }
                 // Header
-                doc.setFontSize(16);
+                doc.setFontSize(18);
                 doc.setTextColor(0,168,232);
-                doc.text('PetsGo - Reporte de Tickets',14,18);
+                doc.text('PetsGo - Reporte de Tickets', 14, 20);
                 doc.setFontSize(9);
                 doc.setTextColor(100);
                 var filterTxt = 'Filtro: '+ ($('#tk-status-filter option:selected').text()) + ' | Búsqueda: '+ ($('#tk-search').val()||'(todas)');
-                doc.text(filterTxt, 14, 25);
-                doc.text('Generado: '+new Date().toLocaleString('es-CL'), 14, 30);
+                doc.text(filterTxt, 14, 27);
+                doc.text('Generado: '+new Date().toLocaleString('es-CL'), 14, 32);
                 if(meta.stats){
-                    doc.text('Abiertos: '+(meta.stats.abierto||0)+' | En Proceso: '+(meta.stats.en_proceso||0)+' | Resueltos: '+(meta.stats.resuelto||0)+' | Cerrados: '+(meta.stats.cerrado||0)+' | Total: '+meta.total, 14, 35);
+                    doc.text('Abiertos: '+(meta.stats.abierto||0)+' | En Proceso: '+(meta.stats.en_proceso||0)+' | Resueltos: '+(meta.stats.resuelto||0)+' | Cerrados: '+(meta.stats.cerrado||0)+' | Total: '+meta.total, 14, 37);
                 }
                 // Table
                 var rows = [];
@@ -9082,7 +9082,7 @@ Dashboard con analíticas"></textarea>
                     ]);
                 });
                 doc.autoTable({
-                    startY: 40,
+                    startY: 42,
                     head:[['N° Ticket','Solicitante','Rol','Asunto','Categoría','Prioridad','Estado','Asignado','Fecha']],
                     body: rows,
                     styles:{fontSize:8,cellPadding:2,font:'helvetica'},
