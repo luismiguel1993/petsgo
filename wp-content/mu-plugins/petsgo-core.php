@@ -2274,6 +2274,8 @@ class PetsGo_Core {
         <script>
         jQuery(function($){
             // --- User form ---
+            // Prevent browser autofill from secretly filling password field
+            setTimeout(function(){ $('#uf-pass').val(''); }, 300);
             $('#user-form').on('submit',function(e){
                 e.preventDefault();var ok=true;
                 if(!$.trim($('#uf-login').val())){$('#uf-f-login').addClass('has-error');ok=false;}else{$('#uf-f-login').removeClass('has-error');}
@@ -3033,8 +3035,14 @@ Dashboard con analíticas"></textarea>
 
         if($id){
             wp_update_user(['ID'=>$id,'display_name'=>$name,'user_email'=>$email,'first_name'=>$first_name,'last_name'=>$last_name]);
-            if($pass) wp_set_password($pass,$id);
+            $pass_changed = false;
+            if($pass) { wp_set_password($pass,$id); $pass_changed = true; }
             $user=get_userdata($id);$user->set_role($role);
+            // Re-establish session if admin changed their OWN password (prevents self-logout)
+            if($pass_changed && $id == get_current_user_id()) {
+                wp_set_auth_cookie($id, true);
+                wp_set_current_user($id);
+            }
             // Update or insert profile
             $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d",$id));
             $pdata = ['first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null];
