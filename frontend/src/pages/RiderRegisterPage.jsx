@@ -483,9 +483,14 @@ const RiderRegisterPage = () => {
               <h3 style={{ margin: 0, fontWeight: 900, color: '#2F3A40', fontSize: 18 }}>📋 Términos y Condiciones del Rider</h3>
               <button onClick={() => setShowTermsModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9ca3af', fontWeight: 700 }}>✕</button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151', whiteSpace: 'pre-wrap' }}>
-              {termsContent || '⏳ Cargando términos...'}
-            </div>
+            {termsContent ? (
+              <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151' }}
+                dangerouslySetInnerHTML={{ __html: termsContent }} />
+            ) : (
+              <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151' }}>
+                ⏳ Cargando términos...
+              </div>
+            )}
             <button onClick={() => { setAcceptTerms(true); setShowTermsModal(false); }} style={{
               marginTop: 16, width: '100%', padding: 14, background: 'linear-gradient(135deg, #22C55E, #16a34a)',
               color: '#fff', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer',

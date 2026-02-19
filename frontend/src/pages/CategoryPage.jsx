@@ -269,6 +269,7 @@ const CategoryPage = () => {
           .cp-product-price { font-size: 16px !important; }
           .cp-product-desc { display: none !important; }
           .cp-search-wrap { flex-direction: column; }
+          .cp-search-wrap > div:last-child { flex: 1 1 100% !important; min-width: 0 !important; width: 100% !important; }
         }
         @media (max-width: 380px) { .cp-products-grid { grid-template-columns: 1fr !important; } }
       `}</style>

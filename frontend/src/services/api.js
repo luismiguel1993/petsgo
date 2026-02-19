@@ -2,11 +2,22 @@
  * PetsGo API Service
  * Capa de comunicación con el backend WordPress Headless.
  * Compatible con Web y futura App Móvil (misma lógica HTTP).
+ *
+ * Variables de entorno (ver .env.example):
+ *   VITE_API_URL   — Base de la API REST
+ *   VITE_WP_BASE   — Dominio de WordPress (para uploads/imágenes)
+ *   VITE_ENV        — development | production
  */
 import axios from 'axios';
 
 // En desarrollo usa proxy de Vite, en producción la URL real
 const API_BASE = import.meta.env.VITE_API_URL || '/wp-json/petsgo/v1';
+
+/** Base de WordPress para resolver URLs de imágenes/uploads */
+export const WP_BASE = import.meta.env.VITE_WP_BASE || '';
+
+/** true cuando estamos en producción */
+export const IS_PROD = import.meta.env.VITE_ENV === 'production';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -196,6 +207,24 @@ export const updateOrderStatus = (orderId, status) =>
   api.put(`/vendor/orders/${orderId}/status`, { status });
 
 // ==========================================
+// COUPONS
+// ==========================================
+
+/** Validar cupón desde el carrito */
+export const validateCoupon = (code, vendorIds, subtotal) =>
+  api.post('/coupons/validate', { code, vendor_ids: vendorIds, subtotal });
+
+/** Cupones del vendor (CRUD) */
+export const getVendorCoupons = () =>
+  api.get('/vendor/coupons');
+
+export const saveVendorCoupon = (data) =>
+  api.post('/vendor/coupons', data);
+
+export const deleteVendorCoupon = (id) =>
+  api.delete(`/vendor/coupons/${id}`);
+
+// ==========================================
 // RIDER
 // ==========================================
 
@@ -349,5 +378,41 @@ export const addTicketReply = (id, message, imageFile) => {
 /** Obtener contenido de una página legal/ayuda */
 export const getLegalPage = (slug) =>
   api.get(`/legal/${slug}`);
+
+// ==========================================
+// CHATBOT IA
+// ==========================================
+
+/** Obtener configuración del chatbot (prompt, categorías, planes, settings) */
+export const getChatbotConfig = () =>
+  api.get('/chatbot-config');
+
+/** Obtener contexto del usuario logueado para el chatbot (nombre, pedidos, etc.) */
+export const getChatbotUserContext = () =>
+  api.get('/chatbot-user-context');
+
+/** Cargar historial de chat guardado del usuario */
+export const getChatHistory = () =>
+  api.get('/chatbot-history');
+
+/** Guardar historial de chat del usuario (soporta conversation_id) */
+export const saveChatHistory = (messages, conversationId = null) =>
+  api.post('/chatbot-history', { messages, conversation_id: conversationId });
+
+/** Listar conversaciones del usuario */
+export const listConversations = () =>
+  api.get('/chatbot-conversations');
+
+/** Obtener una conversación específica */
+export const getConversation = (id) =>
+  api.get(`/chatbot-conversations/${id}`);
+
+/** Eliminar una conversación */
+export const deleteConversation = (id) =>
+  api.delete(`/chatbot-conversations/${id}`);
+
+/** Enviar mensaje al chatbot (proxy server-side a AutomatizaTech) */
+export const sendChatbotMessage = (messages) =>
+  api.post('/chatbot-send', { messages }, { timeout: 60000 });
 
 export default api;

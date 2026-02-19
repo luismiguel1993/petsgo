@@ -1,8 +1,26 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Phone, MapPin, Instagram, Facebook, Linkedin, Twitter } from 'lucide-react';
 import logoBlanco from '../assets/Huella y nombre_1.svg';
 import { useSite } from '../context/SiteContext';
+
+/** Link que hace scroll al inicio de la página al navegar */
+const ScrollLink = ({ to, children, ...props }) => {
+  const navigate = useNavigate();
+  return (
+    <a
+      href={to}
+      {...props}
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(to);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }}
+    >
+      {children}
+    </a>
+  );
+};
 
 const Footer = () => {
   const site = useSite();
@@ -50,24 +68,24 @@ const Footer = () => {
             </h4>
             <ul className="space-y-4">
               <li>
-                <Link to="/" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Productos
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/tiendas" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/tiendas" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Tiendas
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/planes" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Planes
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/tiendas" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/tiendas" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Ofertas
-                </Link>
+                </ScrollLink>
               </li>
             </ul>
           </div>
@@ -79,24 +97,24 @@ const Footer = () => {
             </h4>
             <ul className="space-y-4">
               <li>
-                <Link to="/centro-de-ayuda" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/centro-de-ayuda" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Centro de Ayuda
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/politica-de-envios" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/politica-de-envios" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Política de Envíos
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/terminos-y-condiciones" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/terminos-y-condiciones" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Términos y Condiciones
-                </Link>
+                </ScrollLink>
               </li>
               <li>
-                <Link to="/politica-de-privacidad" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
+                <ScrollLink to="/politica-de-privacidad" className="text-gray-400 hover:text-white hover:translate-x-1 transition-all inline-block no-underline">
                   Privacidad
-                </Link>
+                </ScrollLink>
               </li>
             </ul>
           </div>
@@ -144,9 +162,9 @@ const Footer = () => {
               © {new Date().getFullYear()} {site.company_name} Marketplace. Todos los derechos reservados.
             </p>
             <div className="flex items-center gap-6 text-sm">
-              <Link to="/politica-de-privacidad" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</Link>
+              <ScrollLink to="/politica-de-privacidad" className="text-gray-500 hover:text-white transition-colors no-underline">Política de Privacidad</ScrollLink>
               <span className="text-gray-600">|</span>
-              <Link to="/terminos-y-condiciones" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</Link>
+              <ScrollLink to="/terminos-y-condiciones" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</ScrollLink>
             </div>
           </div>
         </div>

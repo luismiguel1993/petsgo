@@ -32,7 +32,7 @@ const PRIORITIES = [
 ];
 
 const SupportPage = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, loading: authLoading } = useAuth();
   const [view, setView] = useState('list'); // 'list' | 'new' | 'detail'
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +142,7 @@ const SupportPage = () => {
     }
   };
 
+  if (authLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" />;
 
   const st = {

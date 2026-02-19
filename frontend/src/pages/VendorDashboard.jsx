@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
   Package, Plus, Pencil, Trash2, Search, BarChart3, DollarSign, ShoppingBag,
-  TrendingUp, Store, Eye, EyeOff, Save, X, Clock, CheckCircle2, Truck,
+  TrendingUp, Store, Eye, EyeOff, Save, X, Clock, CheckCircle2, Truck, Tag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getVendorDashboard, getVendorInventory, addProduct, updateProduct,
   deleteProduct, getVendorOrders, updateOrderStatus,
+  getVendorCoupons, saveVendorCoupon, deleteVendorCoupon,
 } from '../services/api';
 
 const STATUS_CONFIG = {
@@ -38,20 +39,27 @@ const DEMO_VENDOR_ORDERS = [
 ];
 
 const VendorDashboard = () => {
-  const { isAuthenticated, isVendor, isAdmin } = useAuth();
+  const { isAuthenticated, isVendor, isAdmin, loading: authLoading } = useAuth();
   const [tab, setTab] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [inventory, setInventory] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [showCouponForm, setShowCouponForm] = useState(false);
+  const [editingCoupon, setEditingCoupon] = useState(null);
   const [vendorInactive, setVendorInactive] = useState(false);
   const [inactiveMessage, setInactiveMessage] = useState('');
 
   // Formulario de producto
   const emptyProduct = { product_name: '', description: '', price: '', stock: '', category: '' };
   const [formData, setFormData] = useState(emptyProduct);
+
+  // Formulario de cupón
+  const emptyCoupon = { code: '', description: '', discount_type: 'percentage', discount_value: '', min_purchase: 0, max_discount: 0, usage_limit: 0, per_user_limit: 0, valid_from: '', valid_until: '', is_active: 1 };
+  const [couponForm, setCouponForm] = useState(emptyCoupon);
 
   useEffect(() => {
     loadData();
@@ -71,6 +79,9 @@ const VendorDashboard = () => {
         const { data } = await getVendorOrders();
         const ord = Array.isArray(data) ? data : [];
         setOrders(ord.length > 0 ? ord : DEMO_VENDOR_ORDERS);
+      } else if (tab === 'coupons') {
+        const { data } = await getVendorCoupons();
+        setCoupons(Array.isArray(data) ? data : data?.data || []);
       }
     } catch (err) {
       console.error('Error cargando datos:', err);
@@ -83,11 +94,13 @@ const VendorDashboard = () => {
       if (tab === 'dashboard') setStats(DEMO_VENDOR_STATS);
       if (tab === 'inventory') setInventory(DEMO_INVENTORY);
       if (tab === 'orders') setOrders(DEMO_VENDOR_ORDERS);
+      if (tab === 'coupons') setCoupons([]);
     } finally {
       setLoading(false);
     }
   };
 
+  if (authLoading) return null;
   if (!isAuthenticated || (!isVendor() && !isAdmin())) return <Navigate to="/login" />;
 
   // Vendor inactive screen
@@ -170,6 +183,7 @@ const VendorDashboard = () => {
     { key: 'dashboard', label: 'Dashboard', icon: BarChart3 },
     { key: 'inventory', label: 'Inventario', icon: Package },
     { key: 'orders', label: 'Pedidos', icon: ShoppingBag },
+    { key: 'coupons', label: 'Cupones', icon: Tag },
   ];
 
   return (
@@ -461,6 +475,240 @@ const VendorDashboard = () => {
                             Avanzar
                           </button>
                         )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== CUPONES ==================== */}
+      {tab === 'coupons' && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-black text-[#2F3A40]">
+              Mis Cupones <span className="text-gray-400 font-medium">({coupons.length})</span>
+            </h3>
+            <button
+              onClick={() => { setShowCouponForm(true); setEditingCoupon(null); setCouponForm(emptyCoupon); }}
+              className="petsgo-btn text-sm flex items-center gap-2"
+            >
+              <Plus size={16} /> Nuevo Cupón
+            </button>
+          </div>
+
+          {/* Formulario modal cupón */}
+          {showCouponForm && (
+            <div className="petsgo-card p-6 mb-6 border-2 border-[#00A8E8]">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-bold text-[#2F3A40]">
+                  {editingCoupon ? 'Editar Cupón' : 'Nuevo Cupón'}
+                </h4>
+                <button onClick={() => setShowCouponForm(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={18} />
+                </button>
+              </div>
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                try {
+                  await saveVendorCoupon({ ...couponForm, id: editingCoupon?.id || 0 });
+                  setShowCouponForm(false);
+                  setEditingCoupon(null);
+                  setCouponForm(emptyCoupon);
+                  loadData();
+                } catch (err) {
+                  alert(err.response?.data?.message || 'Error guardando cupón');
+                }
+              }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Código *</label>
+                  <input
+                    value={couponForm.code}
+                    onChange={(e) => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })}
+                    required
+                    maxLength={30}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-bold uppercase tracking-wider"
+                    placeholder="VERANO2025"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Descripción</label>
+                  <input
+                    value={couponForm.description}
+                    onChange={(e) => setCouponForm({ ...couponForm, description: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder="Descuento de verano"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Tipo descuento</label>
+                  <select
+                    value={couponForm.discount_type}
+                    onChange={(e) => setCouponForm({ ...couponForm, discount_type: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                  >
+                    <option value="percentage">Porcentaje (%)</option>
+                    <option value="fixed">Monto Fijo ($)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Valor descuento *</label>
+                  <input
+                    type="number" step="0.01" min="0.01"
+                    value={couponForm.discount_value}
+                    onChange={(e) => setCouponForm({ ...couponForm, discount_value: e.target.value })}
+                    required
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder={couponForm.discount_type === 'percentage' ? '10' : '5000'}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Compra mínima ($)</label>
+                  <input
+                    type="number" min="0"
+                    value={couponForm.min_purchase}
+                    onChange={(e) => setCouponForm({ ...couponForm, min_purchase: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder="0 = sin mínimo"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Máx. descuento ($)</label>
+                  <input
+                    type="number" min="0"
+                    value={couponForm.max_discount}
+                    onChange={(e) => setCouponForm({ ...couponForm, max_discount: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder="0 = sin tope"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Usos totales</label>
+                  <input
+                    type="number" min="0"
+                    value={couponForm.usage_limit}
+                    onChange={(e) => setCouponForm({ ...couponForm, usage_limit: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder="0 = ilimitado"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Usos por usuario</label>
+                  <input
+                    type="number" min="0"
+                    value={couponForm.per_user_limit}
+                    onChange={(e) => setCouponForm({ ...couponForm, per_user_limit: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                    placeholder="0 = ilimitado"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Válido desde</label>
+                  <input
+                    type="datetime-local"
+                    value={couponForm.valid_from}
+                    onChange={(e) => setCouponForm({ ...couponForm, valid_from: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Válido hasta</label>
+                  <input
+                    type="datetime-local"
+                    value={couponForm.valid_until}
+                    onChange={(e) => setCouponForm({ ...couponForm, valid_until: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
+                  />
+                </div>
+                <div className="flex items-center gap-2 md:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-bold text-[#2F3A40] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={couponForm.is_active == 1}
+                      onChange={(e) => setCouponForm({ ...couponForm, is_active: e.target.checked ? 1 : 0 })}
+                      className="w-4 h-4"
+                    />
+                    Activo
+                  </label>
+                </div>
+                <div className="md:col-span-2 flex gap-3">
+                  <button type="submit" className="petsgo-btn text-sm flex items-center gap-2">
+                    <Save size={16} /> {editingCoupon ? 'Actualizar' : 'Guardar'}
+                  </button>
+                  <button type="button" onClick={() => setShowCouponForm(false)} className="px-4 py-2 bg-gray-100 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-200">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Lista de cupones */}
+          {loading ? (
+            <div className="petsgo-card p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-full mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-full mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+            </div>
+          ) : coupons.length === 0 ? (
+            <div className="text-center py-16 petsgo-card">
+              <Tag size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-400 font-bold">Aún no tienes cupones</p>
+              <p className="text-gray-300 text-sm">Crea tu primer cupón para ofrecer descuentos a tus clientes</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {coupons.map((c) => {
+                const now = new Date();
+                const expired = c.valid_until && new Date(c.valid_until) < now;
+                const exhausted = c.usage_limit > 0 && c.usage_count >= c.usage_limit;
+                const isActive = c.is_active == 1 && !expired && !exhausted;
+                return (
+                  <div key={c.id} className="petsgo-card p-5">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-1">
+                          <span className="text-lg font-black text-[#2F3A40] tracking-wider">{c.code}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            {!c.is_active || c.is_active == 0 ? 'Inactivo' : expired ? 'Expirado' : exhausted ? 'Agotado' : 'Activo'}
+                          </span>
+                        </div>
+                        {c.description && <p className="text-sm text-gray-400 mb-2">{c.description}</p>}
+                        <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+                          <span className="font-bold text-[#00A8E8]">
+                            {c.discount_type === 'percentage' ? `${c.discount_value}%` : formatPrice(c.discount_value)} dto.
+                          </span>
+                          {c.min_purchase > 0 && <span>Mín: {formatPrice(c.min_purchase)}</span>}
+                          {c.max_discount > 0 && <span>Máx dto: {formatPrice(c.max_discount)}</span>}
+                          <span>Usos: {c.usage_count}{c.usage_limit > 0 ? `/${c.usage_limit}` : '/∞'}</span>
+                          {c.valid_until && <span>Vence: {new Date(c.valid_until).toLocaleDateString('es-CL')}</span>}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => {
+                          setEditingCoupon(c);
+                          setCouponForm({
+                            code: c.code, description: c.description || '', discount_type: c.discount_type,
+                            discount_value: c.discount_value, min_purchase: c.min_purchase, max_discount: c.max_discount,
+                            usage_limit: c.usage_limit, per_user_limit: c.per_user_limit,
+                            valid_from: c.valid_from ? c.valid_from.replace(' ', 'T').substring(0, 16) : '',
+                            valid_until: c.valid_until ? c.valid_until.replace(' ', 'T').substring(0, 16) : '',
+                            is_active: c.is_active,
+                          });
+                          setShowCouponForm(true);
+                        }} className="text-gray-400 hover:text-[#00A8E8]" title="Editar">
+                          <Pencil size={16} />
+                        </button>
+                        <button onClick={async () => {
+                          if (!confirm(`¿Eliminar cupón "${c.code}"?`)) return;
+                          try { await deleteVendorCoupon(c.id); loadData(); }
+                          catch { alert('Error eliminando cupón'); }
+                        }} className="text-gray-400 hover:text-red-500" title="Eliminar">
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                   </div>

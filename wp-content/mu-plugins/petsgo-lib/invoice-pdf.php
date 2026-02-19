@@ -54,6 +54,7 @@ class PetsGo_Invoice_PDF extends FPDF {
             'display_name' => $invoice_data['customer_name'] ?? 'N/A',
             'user_email'   => $invoice_data['customer_email'] ?? '',
             'ID'           => $invoice_data['customer_id'] ?? '',
+            'id_label'     => $invoice_data['customer_id_label'] ?? '',
         ];
         $this->invoice_number = $invoice_data['invoice_number'] ?? '';
         $this->qr_token       = $qr_token;
@@ -248,7 +249,10 @@ class PetsGo_Invoice_PDF extends FPDF {
         $this->SetFont('Arial', 'B', 9);
         $this->Cell($bw - 6, 5, $this->utf8('Nº Boleta: ') . $this->invoice_number, 0, 2);
         $this->SetFont('Arial', '', 9);
-        $this->Cell($bw - 6, 5, $this->utf8('Fecha: ') . date('d/m/Y', strtotime($this->order_data->created_at ?? 'now')), 0, 2);
+        $dateVal = $this->order_data->created_at ?? 'now';
+        $ts = strtotime($dateVal);
+        if ($ts === false || $ts <= 0) $ts = time();
+        $this->Cell($bw - 6, 5, $this->utf8('Fecha: ') . date('d/m/Y', $ts), 0, 2);
         $this->Cell($bw - 6, 5, $this->utf8('Pedido #') . ($this->order_data->id ?? ''), 0, 2);
 
         // Datos de la tienda a la izquierda
@@ -286,8 +290,9 @@ class PetsGo_Invoice_PDF extends FPDF {
         $this->Cell(55, 5, $this->customer_data->user_email ?? 'N/A', 0, 1);
 
         $this->SetX(18);
-        $this->Cell(30, 5, 'ID:', 0, 0);
-        $this->Cell(60, 5, '#' . ($this->customer_data->ID ?? ''), 0, 0);
+        $id_text = !empty($this->customer_data->id_label) ? $this->customer_data->id_label : 'ID: #' . ($this->customer_data->ID ?? '');
+        $this->Cell(30, 5, '', 0, 0);
+        $this->Cell(60, 5, $this->utf8($id_text), 0, 0);
 
         $this->SetY($y + 20);
     }
@@ -385,7 +390,7 @@ class PetsGo_Invoice_PDF extends FPDF {
     // QR CODE
     // ========================
     private function buildQRSection() {
-        $validation_url = site_url('/wp-json/petsgo/v1/invoice/validate/' . $this->qr_token);
+        $validation_url = site_url('/verificar-boleta/' . $this->qr_token);
 
         // Generar QR
         $qr_dir  = WP_CONTENT_DIR . '/uploads/petsgo-qr/';

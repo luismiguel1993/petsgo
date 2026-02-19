@@ -19,6 +19,11 @@ const DEFAULTS = {
   social_whatsapp: '+56912345678',
   free_shipping_min: 39990,
   plan_annual_free_months: 2,
+  delivery_standard_cost: 2990,
+  delivery_base_rate: 2000,
+  delivery_per_km: 400,
+  delivery_fee_min: 2000,
+  delivery_fee_max: 5000,
   faqs: [],
 };
 

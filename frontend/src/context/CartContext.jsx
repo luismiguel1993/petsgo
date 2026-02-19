@@ -6,6 +6,7 @@ export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
   const [items, setItems] = useState([]);
+  const [appliedCoupon, setAppliedCoupon] = useState(null); // { code, discount_type, discount_value, discount, vendor_id, description }
   const onCartOpenRef = useRef(null);
 
   const setOnCartOpen = useCallback((fn) => {
@@ -40,10 +41,11 @@ export const CartProvider = ({ children }) => {
     );
   };
 
-  const clearCart = () => setItems([]);
+  const clearCart = () => { setItems([]); setAppliedCoupon(null); };
 
   const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
   const subtotal = items.reduce((sum, i) => sum + parseFloat(i.price) * i.quantity, 0);
+  const discountAmount = appliedCoupon ? appliedCoupon.discount : 0;
 
   const getItemQuantity = (productId) => {
     const item = items.find((i) => i.id === productId);
@@ -54,6 +56,7 @@ export const CartProvider = ({ children }) => {
     <CartContext.Provider value={{
       items, addItem, removeItem, updateQuantity, clearCart,
       totalItems, subtotal, setOnCartOpen, getItemQuantity,
+      appliedCoupon, setAppliedCoupon, discountAmount,
     }}>
       {children}
     </CartContext.Provider>

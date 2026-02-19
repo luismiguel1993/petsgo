@@ -78,7 +78,7 @@ const StatBox = ({ label, value, sub, color, icon: Icon }) => (
 
 /* ============================================================ */
 const RiderDashboard = () => {
-  const { isAuthenticated, isRider, isAdmin, user } = useAuth();
+  const { isAuthenticated, isRider, isAdmin, user, loading: authLoading } = useAuth();
   const [tab, setTab] = useState('home');
   const [loading, setLoading] = useState(true);
 
@@ -214,6 +214,7 @@ const RiderDashboard = () => {
   }, [tab, riderStatus, loadDeliveries, loadDocuments, loadRatings, loadEarnings, loadProfile]);
 
   /* ── auth guard ── */
+  if (authLoading) return null;
   if (!isAuthenticated || (!isRider() && !isAdmin())) return <Navigate to="/login" />;
 
   /* ────────────── handlers ────────────── */

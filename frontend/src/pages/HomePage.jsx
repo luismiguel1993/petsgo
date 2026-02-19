@@ -323,7 +323,10 @@ const HomePage = () => {
                   </p>
                 </div>
               </div>
-              <button className="px-8 py-3.5 bg-[#FFC400] text-[#2F3A40] font-black rounded-xl hover:scale-105 transition-all text-sm shadow-lg shadow-yellow-500/20 uppercase tracking-wide">
+              <button
+                onClick={() => window.dispatchEvent(new Event('petsgo:open_chat'))}
+                className="px-8 py-3.5 bg-[#FFC400] text-[#2F3A40] font-black rounded-xl hover:scale-105 transition-all text-sm shadow-lg shadow-yellow-500/20 uppercase tracking-wide cursor-pointer"
+              >
                 CHATEAR AHORA 🐾
               </button>
             </div>
