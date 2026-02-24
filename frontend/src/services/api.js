@@ -291,6 +291,53 @@ export const rateRider = (orderId, rating, comment) =>
   api.post(`/orders/${orderId}/rate-rider`, { rating, comment });
 
 // ==========================================
+// REVIEWS — Product & Vendor Ratings
+// ==========================================
+
+/** Enviar valoración de producto o tienda */
+export const submitReview = (data) =>
+  api.post('/reviews', data);
+
+/** Obtener reseñas de un producto */
+export const getProductReviews = (productId) =>
+  api.get(`/products/${productId}/reviews`);
+
+/** Obtener reseñas de una tienda */
+export const getVendorReviews = (vendorId) =>
+  api.get(`/vendors/${vendorId}/reviews`);
+
+/** Estado de reviews de un pedido (qué ya fue valorado) */
+export const getOrderReviewStatus = (orderId) =>
+  api.get(`/orders/${orderId}/review-status`);
+
+// ==========================================
+// ADMIN INVENTORY — PetsGo Official Store
+// ==========================================
+
+/** Obtener productos de la tienda PetsGo */
+export const getAdminInventory = () =>
+  api.get('/admin/inventory');
+
+/** Agregar producto a tienda PetsGo */
+export const addAdminProduct = (data) =>
+  api.post('/admin/inventory', data);
+
+/** Actualizar producto de tienda PetsGo */
+export const updateAdminProduct = (id, data) =>
+  api.put(`/admin/inventory/${id}`, data);
+
+/** Eliminar producto de tienda PetsGo */
+export const deleteAdminProduct = (id) =>
+  api.delete(`/admin/inventory/${id}`);
+
+/** Subir imagen para producto PetsGo */
+export const uploadAdminProductImage = (file) => {
+  const fd = new FormData();
+  fd.append('image', file);
+  return api.post('/admin/inventory/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+};
+
+// ==========================================
 // ADMIN
 // ==========================================
 

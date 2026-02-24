@@ -3,12 +3,14 @@ import { Navigate } from 'react-router-dom';
 import {
   BarChart3, DollarSign, Store, Users, Package, ShoppingBag, TrendingUp,
   Eye, Percent, Save, Search, Shield, PawPrint, Truck, Star, MapPin,
-  Calendar, Download, ChevronRight, ArrowLeft, FileText, X,
+  Calendar, Download, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getAdminDashboard, getAdminVendors, getVendorDashboardAsAdmin,
   updateCommissions, getAdminRiders, getAdminRiderStats,
+  getAdminInventory, addAdminProduct, updateAdminProduct, deleteAdminProduct, uploadAdminProductImage,
+  getCategories,
 } from '../services/api';
 
 const DEMO_ADMIN_STATS = {
@@ -41,6 +43,15 @@ const AdminDashboard = () => {
   const [riderStatsTo, setRiderStatsTo] = useState('');
   const [riderStatsLoading, setRiderStatsLoading] = useState(false);
   const [riderSearch, setRiderSearch] = useState('');
+  // PetsGo Store tab
+  const [petsgoProducts, setPetsgoProducts] = useState([]);
+  const [petsgoVendorId, setPetsgoVendorId] = useState(null);
+  const [showProductForm, setShowProductForm] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState({ product_name: '', description: '', price: '', stock: '', category: '', image_id: null, image_url: null });
+  const [productSaving, setProductSaving] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -59,7 +70,14 @@ const AdminDashboard = () => {
       }      if (tab === 'riders') {
         const { data } = await getAdminRiders();
         setRiders(Array.isArray(data) ? data : []);
-      }    } catch (err) {
+      }
+      if (tab === 'store') {
+        const [invRes, catRes] = await Promise.all([getAdminInventory(), getCategories()]);
+        setPetsgoProducts(invRes.data?.data || []);
+        setPetsgoVendorId(invRes.data?.vendor_id || null);
+        setCategories(catRes.data?.data || catRes.data || []);
+      }
+    } catch (err) {
       console.error('Error cargando datos admin:', err);
       if (tab === 'dashboard') setStats(DEMO_ADMIN_STATS);
       if (tab === 'vendors') setVendors(DEMO_ADMIN_VENDORS);
@@ -101,6 +119,7 @@ const AdminDashboard = () => {
   const tabs = [
     { key: 'dashboard', label: 'Dashboard Global', icon: BarChart3 },
     { key: 'vendors', label: 'Tiendas', icon: Store },
+    { key: 'store', label: 'Tienda PetsGo', icon: ShoppingBag },
     { key: 'riders', label: 'Riders', icon: Truck },
   ];
 
@@ -330,6 +349,254 @@ const AdminDashboard = () => {
                             <Percent size={16} />
                           </button>
                         )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== TIENDA PETSGO ==================== */}
+      {tab === 'store' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <div>
+              <h3 className="text-lg font-black text-[#2F3A40]">
+                🛍️ Tienda PetsGo Oficial
+              </h3>
+              <p className="text-xs text-gray-400 mt-1">Gestiona los productos que PetsGo vende directamente</p>
+            </div>
+            <button
+              onClick={() => {
+                setEditingProduct(null);
+                setProductForm({ product_name: '', description: '', price: '', stock: '', category: '', image_id: null, image_url: null });
+                setShowProductForm(true);
+              }}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7] transition-all shadow-lg"
+            >
+              <Plus size={16} /> Agregar Producto
+            </button>
+          </div>
+
+          {/* Product Form Modal */}
+          {showProductForm && (
+            <div className="petsgo-card p-6 mb-6 border-2 border-[#00A8E8] bg-blue-50/30">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="font-black text-[#2F3A40] flex items-center gap-2">
+                  <Package size={18} className="text-[#00A8E8]" />
+                  {editingProduct ? 'Editar Producto' : 'Nuevo Producto PetsGo'}
+                </h4>
+                <button onClick={() => setShowProductForm(false)} className="text-gray-400 hover:text-gray-600">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Nombre del Producto *</label>
+                  <input
+                    type="text" value={productForm.product_name}
+                    onChange={e => setProductForm({ ...productForm, product_name: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    placeholder="Ej: Royal Canin Adulto 15kg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Categoría *</label>
+                  <select
+                    value={productForm.category}
+                    onChange={e => setProductForm({ ...productForm, category: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {categories.map(c => (
+                      <option key={c.id || c.slug} value={c.name}>{c.emoji || ''} {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Precio (CLP) *</label>
+                  <input
+                    type="number" value={productForm.price}
+                    onChange={e => setProductForm({ ...productForm, price: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    placeholder="29990"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Stock *</label>
+                  <input
+                    type="number" value={productForm.stock}
+                    onChange={e => setProductForm({ ...productForm, stock: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    placeholder="100"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Descripción</label>
+                  <textarea
+                    value={productForm.description}
+                    onChange={e => setProductForm({ ...productForm, description: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
+                    rows={3}
+                    placeholder="Describe el producto..."
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 mb-1">Imagen del Producto</label>
+                  <div className="flex items-center gap-4">
+                    {productForm.image_url && (
+                      <img src={productForm.image_url} alt="" className="w-16 h-16 rounded-xl object-cover border" />
+                    )}
+                    <label className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-sm font-bold text-gray-600 cursor-pointer hover:bg-gray-50">
+                      <Image size={16} />
+                      {uploadingImage ? 'Subiendo...' : 'Subir Imagen'}
+                      <input
+                        type="file" accept="image/*" className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadingImage(true);
+                          try {
+                            const res = await uploadAdminProductImage(file);
+                            setProductForm(prev => ({ ...prev, image_id: res.data.image_id, image_url: res.data.image_url }));
+                          } catch { alert('Error subiendo imagen'); }
+                          setUploadingImage(false);
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button
+                  onClick={() => setShowProductForm(false)}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-100"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!productForm.product_name || !productForm.price || !productForm.stock) {
+                      alert('Completa nombre, precio y stock'); return;
+                    }
+                    setProductSaving(true);
+                    try {
+                      const payload = {
+                        product_name: productForm.product_name,
+                        description: productForm.description,
+                        price: parseFloat(productForm.price),
+                        stock: parseInt(productForm.stock),
+                        category: productForm.category,
+                        image_id: productForm.image_id,
+                      };
+                      if (editingProduct) {
+                        await updateAdminProduct(editingProduct, payload);
+                      } else {
+                        await addAdminProduct(payload);
+                      }
+                      setShowProductForm(false);
+                      loadData();
+                    } catch (err) {
+                      alert(err.response?.data?.message || 'Error guardando producto');
+                    }
+                    setProductSaving(false);
+                  }}
+                  disabled={productSaving}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7] disabled:bg-gray-300"
+                >
+                  <Save size={14} /> {productSaving ? 'Guardando...' : editingProduct ? 'Actualizar' : 'Crear Producto'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="petsgo-card p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-full mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-full mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-3/4" />
+            </div>
+          ) : petsgoProducts.length === 0 ? (
+            <div className="text-center py-16 petsgo-card">
+              <ShoppingBag size={48} className="mx-auto text-gray-300 mb-4" />
+              <p className="text-gray-400 font-bold text-lg">La Tienda PetsGo aún no tiene productos</p>
+              <p className="text-gray-300 text-sm mt-1">Agrega productos para comenzar a vender directamente desde PetsGo</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Producto</th>
+                    <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Categoría</th>
+                    <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Precio</th>
+                    <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Stock</th>
+                    <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {petsgoProducts.map(p => (
+                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          {p.image_url ? (
+                            <img src={p.image_url} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                              <Package size={16} className="text-gray-400" />
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-bold text-[#2F3A40]">{p.product_name}</p>
+                            {p.description && <p className="text-xs text-gray-400 truncate max-w-xs">{p.description}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-xs font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600">{p.category || '—'}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-bold text-[#00A8E8]">{formatPrice(p.price)}</td>
+                      <td className="py-3 px-4 text-right">
+                        <span className={`font-bold ${parseInt(p.stock) <= 5 ? 'text-red-500' : 'text-[#2F3A40]'}`}>
+                          {p.stock}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => {
+                              setEditingProduct(p.id);
+                              setProductForm({
+                                product_name: p.product_name || '',
+                                description: p.description || '',
+                                price: p.price || '',
+                                stock: p.stock || '',
+                                category: p.category || '',
+                                image_id: p.image_id || null,
+                                image_url: p.image_url || null,
+                              });
+                              setShowProductForm(true);
+                            }}
+                            className="text-gray-400 hover:text-[#00A8E8] p-1" title="Editar"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar "${p.product_name}"?`)) return;
+                              try {
+                                await deleteAdminProduct(p.id);
+                                loadData();
+                              } catch { alert('Error eliminando producto'); }
+                            }}
+                            className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

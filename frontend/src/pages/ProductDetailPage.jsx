@@ -1,28 +1,66 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check } from 'lucide-react';
+import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-
-const CATEGORY_IMAGES = {
-  'Alimento Perros': 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
-  'Alimento Gatos': 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?auto=format&fit=crop&q=80&w=800',
-  'Alimento': 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
-  'Accesorios': 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800',
-  'Juguetes': 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&q=80&w=800',
-  'Higiene': 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=800',
-  'default': 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800',
-};
+import { getProductReviews, getProductDetail } from '../services/api';
+import { getProductImage } from '../utils/productImages';
 
 const ProductDetailPage = () => {
   const { id } = useParams();
   const location = useLocation();
-  const product = location.state?.product;
+  const stateProduct = location.state?.product;
   const { addItem, getItemQuantity, updateQuantity } = useCart();
+  const [product, setProduct] = useState(stateProduct || null);
+  const [loading, setLoading] = useState(!stateProduct);
   const [selectedImage, setSelectedImage] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewAvg, setReviewAvg] = useState(null);
+  const [reviewCount, setReviewCount] = useState(0);
+
+  // Si no hay product en el state (acceso directo por URL), intentar cargar desde API
+  useEffect(() => {
+    if (!stateProduct && id) {
+      setLoading(true);
+      getProductDetail(id).then(res => {
+        const p = res.data?.data || res.data;
+        if (p) {
+          setProduct({
+            ...p,
+            name: p.product_name || p.name,
+            image: p.image_url || p.image,
+            brand: p.store_name || p.brand || '',
+            price: Number(p.final_price || p.price),
+            originalPrice: p.discount_active ? Number(p.price) : null,
+            rating: p.rating || null,
+          });
+        }
+      }).catch(() => {}).finally(() => setLoading(false));
+    }
+  }, [id, stateProduct]);
+
+  useEffect(() => {
+    const productId = product?.id;
+    if (productId) {
+      getProductReviews(productId).then(res => {
+        setReviews(res.data?.reviews || []);
+        setReviewAvg(res.data?.average);
+        setReviewCount(res.data?.count || 0);
+      }).catch(() => {});
+    }
+  }, [product?.id]);
 
   const formatPrice = (price) =>
     new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(price);
+
+  if (loading) {
+    return (
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '80px 24px', textAlign: 'center', fontFamily: 'Poppins, sans-serif' }}>
+        <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }}>🐾</div>
+        <p style={{ color: '#9ca3af', fontSize: '16px', fontWeight: 600 }}>Cargando producto...</p>
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -41,10 +79,11 @@ const ProductDetailPage = () => {
     );
   }
 
-  const productImage = product.image || product.image_url || CATEGORY_IMAGES[product.category] || CATEGORY_IMAGES['default'];
+  const productImage = getProductImage(product);
   const qty = getItemQuantity(product.id);
   const discount = product.originalPrice ? Math.round((1 - product.price / product.originalPrice) * 100) : null;
-  const reviewCount = product.reviews || Math.floor(50 + product.id * 17 % 200);
+  const displayRating = reviewAvg || product.rating || null;
+  const displayReviewCount = reviewCount;
 
   const handleAddToCart = () => {
     addItem({ ...product, quantity: 1 });
@@ -113,7 +152,7 @@ const ProductDetailPage = () => {
                 maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
                 transition: 'transform 0.4s ease',
               }}
-              onError={(e) => { e.target.src = CATEGORY_IMAGES['default']; }}
+              onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
             />
           </div>
           {/* Thumbnail strip */}
@@ -174,13 +213,15 @@ const ProductDetailPage = () => {
                 <Star
                   key={s}
                   size={18}
-                  fill={s <= Math.floor(product.rating || 4.5) ? '#FFC400' : 'none'}
-                  color={s <= Math.floor(product.rating || 4.5) ? '#FFC400' : '#d1d5db'}
+                  fill={s <= Math.floor(displayRating || 0) ? '#FFC400' : 'none'}
+                  color={s <= Math.floor(displayRating || 0) ? '#FFC400' : '#d1d5db'}
                 />
               ))}
             </div>
-            <span style={{ fontSize: '14px', fontWeight: 700, color: '#374151' }}>{product.rating || 4.5}</span>
-            <span style={{ fontSize: '13px', color: '#9ca3af' }}>({reviewCount} reseñas)</span>
+            {displayRating && <span style={{ fontSize: '14px', fontWeight: 700, color: '#374151' }}>{displayRating}</span>}
+            <span style={{ fontSize: '13px', color: '#9ca3af' }}>
+              {displayReviewCount > 0 ? `(${displayReviewCount} reseña${displayReviewCount !== 1 ? 's' : ''})` : 'Sin reseñas aún'}
+            </span>
           </div>
 
           {/* Price */}
@@ -315,6 +356,61 @@ const ProductDetailPage = () => {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Reviews Section */}
+      <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px 64px' }}>
+        <div style={{ background: '#fff', borderRadius: '20px', padding: '28px', border: '1px solid #f0f0f0' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1f2937', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MessageSquare size={20} color="#00A8E8" /> Reseñas de Clientes
+            {reviewCount > 0 && (
+              <span style={{ fontSize: '13px', fontWeight: 500, color: '#9ca3af' }}>({reviewCount})</span>
+            )}
+          </h3>
+          {reviews.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af' }}>
+              <Star size={32} color="#d1d5db" style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontWeight: 600, fontSize: '14px' }}>Aún no hay reseñas para este producto</p>
+              <p style={{ fontSize: '12px' }}>¡Sé el primero en valorar después de tu compra!</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {reviews.map((review, idx) => (
+                <div key={idx} style={{
+                  padding: '16px', background: '#fafafa', borderRadius: '14px',
+                  border: '1px solid #f3f4f6',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px', height: '32px', borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: '13px', fontWeight: 700,
+                      }}>
+                        {(review.customer_name || 'U')[0].toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: 700, fontSize: '13px', color: '#1f2937' }}>
+                        {review.customer_name || 'Cliente'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <Star key={s} size={14} fill={s <= review.rating ? '#FFC400' : 'none'} color={s <= review.rating ? '#FFC400' : '#d1d5db'} />
+                      ))}
+                    </div>
+                  </div>
+                  {review.comment && (
+                    <p style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1.6, margin: 0 }}>{review.comment}</p>
+                  )}
+                  <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px', display: 'block' }}>
+                    {new Date(review.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

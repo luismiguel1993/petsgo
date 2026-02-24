@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { X, Plus, Minus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { getProductImage } from '../utils/productImages';
 
 const FloatingCart = ({ isOpen, onClose, onInteraction }) => {
   const { items, totalItems, subtotal, updateQuantity, removeItem } = useCart();
@@ -127,10 +128,10 @@ const FloatingCart = ({ isOpen, onClose, onInteraction }) => {
                     overflow: 'hidden', flexShrink: 0, background: '#e5e7eb',
                   }}>
                     <img
-                      src={item.image || item.image_url || 'https://placehold.co/72x72/e5e7eb/9ca3af?text=🐾'}
+                      src={getProductImage(item)}
                       alt={item.name || item.product_name}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      onError={(e) => { e.target.src = 'https://placehold.co/72x72/e5e7eb/9ca3af?text=🐾'; }}
+                      onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
                     />
                   </div>
 

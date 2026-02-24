@@ -55,6 +55,7 @@ export const AuthProvider = ({ children }) => {
       role: u.role,
       rider_status: u.rider_status || null,
       vehicle_type: u.vehicle_type || null,
+      mustChangePassword: u.mustChangePassword || false,
     };
     localStorage.setItem('petsgo_token', data.token);
     localStorage.setItem('petsgo_user', JSON.stringify(userData));

@@ -156,3 +156,197 @@ SELECT
     'in_transit',
     NOW()
 FROM wp_petsgo_vendors v WHERE v.store_name = 'Patitas Chile';
+
+-- =============================================
+-- Crear items de pedidos
+-- =============================================
+
+-- Items del pedido 1 (Pets Happy Store - delivered)
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Pets Happy Store' AND o.status='delivered' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Pets Happy Store' AND i.product_name = 'Royal Canin Adulto 15kg';
+
+-- Items del pedido 2 (Mundo Animal - preparing)
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND o.status='preparing' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Mundo Animal' AND i.product_name = 'Whiskas Gato Adulto 10kg';
+
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND o.status='preparing' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Mundo Animal' AND i.product_name = 'Rascador Torre Gato 120cm';
+
+-- Items del pedido 3 (Patitas Chile - in_transit)
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Patitas Chile' AND o.status='in_transit' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Patitas Chile' AND i.product_name = 'Arnes Ergonomico Talla M';
+
+-- =============================================
+-- Crear pedidos adicionales entregados para más reseñas
+-- =============================================
+
+-- Pedido entregado #2: cliente_maria en Mundo Animal (para reseña)
+INSERT INTO wp_petsgo_orders (customer_id, vendor_id, rider_id, total_amount, petsgo_commission, delivery_fee, status, created_at)
+SELECT 
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    v.id,
+    (SELECT ID FROM wp_users WHERE user_login = 'rider_carlos'),
+    32990.00,
+    1649.50,
+    3990.00,
+    'delivered',
+    DATE_SUB(NOW(), INTERVAL 10 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Mundo Animal';
+
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND o.status='delivered' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Mundo Animal' AND i.product_name = 'Whiskas Gato Adulto 10kg';
+
+-- Pedido entregado #3: cliente_maria en Patitas Chile (para reseña)
+INSERT INTO wp_petsgo_orders (customer_id, vendor_id, rider_id, total_amount, petsgo_commission, delivery_fee, status, created_at)
+SELECT 
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    v.id,
+    (SELECT ID FROM wp_users WHERE user_login = 'rider_carlos'),
+    14990.00,
+    2248.50,
+    3990.00,
+    'delivered',
+    DATE_SUB(NOW(), INTERVAL 3 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Patitas Chile';
+
+INSERT INTO wp_petsgo_order_items (order_id, product_id, product_name, quantity, unit_price, subtotal)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Patitas Chile' AND o.status='delivered' LIMIT 1),
+    i.id, i.product_name, 1, i.price, i.price
+FROM wp_petsgo_inventory i
+JOIN wp_petsgo_vendors v ON i.vendor_id = v.id
+WHERE v.store_name = 'Patitas Chile' AND i.product_name = 'Pelota Indestructible Kong';
+
+-- =============================================
+-- Crear reseñas de ejemplo
+-- =============================================
+
+-- Reseña de producto: Royal Canin Adulto 15kg (Pets Happy Store) ⭐5
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Pets Happy Store' AND o.status='delivered' LIMIT 1),
+    (SELECT i.id FROM wp_petsgo_inventory i JOIN wp_petsgo_vendors v ON i.vendor_id=v.id WHERE v.store_name='Pets Happy Store' AND i.product_name='Royal Canin Adulto 15kg'),
+    v.id,
+    'product', 5,
+    'Excelente alimento, mi perro lo ama. Llegó bien empacado y en perfecto estado. La entrega fue muy rápida. 100% recomendado.',
+    DATE_SUB(NOW(), INTERVAL 4 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Pets Happy Store';
+
+-- Reseña de tienda: Pets Happy Store ⭐5
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Pets Happy Store' AND o.status='delivered' LIMIT 1),
+    NULL,
+    v.id,
+    'vendor', 5,
+    'Tienda excelente, muy buena atención. El despacho fue rapidísimo y el producto llegó sellado. Volveré a comprar seguro.',
+    DATE_SUB(NOW(), INTERVAL 4 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Pets Happy Store';
+
+-- Reseña de producto: Whiskas Gato Adulto 10kg (Mundo Animal) ⭐4
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND o.status='delivered' LIMIT 1),
+    (SELECT i.id FROM wp_petsgo_inventory i JOIN wp_petsgo_vendors v ON i.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND i.product_name='Whiskas Gato Adulto 10kg'),
+    v.id,
+    'product', 4,
+    'Buen alimento para mi gatita. A ella le encanta el sabor atún. Solo le bajo una estrella porque el envase llegó un poco abollado, pero el producto estaba en buen estado.',
+    DATE_SUB(NOW(), INTERVAL 9 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Mundo Animal';
+
+-- Reseña de tienda: Mundo Animal ⭐4
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Mundo Animal' AND o.status='delivered' LIMIT 1),
+    NULL,
+    v.id,
+    'vendor', 4,
+    'Buena tienda con variedad de productos. El envío demoró un día más de lo esperado pero todo llegó bien. Recomendada.',
+    DATE_SUB(NOW(), INTERVAL 9 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Mundo Animal';
+
+-- Reseña de producto: Pelota Indestructible Kong (Patitas Chile) ⭐5
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Patitas Chile' AND o.status='delivered' LIMIT 1),
+    (SELECT i.id FROM wp_petsgo_inventory i JOIN wp_petsgo_vendors v ON i.vendor_id=v.id WHERE v.store_name='Patitas Chile' AND i.product_name='Pelota Indestructible Kong'),
+    v.id,
+    'product', 5,
+    'La pelota Kong es increíble, mi perro no ha podido destruirla en 3 días (récord mundial jaja). Muy resistente y le encanta jugar con ella. Súper recomendada para perros mordedores.',
+    DATE_SUB(NOW(), INTERVAL 2 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Patitas Chile';
+
+-- Reseña de tienda: Patitas Chile ⭐5
+INSERT INTO wp_petsgo_reviews (customer_id, order_id, product_id, vendor_id, review_type, rating, comment, created_at)
+SELECT
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Patitas Chile' AND o.status='delivered' LIMIT 1),
+    NULL,
+    v.id,
+    'vendor', 5,
+    'Patitas Chile es genial! Precios justos y envío rápido. El producto venía bien envuelto con una notita de agradecimiento. Detallazo. ❤️🐾',
+    DATE_SUB(NOW(), INTERVAL 2 DAY)
+FROM wp_petsgo_vendors v WHERE v.store_name = 'Patitas Chile';
+
+-- =============================================
+-- Crear perfiles de usuario y mascotas demo
+-- =============================================
+
+INSERT IGNORE INTO wp_petsgo_user_profiles (user_id, first_name, last_name, id_type, id_number, phone, birth_date)
+SELECT u.ID, 'Maria', 'Gonzalez', 'rut', '15.678.901-2', '+56945678901', '1992-05-15'
+FROM wp_users u WHERE u.user_login = 'cliente_maria';
+
+INSERT IGNORE INTO wp_petsgo_user_profiles (user_id, first_name, last_name, id_type, id_number, phone)
+SELECT u.ID, 'Carlos', 'Mendoza', 'rut', '16.789.012-3', '+56956789012'
+FROM wp_users u WHERE u.user_login = 'rider_carlos';
+
+-- Mascotas de cliente_maria
+INSERT INTO wp_petsgo_pets (user_id, pet_type, name, breed, birth_date, notes)
+SELECT u.ID, 'perro', 'Rocky', 'Labrador Retriever', '2021-03-10', 'Le encanta jugar a la pelota y nadar. Muy juguetón y cariñoso.'
+FROM wp_users u WHERE u.user_login = 'cliente_maria';
+
+INSERT INTO wp_petsgo_pets (user_id, pet_type, name, breed, birth_date, notes)
+SELECT u.ID, 'gato', 'Luna', 'Siamés', '2022-08-20', 'Gatita tranquila y dormilona. Le gusta el atún y dormir al sol.'
+FROM wp_users u WHERE u.user_login = 'cliente_maria';
+
+-- =============================================
+-- Valoraciones de entregas (riders)
+-- =============================================
+INSERT INTO wp_petsgo_delivery_ratings (order_id, rider_id, rater_type, rater_id, rating, comment)
+SELECT 
+    (SELECT o.id FROM wp_petsgo_orders o JOIN wp_petsgo_vendors v ON o.vendor_id=v.id WHERE v.store_name='Pets Happy Store' AND o.status='delivered' LIMIT 1),
+    (SELECT ID FROM wp_users WHERE user_login = 'rider_carlos'),
+    'customer',
+    (SELECT ID FROM wp_users WHERE user_login = 'cliente_maria'),
+    5,
+    'Excelente rider, muy amable y puntual. Trajo el pedido en perfectas condiciones.';

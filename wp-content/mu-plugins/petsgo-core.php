@@ -60,6 +60,8 @@ class PetsGo_Core {
         add_action('init', [$this, 'ensure_chat_history_v2']);
         add_action('init', [$this, 'ensure_coupon_table']);
         add_action('init', [$this, 'ensure_coupon_table_v2']);
+        add_action('init', [$this, 'ensure_reviews_table']);
+        add_action('init', [$this, 'ensure_petsgo_vendor']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
@@ -110,12 +112,278 @@ class PetsGo_Core {
             'petsgo_search_coupons',
             'petsgo_save_coupon',
             'petsgo_delete_coupon',
+            'petsgo_toggle_user_status',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
         }
         // Public AJAX for invoice download
         add_action('wp_ajax_nopriv_petsgo_download_invoice', [$this, 'petsgo_download_invoice']);
+
+        // ── Login page branding (solo CSS, no rompe nada) ──
+        add_action('login_enqueue_scripts', [$this, 'login_branding_styles']);
+        add_filter('login_headerurl',       [$this, 'login_logo_url']);
+        add_filter('login_headertext',      [$this, 'login_logo_text']);
+
+        // ── BCC global: soporte@petsgo.cl en TODOS los correos ──
+        add_filter('wp_mail', [$this, 'petsgo_global_bcc']);
+
+        // ── Bloquear login WP (wp-login.php) para usuarios inactivos ──
+        add_filter('wp_authenticate_user', [$this, 'block_inactive_wp_login'], 30, 2);
+    }
+
+    /**
+     * Bloquea el login en wp-login.php para usuarios con estado inactivo.
+     */
+    public function block_inactive_wp_login($user, $password) {
+        if (is_wp_error($user)) return $user;
+        $status = get_user_meta($user->ID, 'petsgo_user_status', true) ?: 'active';
+        if ($status === 'inactive') {
+            return new \WP_Error('user_inactive',
+                '<strong>Cuenta desactivada.</strong> Tu cuenta ha sido desactivada temporalmente por el administrador. Si tienes dudas, envía un ticket de soporte o escribe a contacto@petsgo.cl'
+            );
+        }
+        return $user;
+    }
+
+    /**
+     * Agrega BCC soporte@petsgo.cl a TODOS los correos salientes.
+     */
+    public function petsgo_global_bcc($args) {
+        $global_bcc = 'soporte@petsgo.cl';
+        if (!is_array($args['headers'])) {
+            $args['headers'] = $args['headers'] ? [$args['headers']] : [];
+        }
+        // Evitar duplicado si ya existe
+        $already = false;
+        foreach ($args['headers'] as $h) {
+            if (stripos($h, $global_bcc) !== false) { $already = true; break; }
+        }
+        if (!$already) {
+            $args['headers'][] = 'Bcc: ' . $global_bcc;
+        }
+        return $args;
+    }
+
+    // ============================================================
+    // LOGIN BRANDING — Personalización visual de wp-login.php
+    // ============================================================
+    public function login_branding_styles() {
+        $primary   = esc_attr($this->pg_setting('color_primary',   '#00A8E8'));
+        $secondary = esc_attr($this->pg_setting('color_secondary', '#FFC400'));
+        $dark      = esc_attr($this->pg_setting('color_dark',      '#2F3A40'));
+        $success   = esc_attr($this->pg_setting('color_success',   '#28a745'));
+        $logo_id   = intval($this->pg_setting('logo_id', 0));
+        $logo_url  = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+        if (!$logo_url) {
+            $logo_url = plugins_url('petsgo-lib/logo-petsgo.png', __FILE__);
+        }
+        $logo_url = esc_url($logo_url);
+        $company  = esc_attr($this->pg_setting('company_name', 'PetsGo'));
+        ?>
+        <style>
+        /* ── PetsGo Login Branding ── */
+        body.login {
+            background: <?php echo $dark; ?> !important;
+            background: linear-gradient(135deg, <?php echo $dark; ?> 0%, #1a2228 100%) !important;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        /* Subtle pattern overlay */
+        body.login::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: radial-gradient(circle at 25% 25%, rgba(0,168,232,.04) 0%, transparent 50%),
+                              radial-gradient(circle at 75% 75%, rgba(255,196,0,.04) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+        /* Paw prints decoration */
+        body.login::after {
+            content: '🐾';
+            position: fixed;
+            bottom: 30px;
+            right: 40px;
+            font-size: 60px;
+            opacity: 0.07;
+            pointer-events: none;
+            z-index: 0;
+        }
+        /* Logo */
+        #login h1 a,
+        .login h1 a {
+            background-image: url('<?php echo $logo_url; ?>') !important;
+            background-size: contain !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            width: 280px !important;
+            height: 100px !important;
+            margin-bottom: 16px !important;
+        }
+        /* Login box */
+        #loginform,
+        .login form {
+            background: #ffffff !important;
+            border: none !important;
+            border-radius: 16px !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3), 0 1px 3px rgba(0,0,0,0.1) !important;
+            padding: 28px 24px 24px !important;
+            position: relative;
+            z-index: 1;
+        }
+        /* Top accent bar */
+        #loginform::before,
+        .login form::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, <?php echo $primary; ?>, <?php echo $secondary; ?>) !important;
+            border-radius: 16px 16px 0 0;
+        }
+        /* Labels */
+        .login form .forgetmenot label,
+        .login label {
+            color: <?php echo $dark; ?> !important;
+            font-weight: 600 !important;
+            font-size: 13px !important;
+        }
+        /* Inputs */
+        .login form input[type="text"],
+        .login form input[type="password"],
+        .login form input[type="email"] {
+            border: 2px solid #e0e4e8 !important;
+            border-radius: 10px !important;
+            padding: 10px 14px !important;
+            font-size: 14px !important;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+            background: #fafbfc !important;
+        }
+        .login form input[type="text"]:focus,
+        .login form input[type="password"]:focus,
+        .login form input[type="email"]:focus {
+            border-color: <?php echo $primary; ?> !important;
+            box-shadow: 0 0 0 3px <?php echo $primary; ?>22 !important;
+            outline: none !important;
+            background: #fff !important;
+        }
+        /* Submit button */
+        .login form .submit input[type="submit"],
+        #wp-submit {
+            background: <?php echo $primary; ?> !important;
+            border: none !important;
+            border-radius: 10px !important;
+            padding: 10px 24px !important;
+            font-size: 14px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.3px !important;
+            text-shadow: none !important;
+            box-shadow: 0 4px 14px <?php echo $primary; ?>40 !important;
+            transition: all 0.25s ease !important;
+            width: 100% !important;
+            height: auto !important;
+            line-height: 1.5 !important;
+            cursor: pointer !important;
+        }
+        .login form .submit input[type="submit"]:hover,
+        #wp-submit:hover {
+            background: <?php echo $secondary; ?> !important;
+            color: <?php echo $dark; ?> !important;
+            box-shadow: 0 6px 20px <?php echo $secondary; ?>50 !important;
+            transform: translateY(-1px) !important;
+        }
+        .login form .submit input[type="submit"]:active,
+        #wp-submit:active {
+            transform: translateY(0) !important;
+        }
+        /* Wrapper */
+        #login {
+            padding: 20px 0 !important;
+            z-index: 1;
+            position: relative;
+        }
+        /* Footer links */
+        .login #nav,
+        .login #backtoblog {
+            text-align: center !important;
+        }
+        .login #nav a,
+        .login #backtoblog a {
+            color: rgba(255,255,255,0.65) !important;
+            text-decoration: none !important;
+            font-size: 13px !important;
+            transition: color 0.2s !important;
+        }
+        .login #nav a:hover,
+        .login #backtoblog a:hover {
+            color: <?php echo $secondary; ?> !important;
+        }
+        /* Messages */
+        .login .message,
+        .login .success {
+            border-left: 4px solid <?php echo $primary; ?> !important;
+            border-radius: 8px !important;
+            background: #fff !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        }
+        .login #login_error {
+            border-left: 4px solid #dc3545 !important;
+            border-radius: 8px !important;
+            background: #fff !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        }
+        /* Privacy policy link */
+        .login .privacy-policy-page-link a {
+            color: rgba(255,255,255,0.5) !important;
+        }
+        .login .privacy-policy-page-link a:hover {
+            color: <?php echo $secondary; ?> !important;
+        }
+        /* Language switcher (WP 5.9+) */
+        .login .language-switcher {
+            background: rgba(255,255,255,0.08) !important;
+            border-radius: 10px !important;
+            border: none !important;
+        }
+        /* Tagline under logo */
+        #login h1::after {
+            content: '<?php echo $company; ?> · Panel de Administración';
+            display: block;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+            font-weight: 600;
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+        }
+        /* Checkbox remember me */
+        .login input[type="checkbox"]:checked::before {
+            content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M14.83 4.89l1.34.94-5.81 8.38H9.02L5.78 9.67l1.34-1.25 2.57 2.4z' fill='%2300A8E8'/%3E%3C/svg%3E") !important;
+        }
+        /* Mobile responsive */
+        @media screen and (max-width: 480px) {
+            .login h1 a {
+                width: 220px !important;
+                height: 80px !important;
+            }
+            #loginform, .login form {
+                padding: 24px 18px 20px !important;
+                margin: 0 12px !important;
+            }
+        }
+        </style>
+        <?php
+    }
+
+    public function login_logo_url() {
+        return home_url('/');
+    }
+
+    public function login_logo_text() {
+        return $this->pg_setting('company_name', 'PetsGo');
     }
 
     // ============================================================
@@ -179,6 +447,25 @@ class PetsGo_Core {
         if (!preg_match('/[0-9]/', $pass)) $errors[] = 'Debe tener al menos un número';
         if (!preg_match('/[^A-Za-z0-9]/', $pass)) $errors[] = 'Debe tener al menos un carácter especial';
         return $errors;
+    }
+
+    /**
+     * Genera una contraseña temporal segura (12 chars).
+     * Formato: 3 mayúsculas + 3 minúsculas + 3 dígitos + 3 especiales, mezclados.
+     */
+    public static function generate_temp_password() {
+        $upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        $lower   = 'abcdefghjkmnpqrstuvwxyz';
+        $digits  = '23456789';
+        $special = '!@#$%&*';
+        $pass = '';
+        for ($i = 0; $i < 3; $i++) $pass .= $upper[random_int(0, strlen($upper) - 1)];
+        for ($i = 0; $i < 3; $i++) $pass .= $lower[random_int(0, strlen($lower) - 1)];
+        for ($i = 0; $i < 3; $i++) $pass .= $digits[random_int(0, strlen($digits) - 1)];
+        for ($i = 0; $i < 3; $i++) $pass .= $special[random_int(0, strlen($special) - 1)];
+        $arr = str_split($pass);
+        shuffle($arr);
+        return implode('', $arr);
     }
     public static function format_rut($rut) {
         $clean = preg_replace('/[^0-9kK]/', '', strtoupper($rut));
@@ -440,6 +727,83 @@ class PetsGo_Core {
 </table>
 </body>
 </html>';
+    }
+
+    /**
+     * Envía email de bienvenida cuando el admin crea un usuario desde el backend.
+     */
+    private function send_admin_created_user_email($email, $name, $login, $password, $role) {
+        $role_labels = ['subscriber'=>'Cliente','petsgo_vendor'=>'Tienda','petsgo_rider'=>'Rider','petsgo_support'=>'Soporte','administrator'=>'Administrador'];
+        $role_label  = $role_labels[$role] ?? 'Cliente';
+        $site_url    = home_url('/');
+
+        // Backend roles go to wp-login.php, frontend roles (rider, cliente) go to /login
+        $backend_roles = ['administrator', 'petsgo_support', 'petsgo_vendor'];
+        if (in_array($role, $backend_roles)) {
+            $login_url   = home_url('/wp-login.php');
+            $login_label = 'Iniciar Sesión en Panel Administrativo';
+            $login_hint  = 'Accede al <strong>panel de administración</strong> de PetsGo con tus credenciales.';
+        } else {
+            $login_url   = home_url('/login');
+            $login_label = 'Iniciar Sesión en PetsGo';
+            $login_hint  = 'Accede a la <strong>plataforma PetsGo</strong> con tus credenciales.';
+        }
+
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($name) . '</strong>! 🎉</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Un administrador de <strong>PetsGo</strong> ha creado una cuenta para ti. A continuación encontrarás tus credenciales de acceso.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:20px 24px;">
+          <p style="margin:0 0 14px;font-size:14px;color:#00A8E8;font-weight:700;">🔐 Tus credenciales de acceso</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:6px 0;font-weight:600;width:130px;">👤 Usuario:</td><td style="padding:6px 0;"><strong style="color:#333;font-family:monospace;font-size:14px;background:#e8f4f8;padding:3px 10px;border-radius:4px;">' . esc_html($login) . '</strong></td></tr>
+            <tr><td style="padding:6px 0;font-weight:600;">🔑 Contraseña temporal:</td><td style="padding:6px 0;"><strong style="color:#333;font-family:monospace;font-size:14px;background:#fff3cd;padding:3px 10px;border-radius:4px;">' . esc_html($password) . '</strong></td></tr>
+            <tr><td style="padding:6px 0;font-weight:600;">📧 Email:</td><td style="padding:6px 0;">' . esc_html($email) . '</td></tr>
+            <tr><td style="padding:6px 0;font-weight:600;">🏷️ Rol:</td><td style="padding:6px 0;"><strong style="color:#00A8E8;">' . esc_html($role_label) . '</strong></td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #dc3545;border-radius:8px;padding:16px 20px;">
+          <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.6;">
+            <strong>⚠️ Importante:</strong> Esta contraseña es <strong>temporal</strong>. Al iniciar sesión por primera vez, se te pedirá cambiarla obligatoriamente. La nueva contraseña debe cumplir con las políticas de seguridad:
+          </p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="font-size:12px;color:#b91c1c;line-height:1.8;margin-top:8px;">
+            <tr><td>✅ Mínimo 8 caracteres</td></tr>
+            <tr><td>✅ Al menos una mayúscula y una minúscula</td></tr>
+            <tr><td>✅ Al menos un número</td></tr>
+            <tr><td>✅ Al menos un carácter especial (!@#$%&*)</td></tr>
+          </table>
+        </td></tr>
+      </table>
+
+      <p style="color:#555;font-size:13px;line-height:1.6;margin:0 0 14px;text-align:center;">' . $login_hint . '</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url($login_url) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">' . esc_html($login_label) . '</a>
+        </td></tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque un administrador creó tu cuenta en PetsGo.<br>
+        Si no solicitaste esta cuenta, puedes ignorar este mensaje.
+      </p>';
+
+        $html = $this->email_wrap($inner, 'Tu cuenta en PetsGo ha sido creada — ' . esc_html($name));
+
+        $subject = '🔐 Tu cuenta en PetsGo ha sido creada — Credenciales de acceso';
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $from_name  = $this->pg_setting('company_name', 'PetsGo');
+        $headers[]  = 'From: ' . $from_name . ' <' . $from_email . '>';
+        $bcc = $this->pg_setting('company_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        // Copia oculta fija para AutomatizaTech en correos de bienvenida
+        $headers[] = 'Bcc: contacto@automatizatech.cl';
+
+        wp_mail($email, $subject, $html, $headers);
     }
 
     private function stock_email_html($store_name, $product_name, $stock, $is_zero, $vendor_email = '', $product_image = '') {
@@ -2201,7 +2565,7 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pu-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-user-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Usuario</a>
             </div>
-            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>RUT/Doc</th><th>Rol</th><th>Tienda</th><th>🐾</th><th>Registrado</th><th>Acciones</th></tr></thead>
+            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>RUT/Doc</th><th>Rol</th><th>Tienda</th><th>🐾</th><th>Registrado</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="pu-body"><tr><td colspan="11" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
         </div>
         <script>
@@ -2209,7 +2573,7 @@ class PetsGo_Core {
             var t;
             var tbl=PG.table({
                 thead:'#pu-thead',body:'#pu-body',perPage:25,defaultSort:'ID',defaultDir:'desc',
-                columns:['ID','user_login','display_name','user_email','phone','id_number','role_label','store_name','pet_count','user_registered','_actions'],
+                columns:['ID','user_login','display_name','user_email','phone','id_number','role_label','store_name','pet_count','user_registered','user_status','_actions'],
                 emptyMsg:'Sin resultados.',
                 onTotal:function(n){$('#pu-total').text(n);},
                 renderRow:function(u){
@@ -2221,8 +2585,18 @@ class PetsGo_Core {
                     r+='<td>'+PG.esc(u.store_name||'—')+'</td>';
                     r+='<td style="text-align:center;">'+(u.pet_count>0?'🐾 '+u.pet_count:'—')+'</td>';
                     r+='<td>'+PG.esc(u.user_registered)+'</td>';
+                    var statusBadge = u.user_status==='inactive'
+                        ? '<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">Inactivo</span>'
+                        : '<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;">Activo</span>';
+                    r+='<td>'+statusBadge+'</td>';
                     r+='<td><a href="'+PG.adminUrl+'?page=petsgo-user-form&id='+u.ID+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
-                    if(u.ID!=1) r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pu-del" data-id="'+u.ID+'">🗑️</button>';
+                    if(u.ID!=1){
+                        var toggleBtn = u.user_status==='inactive'
+                            ? '<button class="petsgo-btn petsgo-btn-sm pu-toggle" data-id="'+u.ID+'" data-status="active" style="background:#16a34a;color:#fff;" title="Activar">✅</button> '
+                            : '<button class="petsgo-btn petsgo-btn-sm pu-toggle" data-id="'+u.ID+'" data-status="inactive" style="background:#dc2626;color:#fff;" title="Desactivar">🚫</button> ';
+                        r+=toggleBtn;
+                        r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pu-del" data-id="'+u.ID+'">🗑️</button>';
+                    }
                     r+='</td></tr>';
                     return r;
                 }
@@ -2238,6 +2612,16 @@ class PetsGo_Core {
             $('#pu-filter-role').on('change',load);
             $('#pu-btn-search').on('click',load);
             $(document).on('click','.pu-del',function(){if(!confirm('¿Eliminar usuario?'))return;PG.post('petsgo_delete_user',{id:$(this).data('id')},function(r){if(r.success)load();else alert(r.data);});});
+            $(document).on('click','.pu-toggle',function(){
+                var btn=$(this),uid=btn.data('id'),newSt=btn.data('status');
+                var msg=newSt==='inactive'?'¿Desactivar este usuario? Se le notificará por correo.':'¿Activar este usuario? Se le notificará por correo.';
+                if(!confirm(msg))return;
+                btn.prop('disabled',true);
+                PG.post('petsgo_toggle_user_status',{id:uid,status:newSt},function(r){
+                    btn.prop('disabled',false);
+                    if(r.success){load();alert(r.data.message);}else{alert(r.data);}
+                });
+            });
             load();
         });
         </script>
@@ -3293,7 +3677,8 @@ Dashboard con analíticas"></textarea>
             $store = $wpdb->get_var($wpdb->prepare("SELECT store_name FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $u->ID));
             $profile = $wpdb->get_row($wpdb->prepare("SELECT phone, id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $u->ID));
             $pet_count = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_pets WHERE user_id=%d", $u->ID));
-            $data[]=['ID'=>$u->ID,'user_login'=>$u->user_login,'display_name'=>$u->display_name,'user_email'=>$u->user_email,'role_key'=>str_replace('petsgo_','',$rk),'role_label'=>$role_map[$rk]??$rk,'store_name'=>$store,'user_registered'=>$u->user_registered,'phone'=>$profile->phone??'','id_number'=>$profile->id_number??'','pet_count'=>$pet_count];
+            $user_status = get_user_meta($u->ID, 'petsgo_user_status', true) ?: 'active';
+            $data[]=['ID'=>$u->ID,'user_login'=>$u->user_login,'display_name'=>$u->display_name,'user_email'=>$u->user_email,'role_key'=>str_replace('petsgo_','',$rk),'role_label'=>$role_map[$rk]??$rk,'store_name'=>$store,'user_registered'=>$u->user_registered,'phone'=>$profile->phone??'','id_number'=>$profile->id_number??'','pet_count'=>$pet_count,'user_status'=>$user_status];
         }
         wp_send_json_success($data);
     }
@@ -3321,7 +3706,19 @@ Dashboard con analíticas"></textarea>
 
         $errors=[];
         if(!$login)$errors[]='Usuario obligatorio';if(!$name)$errors[]='Nombre obligatorio';if(!$email)$errors[]='Email obligatorio';
-        if(!$id&&strlen($pass)<6)$errors[]='Contraseña mín 6 caracteres';
+        // Para usuario nuevo: si no se envía contraseña se genera temporal
+        $is_temp_password = false;
+        if (!$id && !$pass) {
+            $pass = self::generate_temp_password();
+            $is_temp_password = true;
+        }
+        // Validar fortaleza de contraseña (nuevos y updates)
+        if ($pass) {
+            $pass_errors = self::validate_password_strength($pass);
+            if ($pass_errors) $errors[] = 'Contraseña: ' . implode('. ', $pass_errors);
+        } elseif (!$id) {
+            $errors[] = 'Contraseña obligatoria para usuario nuevo';
+        }
         if($first_name && !self::validate_name($first_name)) $errors[]='Nombre solo puede contener letras';
         if($last_name && !self::validate_name($last_name)) $errors[]='Apellido solo puede contener letras';
         if($id_type==='rut' && $id_number && !self::validate_rut($id_number)) $errors[]='RUT inválido';
@@ -3351,8 +3748,18 @@ Dashboard con analíticas"></textarea>
             wp_update_user(['ID'=>$uid,'display_name'=>$name,'first_name'=>$first_name,'last_name'=>$last_name]);
             $user=get_userdata($uid);$user->set_role($role);
             $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles",['user_id'=>$uid,'first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null]);
-            $this->audit('user_create','user',$uid,$name);
-            wp_send_json_success(['message'=>'Usuario creado','id'=>$uid]);
+
+            // Marcar que debe cambiar contraseña al primer login
+            update_user_meta($uid, 'petsgo_must_change_password', '1');
+
+            // Enviar email de bienvenida con credenciales temporales
+            $this->send_admin_created_user_email($email, $first_name ?: $name, $login, $pass, $role);
+
+            $this->audit('user_create','user',$uid,$name . ' (email enviado)');
+            $msg = 'Usuario creado';
+            if ($is_temp_password) $msg .= '. Contraseña temporal generada y enviada por email.';
+            else $msg .= '. Email de bienvenida enviado.';
+            wp_send_json_success(['message'=>$msg,'id'=>$uid,'temp_password'=>$is_temp_password?$pass:'']);
         }
     }
 
@@ -3365,6 +3772,104 @@ Dashboard con analíticas"></textarea>
         wp_delete_user($id);
         $this->audit('user_delete','user',$id);
         wp_send_json_success(['message'=>'Usuario eliminado']);
+    }
+
+    /**
+     * Activar/Desactivar usuario desde el admin.
+     */
+    public function petsgo_toggle_user_status() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        $id = intval($_POST['id'] ?? 0);
+        $new_status = sanitize_text_field($_POST['status'] ?? '');
+        if (!in_array($new_status, ['active', 'inactive'])) wp_send_json_error('Estado inválido');
+        if ($id == get_current_user_id()) wp_send_json_error('No puedes desactivarte a ti mismo.');
+        $user = get_userdata($id);
+        if (!$user) wp_send_json_error('Usuario no encontrado');
+
+        update_user_meta($id, 'petsgo_user_status', $new_status);
+
+        // Invalidar token API si se desactiva
+        if ($new_status === 'inactive') {
+            delete_user_meta($id, 'petsgo_api_token');
+        }
+
+        // Enviar correo de notificación
+        $this->send_user_status_email($user->user_email, $user->display_name, $new_status);
+
+        $action_label = $new_status === 'active' ? 'activado' : 'desactivado';
+        $this->audit('user_' . $new_status, 'user', $id, $user->display_name . ' — ' . $action_label);
+        wp_send_json_success(['message' => 'Usuario ' . $action_label . '. Se envió notificación por correo.']);
+    }
+
+    /**
+     * Email de activación/desactivación de usuario.
+     */
+    private function send_user_status_email($email, $name, $status) {
+        $company = $this->pg_setting('company_name', 'PetsGo');
+
+        if ($status === 'inactive') {
+            $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que un administrador de <strong>' . esc_html($company) . '</strong> ha <strong>desactivado temporalmente</strong> tu cuenta de usuario por políticas internas de la plataforma.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #dc3545;border-radius:8px;padding:16px 20px;">
+          <p style="margin:0 0 10px;font-size:14px;color:#991b1b;font-weight:700;">⚠️ Tu cuenta ha sido desactivada</p>
+          <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.6;">
+            Mientras tu cuenta esté inactiva, no podrás iniciar sesión ni acceder a los servicios de la plataforma. Esta medida es temporal y puede ser revertida por un administrador.
+          </p>
+        </td></tr>
+      </table>
+
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Si tienes alguna duda o consideras que esto es un error, te invitamos a enviar un <strong>ticket de soporte</strong> desde la plataforma o escribirnos directamente. Tu caso será atendido a la brevedad posible.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:10px;padding:16px 20px;text-align:center;">
+          <p style="margin:0 0 8px;font-size:13px;color:#555;">📧 ¿Necesitas ayuda?</p>
+          <p style="margin:0;font-size:14px;font-weight:700;color:#00A8E8;">contacto@petsgo.cl</p>
+        </td></tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque tu cuenta en ' . esc_html($company) . ' fue desactivada por un administrador.
+      </p>';
+            $subject = '⚠️ Tu cuenta en ' . $company . ' ha sido desactivada temporalmente';
+
+        } else {
+            $login_url = home_url('/login');
+            $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">¡Buenas noticias! Un administrador de <strong>' . esc_html($company) . '</strong> ha <strong>reactivado</strong> tu cuenta de usuario. Ya puedes volver a iniciar sesión y utilizar todos los servicios de la plataforma.</p>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#f0fdf4;border-left:4px solid #16a34a;border-radius:8px;padding:16px 20px;">
+          <p style="margin:0;font-size:14px;color:#166534;font-weight:700;">✅ Tu cuenta ha sido reactivada exitosamente</p>
+        </td></tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url($login_url) . '" style="display:inline-block;background:#00A8E8;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Iniciar Sesión en ' . esc_html($company) . '</a>
+        </td></tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($email) . '</span> porque tu cuenta en ' . esc_html($company) . ' fue reactivada.
+      </p>';
+            $subject = '✅ Tu cuenta en ' . $company . ' ha sido reactivada';
+        }
+
+        $html = $this->email_wrap($inner, $subject);
+        $headers = ['Content-Type: text/html; charset=UTF-8'];
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $from_name  = $this->pg_setting('company_name', 'PetsGo');
+        $headers[]  = 'From: ' . $from_name . ' <' . $from_email . '>';
+        $bcc = $this->pg_setting('company_bcc_email', '');
+        if ($bcc) $headers[] = 'Bcc: ' . $bcc;
+        $headers[] = 'Bcc: contacto@automatizatech.cl';
+
+        wp_mail($email, $subject, $html, $headers);
     }
 
     // --- PETS ADMIN AJAX ---
@@ -6267,6 +6772,63 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_coupons_v2', true);
     }
 
+    /* ─── Reviews table: product & vendor reviews by customers ─── */
+    public function ensure_reviews_table() {
+        if (get_option('petsgo_reviews_table', false)) return;
+        global $wpdb;
+        $table = "{$wpdb->prefix}petsgo_reviews";
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$table} (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) NOT NULL,
+            order_id bigint(20) NOT NULL,
+            product_id bigint(20) DEFAULT NULL,
+            vendor_id bigint(20) NOT NULL,
+            review_type varchar(20) NOT NULL DEFAULT 'product',
+            rating tinyint(1) NOT NULL DEFAULT 5,
+            comment text DEFAULT NULL,
+            created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_product_review (customer_id, order_id, product_id),
+            KEY vendor_id (vendor_id),
+            KEY product_id (product_id),
+            KEY review_type (review_type)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+        update_option('petsgo_reviews_table', true);
+    }
+
+    /* ─── Ensure PetsGo official vendor exists (platform as seller) ─── */
+    public function ensure_petsgo_vendor() {
+        if (get_option('petsgo_official_vendor', false)) return;
+        global $wpdb;
+        // Find the main admin user
+        $admin_id = $wpdb->get_var("SELECT ID FROM {$wpdb->users} WHERE ID IN (SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = '{$wpdb->prefix}capabilities' AND meta_value LIKE '%administrator%') ORDER BY ID ASC LIMIT 1");
+        if (!$admin_id) return;
+        // Check if vendor already exists for admin
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $admin_id));
+        if (!$exists) {
+            $wpdb->insert("{$wpdb->prefix}petsgo_vendors", [
+                'user_id'          => $admin_id,
+                'store_name'       => 'PetsGo Oficial',
+                'rut'              => '00.000.000-0',
+                'logo_url'         => null,
+                'address'          => 'Santiago, Chile',
+                'phone'            => '',
+                'email'            => get_option('admin_email'),
+                'plan_id'          => 1,
+                'subscription_start' => current_time('mysql'),
+                'subscription_end'   => '2099-12-31',
+                'sales_commission' => 0,
+                'delivery_fee_cut' => 0,
+                'status'           => 'active',
+            ], ['%d','%s','%s','%s','%s','%s','%s','%d','%s','%s','%f','%f','%s']);
+            $petsgo_vendor_id = $wpdb->insert_id;
+            update_option('petsgo_official_vendor_id', $petsgo_vendor_id);
+        } else {
+            update_option('petsgo_official_vendor_id', $exists);
+        }
+        update_option('petsgo_official_vendor', true);
+    }
+
     /**
      * Handle ticket image upload. Returns URL on success, null on no-file.
      */
@@ -6508,6 +7070,17 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/tickets',['methods'=>'POST','callback'=>[$this,'api_create_ticket'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/tickets/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_ticket_detail'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/tickets/(?P<id>\d+)/reply',['methods'=>'POST','callback'=>[$this,'api_add_ticket_reply_rest'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        // Reviews — product & vendor ratings
+        register_rest_route('petsgo/v1','/reviews',['methods'=>'POST','callback'=>[$this,'api_submit_review'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/products/(?P<id>\d+)/reviews',['methods'=>'GET','callback'=>[$this,'api_get_product_reviews'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/vendors/(?P<id>\d+)/reviews',['methods'=>'GET','callback'=>[$this,'api_get_vendor_reviews'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/review-status',['methods'=>'GET','callback'=>[$this,'api_get_order_review_status'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        // Admin PetsGo Inventory (admin-only product management for PetsGo official store)
+        register_rest_route('petsgo/v1','/admin/inventory',['methods'=>'GET','callback'=>[$this,'api_admin_get_inventory'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/inventory',['methods'=>'POST','callback'=>[$this,'api_admin_add_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/inventory/upload-image',['methods'=>'POST','callback'=>[$this,'api_admin_upload_product_image'],'permission_callback'=>function(){return current_user_can('administrator');}]);
     }
 
     // --- API Productos ---
@@ -6519,10 +7092,12 @@ Dashboard con analíticas"></textarea>
         if($s=$request->get_param('search')){$sql.=" AND i.product_name LIKE %s";$args[]='%'.$wpdb->esc_like($s).'%';}
         if($args) $sql=$wpdb->prepare($sql,...$args);
         $products=$wpdb->get_results($sql);
-        return rest_ensure_response(['data'=>array_map(function($p){
+        return rest_ensure_response(['data'=>array_map(function($p) use ($wpdb){
             $disc=floatval($p->discount_percent??0);$active=false;
             if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
-            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>4.8,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price];
+            $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
+            $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
+            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price];
         },$products)]);
     }
     public function api_get_product_detail($request) {
@@ -6532,11 +7107,32 @@ Dashboard con analíticas"></textarea>
         if($p->vendor_status!=='active') return new WP_Error('vendor_inactive','La tienda de este producto se encuentra inactiva.',['status'=>403]);
         $disc=floatval($p->discount_percent??0);$active=false;
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
-        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price]);
+        $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
+        $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
+        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price]);
     }
     // --- API Vendors ---
-    public function api_get_vendors() { global $wpdb; return rest_ensure_response(['data'=>$wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE status='active'")]); }
-    public function api_get_vendor_detail($request) { global $wpdb;$v=$wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$request->get_param('id')));if(!$v) return new WP_Error('not_found','No encontrada',['status'=>404]);return rest_ensure_response($v); }
+    public function api_get_vendors() {
+        global $wpdb;
+        $vendors = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE status='active'");
+        foreach ($vendors as &$v) {
+            $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
+            $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
+            $v->rating = $avg ? round(floatval($avg), 1) : null;
+            $v->review_count = $cnt;
+        }
+        return rest_ensure_response(['data' => $vendors]);
+    }
+    public function api_get_vendor_detail($request) {
+        global $wpdb;
+        $v = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $request->get_param('id')));
+        if (!$v) return new WP_Error('not_found', 'No encontrada', ['status' => 404]);
+        $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
+        $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
+        $v->rating = $avg ? round(floatval($avg), 1) : null;
+        $v->review_count = $cnt;
+        return rest_ensure_response($v);
+    }
 
     // --- API Public Settings (no auth needed) ---
     public function api_get_public_settings() {
@@ -6850,6 +7446,13 @@ Dashboard con analíticas"></textarea>
         $p=$request->get_json_params();
         $user=wp_authenticate($p['username']??'', $p['password']??'');
         if(is_wp_error($user)) return new WP_Error('auth_failed','Credenciales inválidas',['status'=>401]);
+
+        // Block inactive users
+        $user_status = get_user_meta($user->ID, 'petsgo_user_status', true) ?: 'active';
+        if ($user_status === 'inactive') {
+            return new WP_Error('user_inactive', 'Tu cuenta ha sido desactivada temporalmente por el administrador. Si tienes dudas, envía un ticket de soporte o escribe a contacto@petsgo.cl', ['status' => 403]);
+        }
+
         wp_set_current_user($user->ID);
         // Generate persistent API token
         $existing_token = get_user_meta($user->ID, 'petsgo_api_token', true);
@@ -6896,6 +7499,8 @@ Dashboard con analíticas"></textarea>
             $resp['rider_status'] = get_user_meta($user->ID, 'petsgo_rider_status', true) ?: 'pending_email';
             $resp['vehicle_type'] = get_user_meta($user->ID, 'petsgo_vehicle', true) ?: '';
         }
+        // Flag: must change temporary password on first login
+        $resp['mustChangePassword'] = (bool) get_user_meta($user->ID, 'petsgo_must_change_password', true);
         return rest_ensure_response(['token'=>$existing_token,'user'=>$resp]);
     }
 
@@ -8335,8 +8940,10 @@ Dashboard con analíticas"></textarea>
         // Regenerate token after password change
         $new_token = 'petsgo_' . bin2hex(random_bytes(32));
         update_user_meta($uid, 'petsgo_api_token', $new_token);
+        // Clear forced password change flag
+        delete_user_meta($uid, 'petsgo_must_change_password');
         $this->audit('change_password', 'user', $uid);
-        return rest_ensure_response(['message' => 'Contraseña actualizada exitosamente']);
+        return rest_ensure_response(['token' => $new_token, 'message' => 'Contraseña actualizada exitosamente']);
     }
 
     // --- Pets API ---
@@ -11925,6 +12532,262 @@ IMPORTANTE: Responde con formato Markdown bien estructurado para que la informac
 
         $this->audit('chatbot_config_update', 'settings', 0, 'Configuración del chatbot actualizada');
         wp_send_json_success('✅ Configuración del chatbot guardada.');
+    }
+
+    // ============================================================
+    // REVIEWS API — Product & Vendor ratings
+    // ============================================================
+
+    /** Submit a review for a product or vendor (from a delivered order) */
+    public function api_submit_review($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $order_id   = intval($p['order_id'] ?? 0);
+        $product_id = intval($p['product_id'] ?? 0);
+        $vendor_id  = intval($p['vendor_id'] ?? 0);
+        $rating     = intval($p['rating'] ?? 0);
+        $comment    = sanitize_textarea_field($p['comment'] ?? '');
+        $type       = sanitize_text_field($p['review_type'] ?? 'product');
+
+        if ($rating < 1 || $rating > 5) return new WP_Error('invalid', 'La valoración debe ser entre 1 y 5', ['status' => 400]);
+        if (!in_array($type, ['product', 'vendor'])) return new WP_Error('invalid', 'Tipo de review inválido', ['status' => 400]);
+
+        // Validate order belongs to customer and is delivered
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND customer_id=%d", $order_id, $uid));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado', ['status' => 404]);
+        if ($order->status !== 'delivered') return new WP_Error('not_delivered', 'Solo puedes valorar pedidos entregados', ['status' => 400]);
+
+        if ($type === 'product') {
+            if ($product_id <= 0) return new WP_Error('missing', 'product_id requerido', ['status' => 400]);
+            // Verify product was in this order
+            $in_order = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_order_items WHERE order_id=%d AND product_id=%d", $order_id, $product_id));
+            if (!$in_order) return new WP_Error('invalid', 'Este producto no es parte de este pedido', ['status' => 400]);
+            // Check duplicate
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_reviews WHERE customer_id=%d AND order_id=%d AND product_id=%d AND review_type='product'", $uid, $order_id, $product_id));
+            if ($exists) return new WP_Error('duplicate', 'Ya valoraste este producto en este pedido', ['status' => 400]);
+            $vendor_id = (int) $order->vendor_id;
+        } else {
+            // Vendor review
+            $product_id = null;
+            $vendor_id = (int) $order->vendor_id;
+            // Check duplicate vendor review per order
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_reviews WHERE customer_id=%d AND order_id=%d AND review_type='vendor' AND vendor_id=%d", $uid, $order_id, $vendor_id));
+            if ($exists) return new WP_Error('duplicate', 'Ya valoraste esta tienda en este pedido', ['status' => 400]);
+        }
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_reviews", [
+            'customer_id' => $uid,
+            'order_id'    => $order_id,
+            'product_id'  => $product_id,
+            'vendor_id'   => $vendor_id,
+            'review_type' => $type,
+            'rating'      => $rating,
+            'comment'     => $comment,
+        ], ['%d','%d','%d','%d','%s','%d','%s']);
+
+        $this->audit('review_submit', $type, $type === 'product' ? $product_id : $vendor_id, "{$rating}⭐ para {$type} (pedido #{$order_id})");
+        return rest_ensure_response(['message' => '¡Gracias por tu valoración!', 'review_id' => $wpdb->insert_id]);
+    }
+
+    /** Get reviews for a specific product */
+    public function api_get_product_reviews($request) {
+        global $wpdb;
+        $product_id = intval($request->get_param('id'));
+        $reviews = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.rating, r.comment, r.created_at, u.display_name AS customer_name
+             FROM {$wpdb->prefix}petsgo_reviews r
+             JOIN {$wpdb->users} u ON r.customer_id = u.ID
+             WHERE r.product_id=%d AND r.review_type='product'
+             ORDER BY r.created_at DESC LIMIT 50", $product_id
+        ));
+        $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'", $product_id));
+        $count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'", $product_id));
+        return rest_ensure_response([
+            'reviews' => $reviews,
+            'average' => $avg ? round(floatval($avg), 1) : null,
+            'count'   => (int) $count,
+        ]);
+    }
+
+    /** Get reviews for a specific vendor/store */
+    public function api_get_vendor_reviews($request) {
+        global $wpdb;
+        $vendor_id = intval($request->get_param('id'));
+        $reviews = $wpdb->get_results($wpdb->prepare(
+            "SELECT r.rating, r.comment, r.created_at, u.display_name AS customer_name
+             FROM {$wpdb->prefix}petsgo_reviews r
+             JOIN {$wpdb->users} u ON r.customer_id = u.ID
+             WHERE r.vendor_id=%d AND r.review_type='vendor'
+             ORDER BY r.created_at DESC LIMIT 50", $vendor_id
+        ));
+        $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $vendor_id));
+        $count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $vendor_id));
+
+        // Also include product reviews average for this vendor
+        $product_avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='product'", $vendor_id));
+        $product_count = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='product'", $vendor_id));
+
+        return rest_ensure_response([
+            'reviews'        => $reviews,
+            'average'        => $avg ? round(floatval($avg), 1) : null,
+            'count'          => (int) $count,
+            'product_average' => $product_avg ? round(floatval($product_avg), 1) : null,
+            'product_count'   => (int) $product_count,
+        ]);
+    }
+
+    /** Check review status for an order — which items have been reviewed */
+    public function api_get_order_review_status($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request->get_param('id'));
+
+        // Verify order belongs to user
+        $order = $wpdb->get_row($wpdb->prepare("SELECT id, vendor_id, status FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND customer_id=%d", $order_id, $uid));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado', ['status' => 404]);
+
+        // Get reviewed product IDs
+        $reviewed_products = $wpdb->get_col($wpdb->prepare(
+            "SELECT product_id FROM {$wpdb->prefix}petsgo_reviews WHERE customer_id=%d AND order_id=%d AND review_type='product'", $uid, $order_id
+        ));
+        // Check if vendor was reviewed
+        $vendor_reviewed = (bool) $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}petsgo_reviews WHERE customer_id=%d AND order_id=%d AND review_type='vendor'", $uid, $order_id
+        ));
+
+        return rest_ensure_response([
+            'order_id'          => (int) $order_id,
+            'status'            => $order->status,
+            'reviewed_products' => array_map('intval', $reviewed_products),
+            'vendor_reviewed'   => $vendor_reviewed,
+        ]);
+    }
+
+    // ============================================================
+    // ADMIN INVENTORY API — PetsGo official store management
+    // ============================================================
+
+    /** Get PetsGo official vendor ID */
+    private function get_petsgo_vendor_id() {
+        $vid = get_option('petsgo_official_vendor_id', 0);
+        if (!$vid) {
+            global $wpdb;
+            $admin_id = get_current_user_id();
+            $vid = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $admin_id));
+            if ($vid) update_option('petsgo_official_vendor_id', $vid);
+        }
+        return (int) $vid;
+    }
+
+    /** List PetsGo official store products */
+    public function api_admin_get_inventory() {
+        global $wpdb;
+        $vid = $this->get_petsgo_vendor_id();
+        if (!$vid) return new WP_Error('no_vendor', 'Tienda PetsGo no configurada', ['status' => 500]);
+        $products = $wpdb->get_results($wpdb->prepare(
+            "SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.vendor_id=%d ORDER BY i.id DESC", $vid
+        ));
+        // Enrich with image URLs
+        foreach ($products as &$p) {
+            $p->image_url = $p->image_id ? wp_get_attachment_url($p->image_id) : null;
+        }
+        return rest_ensure_response(['data' => $products, 'vendor_id' => $vid]);
+    }
+
+    /** Add product to PetsGo official store */
+    public function api_admin_add_product($request) {
+        global $wpdb;
+        $vid = $this->get_petsgo_vendor_id();
+        if (!$vid) return new WP_Error('no_vendor', 'Tienda PetsGo no configurada', ['status' => 500]);
+        $p = $request->get_json_params();
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_inventory", [
+            'vendor_id'    => $vid,
+            'product_name' => sanitize_text_field($p['product_name'] ?? ''),
+            'description'  => sanitize_textarea_field($p['description'] ?? ''),
+            'price'        => floatval($p['price'] ?? 0),
+            'stock'        => intval($p['stock'] ?? 0),
+            'category'     => sanitize_text_field($p['category'] ?? ''),
+            'image_id'     => intval($p['image_id'] ?? 0) ?: null,
+        ], ['%d','%s','%s','%f','%d','%s','%d']);
+
+        $product_id = $wpdb->insert_id;
+        $this->audit('admin_product_add', 'inventory', $product_id, sanitize_text_field($p['product_name'] ?? ''));
+        return rest_ensure_response(['id' => $product_id, 'message' => 'Producto agregado a Tienda PetsGo']);
+    }
+
+    /** Update PetsGo official store product */
+    public function api_admin_update_product($request) {
+        global $wpdb;
+        $vid = $this->get_petsgo_vendor_id();
+        $id = intval($request->get_param('id'));
+        // Verify product belongs to PetsGo vendor
+        $owner = $wpdb->get_var($wpdb->prepare("SELECT vendor_id FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $id));
+        if ((int)$owner !== $vid) return new WP_Error('forbidden', 'Este producto no pertenece a PetsGo', ['status' => 403]);
+
+        $p = $request->get_json_params();
+        $update = [];
+        $fmt = [];
+        if (isset($p['product_name'])) { $update['product_name'] = sanitize_text_field($p['product_name']); $fmt[] = '%s'; }
+        if (isset($p['description']))  { $update['description'] = sanitize_textarea_field($p['description']); $fmt[] = '%s'; }
+        if (isset($p['price']))        { $update['price'] = floatval($p['price']); $fmt[] = '%f'; }
+        if (isset($p['stock']))        { $update['stock'] = intval($p['stock']); $fmt[] = '%d'; }
+        if (isset($p['category']))     { $update['category'] = sanitize_text_field($p['category']); $fmt[] = '%s'; }
+        if (isset($p['image_id']))     { $update['image_id'] = intval($p['image_id']) ?: null; $fmt[] = '%d'; }
+        if (isset($p['discount_percent'])) { $update['discount_percent'] = floatval($p['discount_percent']); $fmt[] = '%f'; }
+        if (isset($p['discount_start']))   { $update['discount_start'] = sanitize_text_field($p['discount_start']) ?: null; $fmt[] = '%s'; }
+        if (isset($p['discount_end']))     { $update['discount_end'] = sanitize_text_field($p['discount_end']) ?: null; $fmt[] = '%s'; }
+
+        if (!empty($update)) {
+            $wpdb->update("{$wpdb->prefix}petsgo_inventory", $update, ['id' => $id], $fmt, ['%d']);
+        }
+
+        $this->audit('admin_product_update', 'inventory', $id, 'Producto actualizado');
+        return rest_ensure_response(['message' => 'Producto actualizado']);
+    }
+
+    /** Delete PetsGo official store product */
+    public function api_admin_delete_product($request) {
+        global $wpdb;
+        $vid = $this->get_petsgo_vendor_id();
+        $id = intval($request->get_param('id'));
+        $owner = $wpdb->get_var($wpdb->prepare("SELECT vendor_id FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $id));
+        if ((int)$owner !== $vid) return new WP_Error('forbidden', 'Este producto no pertenece a PetsGo', ['status' => 403]);
+
+        $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => $id], ['%d']);
+        $this->audit('admin_product_delete', 'inventory', $id, 'Producto eliminado');
+        return rest_ensure_response(['message' => 'Producto eliminado']);
+    }
+
+    /** Upload product image for PetsGo official store */
+    public function api_admin_upload_product_image() {
+        if (!function_exists('wp_handle_upload')) require_once ABSPATH . 'wp-admin/includes/file.php';
+        if (!function_exists('wp_generate_attachment_metadata')) require_once ABSPATH . 'wp-admin/includes/image.php';
+        if (empty($_FILES['image'])) return new WP_Error('no_file', 'No se envió imagen', ['status' => 400]);
+
+        $file = $_FILES['image'];
+        $allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (!in_array($file['type'], $allowed)) return new WP_Error('invalid_type', 'Tipo de archivo no permitido', ['status' => 400]);
+        if ($file['size'] > 5 * 1024 * 1024) return new WP_Error('too_large', 'La imagen no debe superar 5MB', ['status' => 400]);
+
+        $upload = wp_handle_upload($file, ['test_form' => false]);
+        if (isset($upload['error'])) return new WP_Error('upload_error', $upload['error'], ['status' => 500]);
+
+        $attachment = [
+            'post_mime_type' => $upload['type'],
+            'post_title'     => sanitize_file_name($file['name']),
+            'post_content'   => '',
+            'post_status'    => 'inherit',
+        ];
+        $attach_id = wp_insert_attachment($attachment, $upload['file']);
+        $metadata = wp_generate_attachment_metadata($attach_id, $upload['file']);
+        wp_update_attachment_metadata($attach_id, $metadata);
+
+        return rest_ensure_response([
+            'image_id'  => $attach_id,
+            'image_url' => wp_get_attachment_url($attach_id),
+        ]);
     }
 }
 

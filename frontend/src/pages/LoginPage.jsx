@@ -21,6 +21,11 @@ const LoginPage = () => {
 
     try {
       const user = await login(username, password);
+      // Force password change for accounts created by admin with temp password
+      if (user.mustChangePassword) {
+        navigate('/cambiar-contrasena');
+        return;
+      }
       setSuccess({ name: user.displayName || user.firstName || user.username, role: user.role });
       // Wait a moment to show message, then redirect
       setTimeout(() => {

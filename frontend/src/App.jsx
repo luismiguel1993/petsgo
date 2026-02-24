@@ -27,6 +27,7 @@ import SupportPage from './pages/SupportPage'
 import HelpCenterPage from './pages/HelpCenterPage'
 import LegalPage from './pages/LegalPage'
 import InvoiceVerifyPage from './pages/InvoiceVerifyPage'
+import ForceChangePasswordPage from './pages/ForceChangePasswordPage'
 
 function App() {
   const [cartOpen, setCartOpen] = useState(false)
@@ -100,6 +101,7 @@ function App() {
           <Route path="/registro-rider" element={<RiderRegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/cambiar-contrasena" element={<ForceChangePasswordPage />} />
           <Route path="/tiendas" element={<VendorsPage />} />
           <Route path="/tienda/:id" element={<VendorDetailPage />} />
           <Route path="/categoria/:slug" element={<CategoryPage />} />

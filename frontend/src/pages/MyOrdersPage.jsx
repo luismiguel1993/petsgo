@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Package, Clock, CheckCircle2, Truck, MapPin, Store, PawPrint, FileText, ShoppingBag, ChevronDown, ChevronUp, Download } from 'lucide-react';
-import { getMyOrders } from '../services/api';
+import { Package, Clock, CheckCircle2, Truck, MapPin, Store, PawPrint, FileText, ShoppingBag, ChevronDown, ChevronUp, Download, Star, X, MessageSquare } from 'lucide-react';
+import { getMyOrders, submitReview, getOrderReviewStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const STATUS_CONFIG = {
@@ -43,6 +43,11 @@ const MyOrdersPage = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [expandedPurchases, setExpandedPurchases] = useState({});
+  const [reviewModal, setReviewModal] = useState(null); // { order, item?, type: 'product'|'vendor' }
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewedItems, setReviewedItems] = useState({}); // { orderId: { products: [id,...], vendor: bool } }
 
   useEffect(() => {
     if (authLoading) return;
@@ -55,11 +60,60 @@ const MyOrdersPage = () => {
       const res = await getMyOrders();
       const realOrders = Array.isArray(res.data) ? res.data : (Array.isArray(res.data?.data) ? res.data.data : []);
       setOrders(realOrders);
+      // Load review status for delivered orders
+      const delivered = realOrders.filter(o => o.status === 'delivered');
+      const statusMap = {};
+      await Promise.all(delivered.map(async (o) => {
+        try {
+          const r = await getOrderReviewStatus(o.id);
+          statusMap[o.id] = {
+            products: r.data?.reviewed_products || [],
+            vendor: r.data?.vendor_reviewed || false,
+          };
+        } catch { /* ignore */ }
+      }));
+      setReviewedItems(statusMap);
     } catch (err) {
       console.error('Error cargando pedidos:', err);
       setOrders([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openReviewModal = (order, item = null, type = 'product') => {
+    setReviewModal({ order, item, type });
+    setReviewRating(5);
+    setReviewComment('');
+  };
+
+  const handleSubmitReview = async () => {
+    if (!reviewModal) return;
+    setReviewSubmitting(true);
+    try {
+      await submitReview({
+        order_id: reviewModal.order.id,
+        product_id: reviewModal.type === 'product' ? reviewModal.item.product_id : undefined,
+        vendor_id: reviewModal.order.vendor_id,
+        review_type: reviewModal.type,
+        rating: reviewRating,
+        comment: reviewComment,
+      });
+      // Mark as reviewed locally
+      setReviewedItems(prev => {
+        const existing = prev[reviewModal.order.id] || { products: [], vendor: false };
+        if (reviewModal.type === 'product') {
+          return { ...prev, [reviewModal.order.id]: { ...existing, products: [...existing.products, reviewModal.item.product_id] } };
+        } else {
+          return { ...prev, [reviewModal.order.id]: { ...existing, vendor: true } };
+        }
+      });
+      setReviewModal(null);
+    } catch (err) {
+      const msg = err.response?.data?.message || 'Error al enviar valoración';
+      alert(msg);
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -288,6 +342,58 @@ const MyOrdersPage = () => {
                                 <MapPin size={14} /> Tu pedido está en camino 🚚
                               </div>
                             )}
+
+                            {/* Review buttons for delivered orders */}
+                            {order.status === 'delivered' && (
+                              <div style={{
+                                marginTop: '12px', padding: '12px 14px', background: '#f0fdf4',
+                                borderRadius: '10px', border: '1px solid #dcfce7',
+                              }}>
+                                <div style={{ fontSize: '12px', fontWeight: 700, color: '#15803d', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <Star size={14} fill="#FFC400" color="#FFC400" /> Valorar tu compra
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                  {/* Rate store */}
+                                  {!(reviewedItems[order.id]?.vendor) ? (
+                                    <button
+                                      onClick={() => openReviewModal(order, null, 'vendor')}
+                                      style={{
+                                        padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700,
+                                        background: '#00A8E8', color: '#fff', border: 'none', cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', gap: '4px',
+                                      }}
+                                    >
+                                      <Store size={12} /> Valorar Tienda
+                                    </button>
+                                  ) : (
+                                    <span style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, background: '#dcfce7', color: '#15803d' }}>
+                                      ✅ Tienda valorada
+                                    </span>
+                                  )}
+                                  {/* Rate each product */}
+                                  {order.items?.map((item, iIdx) => {
+                                    const alreadyReviewed = reviewedItems[order.id]?.products?.includes(item.product_id);
+                                    return alreadyReviewed ? (
+                                      <span key={iIdx} style={{ padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700, background: '#dcfce7', color: '#15803d' }}>
+                                        ✅ {item.product_name?.substring(0, 20)}
+                                      </span>
+                                    ) : (
+                                      <button
+                                        key={iIdx}
+                                        onClick={() => openReviewModal(order, item, 'product')}
+                                        style={{
+                                          padding: '6px 12px', borderRadius: '8px', fontSize: '11px', fontWeight: 700,
+                                          background: '#fff', color: '#00A8E8', border: '1.5px solid #00A8E8', cursor: 'pointer',
+                                          display: 'flex', alignItems: 'center', gap: '4px',
+                                        }}
+                                      >
+                                        <Star size={12} /> {item.product_name?.substring(0, 20)}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -299,6 +405,101 @@ const MyOrdersPage = () => {
           </div>
         )}
       </div>
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+        }} onClick={() => setReviewModal(null)}>
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} />
+          <div onClick={e => e.stopPropagation()} style={{
+            position: 'relative', background: '#fff', borderRadius: '20px',
+            width: '100%', maxWidth: '480px', padding: '28px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <button onClick={() => setReviewModal(null)} style={{
+              position: 'absolute', top: '14px', right: '14px', background: 'none',
+              border: 'none', cursor: 'pointer', color: '#9ca3af',
+            }}>
+              <X size={20} />
+            </button>
+
+            <div style={{ textAlign: 'center', marginBottom: '24px' }}>
+              <div style={{
+                width: '52px', height: '52px', borderRadius: '14px', margin: '0 auto 12px',
+                background: reviewModal.type === 'vendor' ? 'linear-gradient(135deg, #00A8E8, #0077b6)' : 'linear-gradient(135deg, #FFC400, #e6a800)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {reviewModal.type === 'vendor' ? <Store size={24} color="#fff" /> : <Star size={24} color="#fff" />}
+              </div>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#1f2937', marginBottom: '4px' }}>
+                {reviewModal.type === 'vendor' ? 'Valorar Tienda' : 'Valorar Producto'}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#9ca3af', fontWeight: 500 }}>
+                {reviewModal.type === 'vendor'
+                  ? reviewModal.order.store_name || 'Tienda'
+                  : reviewModal.item?.product_name || 'Producto'}
+              </p>
+            </div>
+
+            {/* Star rating */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginBottom: '20px' }}>
+              {[1, 2, 3, 4, 5].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setReviewRating(s)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '4px',
+                    transition: 'transform 0.15s',
+                    transform: reviewRating >= s ? 'scale(1.2)' : 'scale(1)',
+                  }}
+                >
+                  <Star
+                    size={32}
+                    fill={reviewRating >= s ? '#FFC400' : 'none'}
+                    color={reviewRating >= s ? '#FFC400' : '#d1d5db'}
+                  />
+                </button>
+              ))}
+            </div>
+
+            <p style={{ textAlign: 'center', fontSize: '14px', fontWeight: 700, color: '#1f2937', marginBottom: '16px' }}>
+              {reviewRating === 1 ? '😞 Muy malo' : reviewRating === 2 ? '😕 Malo' : reviewRating === 3 ? '😐 Regular' : reviewRating === 4 ? '😊 Bueno' : '🤩 Excelente'}
+            </p>
+
+            {/* Comment */}
+            <textarea
+              value={reviewComment}
+              onChange={e => setReviewComment(e.target.value)}
+              placeholder="Cuéntanos tu experiencia (opcional)"
+              rows={3}
+              style={{
+                width: '100%', padding: '12px 14px', borderRadius: '12px',
+                border: '1.5px solid #e5e7eb', fontSize: '13px', fontFamily: 'Poppins, sans-serif',
+                resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+              }}
+              onFocus={e => e.target.style.borderColor = '#00A8E8'}
+              onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+            />
+
+            {/* Submit */}
+            <button
+              onClick={handleSubmitReview}
+              disabled={reviewSubmitting}
+              style={{
+                width: '100%', marginTop: '16px', padding: '14px',
+                background: reviewSubmitting ? '#9ca3af' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                color: '#fff', border: 'none', borderRadius: '12px',
+                fontSize: '14px', fontWeight: 700, cursor: reviewSubmitting ? 'not-allowed' : 'pointer',
+                fontFamily: 'Poppins, sans-serif',
+              }}
+            >
+              {reviewSubmitting ? 'Enviando...' : 'Enviar Valoración ⭐'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

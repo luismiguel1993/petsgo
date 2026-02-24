@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Search, Store, Star, Clock, MapPin, Plus, Minus, PawPrint, Package, Filter } from 'lucide-react';
 import { getProducts, getVendors, getCategories } from '../services/api';
 import { useCart } from '../context/CartContext';
+import { getProductImage as getSmartProductImage } from '../utils/productImages';
 
 /* ── Fallback de categorías ──────────────────────────── */
 const FALLBACK_CATEGORY_META = {
@@ -18,28 +19,10 @@ const FALLBACK_CATEGORY_META = {
   Ropa:       { emoji: '🧥', label: 'Ropa',       desc: 'Abrigos y disfraces' },
   Ofertas:    { emoji: '🔥', label: 'Ofertas',    desc: 'Los mejores descuentos' },
   Nuevos:     { emoji: '✨', label: 'Nuevos',     desc: 'Recién llegados' },
+  Todos:      { emoji: '🔍', label: 'Resultados de búsqueda', desc: 'Productos encontrados' },
 };
 
-/* ── Imágenes fallback por categoría ─────────────────── */
-const CATEGORY_IMAGES = {
-  Alimento: 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
-  Accesorios: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800',
-  Juguetes: 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&q=80&w=800',
-  Higiene: 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=800',
-  Ropa: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&q=80&w=800',
-  Camas: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?auto=format&fit=crop&q=80&w=800',
-  Farmacia: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?auto=format&fit=crop&q=80&w=800',
-  Snacks: 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=800',
-  Paseo: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800',
-  Perros: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800',
-  Gatos: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&q=80&w=800',
-  default: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800',
-};
-
-const getProductImage = (product) => {
-  if (product.image_url) return product.image_url;
-  return CATEGORY_IMAGES[product.category] || CATEGORY_IMAGES['default'];
-};
+/* ── Imágenes: usa el mapeo centralizado de utils/productImages.js ── */
 
 /* ── Datos demo por categoría ────────────────────────── */
 const DEMO_VENDORS = [
@@ -80,7 +63,7 @@ const DEMO_PRODUCTS = {
     { id: 9024, vendor_id: 905, product_name: 'Whiskas Adulto Pollo 10kg', price: 24990, stock: 30, category: 'Alimento', store_name: 'Happy Pets Providencia', image_url: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 24990 },
     { id: 9025, vendor_id: 906, product_name: 'Alimento Húmedo Lata Pedigree x6', price: 8990, stock: 50, category: 'Alimento', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1585664811087-47f65abbad64?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 8990 },
     { id: 9026, vendor_id: 901, product_name: 'Taste of the Wild Pacific Stream 12.2kg', price: 62990, stock: 10, category: 'Alimento', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&q=80&w=800', discount_percent: 5, discount_active: true, final_price: 59841 },
-    { id: 9027, vendor_id: 903, product_name: 'Eukanuba Cachorro Raza Grande 15kg', price: 51990, stock: 16, category: 'Alimento', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1583337130417-13104dec14a8?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 51990 },
+    { id: 9027, vendor_id: 903, product_name: 'Eukanuba Cachorro Raza Grande 15kg', price: 51990, stock: 16, category: 'Alimento', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 51990 },
   ],
   Snacks: [
     { id: 9030, vendor_id: 901, product_name: 'DentaStix Razas Medianas x28', price: 15990, stock: 40, category: 'Snacks', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1582798358481-d199fb7347bb?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 15990 },
@@ -111,7 +94,7 @@ const DEMO_PRODUCTS = {
     { id: 9060, vendor_id: 901, product_name: 'Shampoo Hipoalergénico 500ml', price: 8990, stock: 50, category: 'Higiene', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 8990 },
     { id: 9061, vendor_id: 902, product_name: 'Cepillo Deslanador Furminator M', price: 24990, stock: 18, category: 'Higiene', store_name: 'Mundo Animal Centro', image_url: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&q=80&w=800', discount_percent: 10, discount_active: true, final_price: 22491 },
     { id: 9062, vendor_id: 903, product_name: 'Toallitas Húmedas Mascota x80', price: 5990, stock: 65, category: 'Higiene', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1581888227599-779811939961?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 5990 },
-    { id: 9063, vendor_id: 904, product_name: 'Cortauñas Profesional con Luz LED', price: 11990, stock: 25, category: 'Higiene', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1583337130417-13104dec14a8?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 11990 },
+    { id: 9063, vendor_id: 904, product_name: 'Cortauñas Profesional con Luz LED', price: 11990, stock: 25, category: 'Higiene', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 11990 },
     { id: 9064, vendor_id: 905, product_name: 'Spray Perfume Mascota 250ml', price: 6990, stock: 40, category: 'Higiene', store_name: 'Happy Pets Providencia', image_url: 'https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 6990 },
     { id: 9065, vendor_id: 906, product_name: 'Kit Spa Baño Completo 4 Piezas', price: 19990, stock: 15, category: 'Higiene', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1544568100-847a948585b9?auto=format&fit=crop&q=80&w=800', discount_percent: 25, discount_active: true, final_price: 14993 },
   ],
@@ -162,6 +145,8 @@ const DEMO_PRODUCTS = {
 };
 const CategoryPage = () => {
   const { slug } = useParams();
+  const [searchParams] = useSearchParams();
+  const queryFromUrl = searchParams.get('q') || '';
   const categoryName = decodeURIComponent(slug);
 
   const [categoryMeta, setCategoryMeta] = useState(FALLBACK_CATEGORY_META);
@@ -170,7 +155,7 @@ const CategoryPage = () => {
   const [products, setProducts] = useState([]);
   const [allVendors, setAllVendors] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(queryFromUrl);
   const [activeTab, setActiveTab] = useState('productos'); // 'productos' | 'tiendas'
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
@@ -189,15 +174,26 @@ const CategoryPage = () => {
   }, []);
 
   useEffect(() => {
+    if (queryFromUrl) setSearchTerm(queryFromUrl);
+  }, [queryFromUrl]);
+
+  useEffect(() => {
     window.scrollTo(0, 0);
     loadData();
-  }, [categoryName]);
+  }, [categoryName, queryFromUrl]);
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const apiParams = {};
+      // Si es "Todos" con búsqueda, usar el parámetro search de la API
+      if (categoryName === 'Todos' && queryFromUrl) {
+        apiParams.search = queryFromUrl;
+      } else if (categoryName !== 'Todos') {
+        apiParams.category = categoryName;
+      }
       const [productsRes, vendorsRes] = await Promise.all([
-        getProducts({ category: categoryName }),
+        getProducts(apiParams),
         getVendors(),
       ]);
       const realProducts = productsRes.data.data || [];
@@ -238,7 +234,7 @@ const CategoryPage = () => {
   /* ── Skeleton loading ──────────────────────────────── */
   if (loading) {
     return (
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px', fontFamily: 'Poppins, sans-serif' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 20px', fontFamily: 'Poppins, sans-serif' }}>
         <div style={{ height: '120px', background: 'linear-gradient(135deg, #e5e7eb, #f3f4f6)', borderRadius: '20px', marginBottom: '24px', animation: 'cpPulse 1.5s ease-in-out infinite' }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
           {[...Array(8)].map((_, i) => (
@@ -263,8 +259,8 @@ const CategoryPage = () => {
         .cp-tab-inactive { background: #f3f4f6; color: #6b7280; }
         .cp-tab-inactive:hover { background: #e5e7eb; }
         @media (max-width: 639px) {
-          .cp-products-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
-          .cp-product-info { padding: 12px 14px !important; }
+          .cp-products-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 14px !important; }
+          .cp-product-info { padding: 14px 16px !important; }
           .cp-product-name { font-size: 13px !important; }
           .cp-product-price { font-size: 16px !important; }
           .cp-product-desc { display: none !important; }
@@ -274,7 +270,7 @@ const CategoryPage = () => {
         @media (max-width: 380px) { .cp-products-grid { grid-template-columns: 1fr !important; } }
       `}</style>
 
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 20px' }}>
 
         {/* ── Breadcrumb ── */}
         <Link to="/" style={{
@@ -402,7 +398,7 @@ const CategoryPage = () => {
               <div className="cp-products-grid" style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-                gap: '20px',
+                gap: '24px',
               }}>
                 {filteredProducts.map((product) => {
                   const qty = getItemQuantity(product.id);
@@ -421,11 +417,11 @@ const CategoryPage = () => {
                     >
                       <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: '#f9fafb' }}>
                         <img
-                          src={getProductImage(product)}
+                          src={getSmartProductImage(product)}
                           alt={product.product_name}
                           style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }}
                           loading="lazy"
-                          onError={(e) => { e.target.src = CATEGORY_IMAGES['default']; }}
+                          onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
                         />
                         {product.discount_active && (
                           <span style={{
@@ -446,7 +442,7 @@ const CategoryPage = () => {
                           </span>
                         )}
                       </div>
-                      <div className="cp-product-info" style={{ padding: '16px 18px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <div className="cp-product-info" style={{ padding: '18px 20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
                         <h4 className="cp-product-name" style={{
                           fontWeight: 700, fontSize: '14px', color: '#1f2937', lineHeight: 1.4, marginBottom: '4px',
                         }}>
@@ -504,7 +500,7 @@ const CategoryPage = () => {
                                   {qty}
                                 </span>
                                 <button
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getProductImage(product), quantity: 1 }); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), quantity: 1 }); }}
                                   style={{
                                     width: '30px', height: '30px', borderRadius: '8px',
                                     border: 'none', background: '#00A8E8', cursor: 'pointer',
@@ -517,7 +513,7 @@ const CategoryPage = () => {
                               </div>
                             ) : (
                               <button
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getProductImage(product), quantity: 1 }); }}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), quantity: 1 }); }}
                                 style={{
                                   width: '36px', height: '36px', borderRadius: '50%',
                                   border: 'none', background: '#fff', cursor: 'pointer',

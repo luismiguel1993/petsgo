@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { ShoppingCart, Star, Truck, Heart, Sparkles, ChevronRight, ArrowRight, MessageCircle, ChevronLeft, Shield, Clock, Filter, PawPrint, Plus } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { Minus } from 'lucide-react';
-import { getPublicSettings, getCategories } from '../services/api';
+import { getPublicSettings, getCategories, getProducts } from '../services/api';
+import { getProductImage } from '../utils/productImages';
 import PromoSlider from '../components/PromoSlider';
 
 const FALLBACK_CATEGORIES = [
@@ -58,7 +59,7 @@ const HomePage = () => {
   const nextSlide = () => setCurrentSlide((prev) => (prev + 1) % heroImages.length);
   const prevSlide = () => setCurrentSlide((prev) => (prev - 1 + heroImages.length) % heroImages.length);
 
-  const featuredProducts = [
+  const HARDCODED_PRODUCTS = [
     { id: 1, name: 'Royal Canin Medium Adult 15kg', brand: 'Royal Canin', price: 52990, originalPrice: 59990, image: 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.8, description: 'Alimento seco completo para perros adultos de raza mediana (11-25 kg). Con nutrientes que fortalecen las defensas naturales.' },
     { id: 2, name: 'Pro Plan Gato Adulto Pollo 7.5kg', brand: 'Pro Plan', price: 38990, originalPrice: 42990, image: 'https://images.unsplash.com/photo-1615497001839-b0a0eac3274c?w=400&auto=format&fit=crop&q=80', category: 'Alimento Gatos', rating: 4.7, description: 'Fórmula avanzada con pollo real como ingrediente principal. Rico en proteínas para gatos adultos activos.' },
     { id: 3, name: 'Hills Science Diet Puppy 12kg', brand: 'Hills', price: 48990, originalPrice: null, image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&auto=format&fit=crop&q=80', category: 'Alimento Perros', rating: 4.9, description: 'Nutrición clínicamente probada para cachorros en crecimiento. DHA de aceite de pescado para desarrollo cerebral.' },
@@ -66,12 +67,37 @@ const HomePage = () => {
     { id: 5, name: 'Bravecto Perro 10-20kg', brand: 'Bravecto', price: 29990, originalPrice: 34990, image: 'https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=400&auto=format&fit=crop&q=80', category: 'Farmacia', rating: 4.8, description: 'Antiparasitario oral contra pulgas y garrapatas. Protección de hasta 12 semanas con una sola dosis.' },
     { id: 6, name: 'Collar LED Recargable USB', brand: 'PetSafe', price: 14990, originalPrice: 19990, image: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=400&auto=format&fit=crop&q=80', category: 'Paseo', rating: 4.4, description: 'Collar luminoso LED con 3 modos de luz. Recargable USB, resistente al agua. Ideal para paseos nocturnos.' },
     { id: 7, name: 'Cama Ortopédica Premium L', brand: 'PetsGo Select', price: 45990, originalPrice: 54990, image: 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?w=400&auto=format&fit=crop&q=80', category: 'Camas', rating: 4.7, description: 'Cama ortopédica con espuma viscoelástica. Funda lavable antialérgica. Ideal para perros grandes.' },
-    { id: 8, name: 'Shampoo Avena Piel Sensible 500ml', brand: 'Pet Clean', price: 8990, originalPrice: 11990, image: 'https://images.unsplash.com/photo-1583337130417-13104dec14a3?w=400&auto=format&fit=crop&q=80', category: 'Higiene', rating: 4.6, description: 'Shampoo hipoalergénico con extracto de avena y aloe vera. Ideal para pieles sensibles y cachorros.' },
+    { id: 8, name: 'Shampoo Avena Piel Sensible 500ml', brand: 'Pet Clean', price: 8990, originalPrice: 11990, image: 'https://images.unsplash.com/photo-1544568100-847a948585b9?w=400&auto=format&fit=crop&q=80', category: 'Higiene', rating: 4.6, description: 'Shampoo hipoalergénico con extracto de avena y aloe vera. Ideal para pieles sensibles y cachorros.' },
     { id: 9, name: 'Arnés Anti-Tirón Reflectante M', brand: 'Ruffwear', price: 24990, originalPrice: 29990, image: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?w=400&auto=format&fit=crop&q=80', category: 'Paseo', rating: 4.9, description: 'Arnés ergonómico anti-tirón con bandas reflectantes. Ajuste en 4 puntos para máximo confort y seguridad.' },
     { id: 10, name: 'Snack Dental DentaStix x28', brand: 'Pedigree', price: 15990, originalPrice: 18990, image: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400&auto=format&fit=crop&q=80', category: 'Snacks', rating: 4.5, description: 'Barras dentales que reducen hasta 80% el sarro. Pack mensual de 28 unidades para perros medianos.' },
     { id: 11, name: 'Rascador Torre 3 Niveles', brand: 'CatLife', price: 34990, originalPrice: 44990, image: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?w=400&auto=format&fit=crop&q=80', category: 'Accesorios Gatos', rating: 4.7, description: 'Torre rascador de 3 niveles con cuevas, plataformas y juguetes colgantes. Sisal natural resistente.' },
     { id: 12, name: 'Chaleco Abrigador Impermeable', brand: 'PetsGo Select', price: 19990, originalPrice: 24990, image: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=400&auto=format&fit=crop&q=80', category: 'Ropa', rating: 4.6, description: 'Chaleco impermeable con interior polar. Reflectante para visibilidad nocturna. Tallas S a XXL.' },
   ];
+
+  const [featuredProducts, setFeaturedProducts] = useState(HARDCODED_PRODUCTS);
+
+  useEffect(() => {
+    // Intentar cargar productos reales desde la API
+    getProducts({ perPage: 12 }).then(res => {
+      const apiProducts = res.data?.data || [];
+      if (apiProducts.length > 0) {
+        // Normalizar campos de productos de la API al formato del HomePage
+        const normalized = apiProducts.map(p => ({
+          ...p,
+          name: p.product_name || p.name,
+          image: getProductImage(p),
+          brand: p.store_name || p.brand || '',
+          price: Number(p.final_price || p.price),
+          originalPrice: p.discount_active ? Number(p.price) : null,
+          rating: p.rating || 4.5,
+          description: p.description || p.product_name || '',
+        }));
+        setFeaturedProducts(normalized);
+      }
+    }).catch(() => {
+      // Si falla la API, mantener los productos hardcoded
+    });
+  }, []);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat('es-CL', {
@@ -104,6 +130,8 @@ const HomePage = () => {
         .benefits-inner { gap: 12px !important; }
         .benefits-inner > span > div:last-child p:first-child { font-size: 13px; }
         .benefits-inner > span > div:last-child p:last-child { font-size: 11px; }
+        .promo-banner { padding: 18px 32px !important; }
+        .chat-banner { padding: 18px 24px !important; }
 
         @media (min-width: 480px) {
           .hero-wrapper { padding: 0 24px; }
@@ -112,6 +140,8 @@ const HomePage = () => {
           .hero-btns > * { width: auto; }
           .hero-badge-float { display: flex !important; }
           .main-content { padding-left: 24px; padding-right: 24px; }
+          .promo-banner { padding: 20px 40px !important; }
+          .chat-banner { padding: 20px 28px !important; }
         }
 
         @media (min-width: 640px) {
@@ -120,6 +150,8 @@ const HomePage = () => {
           .hero-carousel { min-height: 360px; }
           .hero-arrows { display: flex !important; }
           .main-content { padding-left: 32px; padding-right: 32px; }
+          .promo-banner { padding: 22px 60px !important; }
+          .chat-banner { padding: 22px 36px !important; }
           .benefits-bar { padding: 14px 20px !important; margin-top: -20px !important; }
         }
 
@@ -131,6 +163,8 @@ const HomePage = () => {
           .hero-h1 { font-size: 3.5rem; }
           .hero-p { font-size: 1.125rem; }
           .main-content { padding-left: 48px; padding-right: 48px; padding-bottom: 80px; }
+          .promo-banner { padding: 24px 80px !important; }
+          .chat-banner { padding: 24px 48px !important; }
           .benefits-bar { padding: 14px 28px !important; margin-top: -24px !important; }
           .benefits-inner { gap: 40px !important; }
         }
@@ -307,8 +341,8 @@ const HomePage = () => {
         </section>
 
         {/* ========== ASISTENTE IA ========== */}
-        <section style={{ marginTop: '80px' }}>
-          <div className="bg-gradient-to-br from-[#2F3A40] to-[#3d4a52] rounded-2xl p-10 sm:p-12 relative overflow-hidden group shadow-xl">
+        <section style={{ marginTop: '80px', paddingTop: '24px' }}>
+          <div className="chat-banner bg-gradient-to-br from-[#2F3A40] to-[#3d4a52] rounded-2xl relative overflow-hidden group shadow-xl">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-6 relative z-10">
               <div className="flex items-center gap-5">
                 <div className="w-14 h-14 bg-[#FFC400] rounded-xl flex items-center justify-center shrink-0 shadow-lg shadow-yellow-500/20">
@@ -442,23 +476,23 @@ const HomePage = () => {
         </section>
 
         {/* ========== BANNER PROMOCIONAL ========== */}
-        <section style={{ marginTop: '96px' }}>
-          <div className="bg-gradient-to-r from-[#00A8E8] to-[#00bfff] rounded-2xl p-10 md:p-14 flex flex-col md:flex-row items-center justify-between gap-10 shadow-xl relative overflow-hidden">
-            <div className="text-center md:text-left relative z-10" style={{ marginLeft: '28px' }}>
+        <section style={{ marginTop: '96px', paddingTop: '24px' }}>
+          <div className="promo-banner bg-gradient-to-r from-[#00A8E8] to-[#00bfff] rounded-2xl flex flex-col md:flex-row items-center justify-between gap-8 sm:gap-12 shadow-xl relative overflow-hidden">
+            <div className="text-center md:text-left relative z-10">
               <span className="inline-block bg-[#FFC400] text-gray-900 text-sm font-black px-4 py-1.5 rounded-lg mb-5 uppercase tracking-widest shadow-md">
                 🎉 PRIMERA COMPRA
               </span>
               <h3 className="text-3xl md:text-4xl font-black text-white mb-4 leading-tight">
                 ¡15% de descuento!
               </h3>
-              <p className="text-white/90 text-base" style={{ marginLeft: '4px' }}>
+              <p className="text-white/90 text-base">
                 Usa el código{' '}
-                <strong className="bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg font-black tracking-wider" style={{ marginLeft: '6px' }}>
+                <strong className="bg-white/20 backdrop-blur px-3 py-1.5 rounded-lg font-black tracking-wider ml-1">
                   BIENVENIDO15
                 </strong>
               </p>
             </div>
-            <Link to="/tiendas" className="px-10 py-4 bg-white text-[#00A8E8] font-black rounded-xl hover:bg-[#FFC400] hover:text-gray-900 transition-all shadow-lg text-lg uppercase tracking-wide hover:scale-105 active:scale-95 relative z-10 no-underline inline-block">
+            <Link to="/tiendas" className="px-10 py-4 bg-white text-[#00A8E8] font-black rounded-xl hover:bg-[#FFC400] hover:text-gray-900 transition-all shadow-lg text-lg uppercase tracking-wide hover:scale-105 active:scale-95 relative z-10 no-underline inline-block whitespace-nowrap">
               COMPRAR AHORA
             </Link>
             <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>

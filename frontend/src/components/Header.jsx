@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ShoppingCart, User, Search, Menu, X, LogOut,
   Store, Package, Truck, Shield, ShieldCheck, ChevronDown, MapPin, LifeBuoy,
@@ -22,6 +22,7 @@ const COMUNAS_RM = [
 const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   const { user, isAuthenticated, logout, isAdmin, isVendor, isRider } = useAuth();
   const { totalItems } = useCart();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchTerm);
@@ -61,6 +62,21 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   const handleSearchChange = (e) => {
     setLocalSearch(e.target.value);
     if (onSearch) onSearch(e.target.value);
+  };
+
+  const handleSearchSubmit = () => {
+    const q = localSearch.trim();
+    if (q) {
+      navigate(`/categoria/Todos?q=${encodeURIComponent(q)}`);
+      setMenuOpen(false);
+    }
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearchSubmit();
+    }
   };
 
   return (
@@ -108,11 +124,12 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                   type="text"
                   value={localSearch}
                   onChange={handleSearchChange}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="¿Qué estás buscando?"
-                  className="w-full h-12 bg-white border-2 border-gray-200 rounded-xl pl-5 pr-14 focus:ring-2 focus:ring-[#00A8E8]/20 focus:border-[#00A8E8] transition-all outline-none text-sm text-gray-700 placeholder-gray-400 shadow-sm"
+                  className="w-full h-12 bg-white border-2 border-gray-200 rounded-xl pl-10 pr-14 focus:ring-2 focus:ring-[#00A8E8]/20 focus:border-[#00A8E8] transition-all outline-none text-sm text-gray-700 placeholder-gray-400 shadow-sm"
                   style={{ fontFamily: 'Poppins, sans-serif' }}
                 />
-                <button className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#00A8E8] hover:bg-[#0090c7] text-white rounded-lg flex items-center justify-center transition-colors">
+                <button onClick={handleSearchSubmit} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#00A8E8] hover:bg-[#0090c7] text-white rounded-lg flex items-center justify-center transition-colors">
                   <Search size={20} />
                 </button>
               </div>
@@ -400,11 +417,14 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                 type="text"
                 value={localSearch}
                 onChange={handleSearchChange}
+                onKeyDown={handleSearchKeyDown}
                 placeholder="¿Qué estás buscando?"
-                className="w-full h-12 bg-gray-50 border border-gray-200 rounded-full pl-5 pr-12 text-sm"
+                className="w-full h-12 bg-gray-50 border border-gray-200 rounded-full pl-10 pr-12 text-sm"
                 style={{ fontFamily: 'Poppins, sans-serif' }}
               />
-              <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <button onClick={handleSearchSubmit} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#00A8E8] transition-colors bg-transparent border-0 cursor-pointer p-0">
+                <Search size={20} />
+              </button>
             </div>
             
             {categories.map((cat) => (

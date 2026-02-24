@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Store, MapPin, Phone, Mail, Plus, Minus, ArrowLeft, PawPrint, Star } from 'lucide-react';
-import { getVendorDetail, getProducts } from '../services/api';
+import { Store, MapPin, Phone, Mail, Plus, Minus, ArrowLeft, PawPrint, Star, MessageSquare } from 'lucide-react';
+import { getVendorDetail, getProducts, getVendorReviews } from '../services/api';
 import { useCart } from '../context/CartContext';
 
 // Imágenes por categoría para productos sin imagen
@@ -28,6 +28,9 @@ const VendorDetailPage = () => {
   const [vendor, setVendor] = useState(null);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [vendorReviews, setVendorReviews] = useState([]);
+  const [vendorRating, setVendorRating] = useState(null);
+  const [vendorReviewCount, setVendorReviewCount] = useState(0);
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   useEffect(() => {
@@ -43,6 +46,13 @@ const VendorDetailPage = () => {
       ]);
       setVendor(vendorRes.data);
       setProducts(productsRes.data.data || []);
+      // Load vendor reviews
+      try {
+        const reviewsRes = await getVendorReviews(id);
+        setVendorReviews(reviewsRes.data?.reviews || []);
+        setVendorRating(reviewsRes.data?.average);
+        setVendorReviewCount(reviewsRes.data?.count || 0);
+      } catch { /* ignore */ }
     } catch (err) {
       console.error('Error cargando tienda:', err);
     } finally {
@@ -136,7 +146,10 @@ const VendorDetailPage = () => {
               background: 'rgba(255,255,255,0.2)', borderRadius: '10px', padding: '8px 14px', flexShrink: 0,
             }}>
               <Star size={16} fill="#FFC400" color="#FFC400" />
-              <span style={{ fontWeight: 700, fontSize: '16px' }}>{vendor.rating || '4.8'}</span>
+              <span style={{ fontWeight: 700, fontSize: '16px' }}>{vendorRating || vendor.rating || '—'}</span>
+              {vendorReviewCount > 0 && (
+                <span style={{ fontSize: '11px', opacity: 0.8 }}>({vendorReviewCount})</span>
+              )}
             </div>
           </div>
         </div>
@@ -246,6 +259,62 @@ const VendorDetailPage = () => {
             })}
           </div>
         )}
+
+        {/* Vendor Reviews Section */}
+        <div style={{ marginTop: '40px' }}>
+          <h3 style={{ fontSize: '22px', fontWeight: 900, color: '#2F3A40', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <MessageSquare size={22} color="#00A8E8" /> Reseñas de la Tienda
+            {vendorReviewCount > 0 && (
+              <span style={{ color: '#9ca3af', fontSize: '14px', fontWeight: 500 }}>({vendorReviewCount})</span>
+            )}
+          </h3>
+          {vendorReviews.length === 0 ? (
+            <div style={{
+              textAlign: 'center', padding: '40px 16px', background: '#fff',
+              borderRadius: '16px', border: '1px solid #f0f0f0',
+            }}>
+              <Star size={36} color="#d1d5db" style={{ margin: '0 auto 8px' }} />
+              <p style={{ fontWeight: 700, fontSize: '14px', color: '#9ca3af' }}>Aún no hay reseñas para esta tienda</p>
+              <p style={{ fontSize: '12px', color: '#d1d5db' }}>Las reseñas se agregan después de completar una compra</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {vendorReviews.map((review, idx) => (
+                <div key={idx} style={{
+                  padding: '16px 20px', background: '#fff', borderRadius: '14px',
+                  border: '1px solid #f3f4f6', boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{
+                        width: '32px', height: '32px', borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontSize: '13px', fontWeight: 700,
+                      }}>
+                        {(review.customer_name || 'U')[0].toUpperCase()}
+                      </div>
+                      <span style={{ fontWeight: 700, fontSize: '13px', color: '#1f2937' }}>
+                        {review.customer_name || 'Cliente'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                      {[1, 2, 3, 4, 5].map(s => (
+                        <Star key={s} size={14} fill={s <= review.rating ? '#FFC400' : 'none'} color={s <= review.rating ? '#FFC400' : '#d1d5db'} />
+                      ))}
+                    </div>
+                  </div>
+                  {review.comment && (
+                    <p style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1.6, margin: 0 }}>{review.comment}</p>
+                  )}
+                  <span style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px', display: 'block' }}>
+                    {new Date(review.created_at).toLocaleDateString('es-CL', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

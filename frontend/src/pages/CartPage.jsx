@@ -6,22 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
 import { createOrder, validateCoupon, calculateDeliveryFee, getProductDetail } from '../services/api';
 import CHILE_REGIONS from '../data/chileRegions';
-
-// Imágenes por categoría para productos sin imagen
-const CATEGORY_IMAGES = {
-  'Alimento': 'https://images.unsplash.com/photo-1568640347023-a616a30bc3bd?auto=format&fit=crop&q=80&w=400',
-  'Accesorios': 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=400',
-  'Juguetes': 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&q=80&w=400',
-  'Higiene': 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=400',
-  'Ropa': 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&q=80&w=400',
-  'Camas': 'https://images.unsplash.com/photo-1591946614720-90a587da4a36?auto=format&fit=crop&q=80&w=400',
-  'default': 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=400'
-};
-
-const getProductImage = (item) => {
-  if (item.image_url || item.image) return item.image_url || item.image;
-  return CATEGORY_IMAGES[item.category] || CATEGORY_IMAGES['default'];
-};
+import { getProductImage } from '../utils/productImages';
 
 /* ── Modal de Confirmación de Pedido (extracted for empty-cart render) ── */
 const OrderConfirmModal = ({ orderConfirm, setOrderConfirm, navigate, formatPrice, getProductImageFn }) => (
