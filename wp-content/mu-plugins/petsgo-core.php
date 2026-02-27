@@ -8038,6 +8038,7 @@ Dashboard con analíticas"></textarea>
         $vehicle_type = sanitize_text_field($p['vehicle_type'] ?? '');
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
+        $accept_terms = !empty($p['accept_terms']);
 
         // SQL injection check
         $sql_err = self::check_form_sql_injection($p);
@@ -9152,8 +9153,7 @@ Dashboard con analíticas"></textarea>
         if (!$email) return new WP_Error('missing', 'Email es obligatorio', ['status' => 400]);
 
         $user = get_user_by('email', $email);
-        // Always return success to prevent email enumeration
-        if (!$user) return rest_ensure_response(['message' => 'Si el correo existe, recibirás instrucciones para restablecer tu contraseña.']);
+        if (!$user) return new WP_Error('not_found', 'No existe una cuenta asociada a este correo electrónico.', ['status' => 404]);
 
         // Generate token
         $token = bin2hex(random_bytes(32));

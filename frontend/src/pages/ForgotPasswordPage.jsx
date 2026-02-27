@@ -18,8 +18,8 @@ const ForgotPasswordPage = () => {
       await forgotPassword(email);
       setSent(true);
     } catch (err) {
-      // Always show success to prevent email enumeration
-      setSent(true);
+      const msg = err.response?.data?.message || 'Error al procesar la solicitud. Intenta nuevamente.';
+      setError(msg);
     } finally { setLoading(false); }
   };
 

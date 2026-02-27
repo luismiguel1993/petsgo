@@ -60,6 +60,9 @@ const PlansPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
+    const phoneDigits = formData.phone.replace(/\D/g, '');
+    if (phoneDigits.length !== 8) { setFormError('El número de celular debe tener 8 dígitos.'); return; }
+    if (!formData.message.trim()) { setFormError('El mensaje es obligatorio. Cuéntanos sobre tu tienda.'); return; }
     const sqlCheck = checkFormForSqlInjection(formData);
     if (sqlCheck) { setFormError(sqlCheck); setSubmitting(false); return; }
     setSubmitting(true);
@@ -417,7 +420,7 @@ const PlansPage = () => {
                     <div style={{ display: 'flex' }}>
                       <span style={{ padding: '14px 10px 14px 46px', background: '#f3f4f6', borderRadius: '12px 0 0 12px', border: '2px solid #e5e7eb', borderRight: 'none', fontSize: '14px', fontWeight: 600, color: '#374151', whiteSpace: 'nowrap', lineHeight: '1.2' }}>+569</span>
                       <input
-                        type="tel" required placeholder="XXXXXXXX" maxLength={8} autoComplete="off"
+                        type="tel" required placeholder="XXXXXXXX" minLength={8} maxLength={8} autoComplete="off"
                         value={formData.phone} onChange={(e) => handleChange('phone', formatPhoneDigits(e.target.value))}
                         style={{ ...inputStyle, paddingLeft: '14px', borderRadius: '0 12px 12px 0' }}
                         onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
@@ -478,7 +481,7 @@ const PlansPage = () => {
                   <div style={{ ...iconWrapStyle, top: '20px', transform: 'none' }}><MessageSquare size={18} /></div>
                   <textarea
                     placeholder="Cuéntanos sobre tu tienda y qué productos vendes..."
-                    rows={3} value={formData.message} onChange={(e) => handleChange('message', e.target.value)}
+                    required rows={3} value={formData.message} onChange={(e) => handleChange('message', e.target.value)}
                     style={{ ...inputStyle, resize: 'vertical', minHeight: '90px', paddingTop: '14px' }}
                     onFocus={(e) => e.target.style.borderColor = '#00A8E8'}
                     onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}

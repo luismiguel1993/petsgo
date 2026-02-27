@@ -71,9 +71,13 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (updates) => {
     setUser(prev => {
       const updated = { ...prev, ...updates };
-      localStorage.setItem('petsgo_user', JSON.stringify(updated));
       return updated;
     });
+    // Persist to localStorage outside state updater (React 18 requires pure updaters)
+    try {
+      const stored = JSON.parse(localStorage.getItem('petsgo_user') || '{}');
+      localStorage.setItem('petsgo_user', JSON.stringify({ ...stored, ...updates }));
+    } catch { /* ignore parse errors */ }
   };
 
   const [loggedOut, setLoggedOut] = useState(false);
