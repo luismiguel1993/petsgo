@@ -3551,7 +3551,10 @@ class PetsGo_Core {
                     if(new Date(expiry+'T12:00:00')<new Date()){alert('⚠️ La fecha de vencimiento no puede ser pasada.');return;}
                 }
                 PG.post('petsgo_review_rider_doc',{doc_id:pdrModalDocId,status:action,notes:notes,expiry_date:expiry},function(r){
-                    if(r.success){closePdrModal();if(pdrCurrentRider)openRiderDetail(pdrCurrentRider,$('#pdr-detail-title').text().replace('📋 Documentos de ',''));}
+                    if(r.success){
+                        if(action==='update_expiry') PG.toast('✅ Fecha de vencimiento actualizada correctamente','success');
+                        closePdrModal();if(pdrCurrentRider)openRiderDetail(pdrCurrentRider,$('#pdr-detail-title').text().replace('📋 Documentos de ',''));
+                    }
                     else alert(r.data);
                 });
             };
