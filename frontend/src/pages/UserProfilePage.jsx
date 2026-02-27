@@ -102,7 +102,7 @@ const UserProfilePage = () => {
       // API expects camelCase
       await updateProfile({ firstName: editForm.first_name, lastName: editForm.last_name, phone: buildFullPhone(editForm.phone) });
       setProfile(prev => ({ ...prev, ...editForm }));
-      updateUser({ firstName: editForm.first_name, lastName: editForm.last_name, phone: buildFullPhone(editForm.phone) });
+      updateUser({ firstName: editForm.first_name, lastName: editForm.last_name, displayName: `${editForm.first_name} ${editForm.last_name}`.trim(), phone: buildFullPhone(editForm.phone) });
       setEditing(false);
       setMsg({ type: 'success', text: 'Perfil actualizado' });
     } catch (err) {

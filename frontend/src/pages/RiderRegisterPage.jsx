@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Check, X, AlertCircle, Truck, Mail, Shield } from 'lucide-react';
+import { Eye, EyeOff, Check, X, AlertCircle, Truck, Mail, Shield, ChevronDown } from 'lucide-react';
 import { registerRider, verifyRiderEmail, resendRiderVerification, getRiderPolicy } from '../services/api';
 import { REGIONES, getComunas, validateRut, formatRut, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, sanitizeName, isValidName, checkFormForSqlInjection } from '../utils/chile';
 
@@ -35,6 +35,8 @@ const RiderRegisterPage = () => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [termsContent, setTermsContent] = useState('');
+  const [reachedBottom, setReachedBottom] = useState(false);
+  const scrollRef = useRef(null);
   const navigate = useNavigate();
 
   const handleChange = (field) => (e) => {
@@ -335,24 +337,51 @@ const RiderRegisterPage = () => {
               </div>
 
               {/* Terms acceptance */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '14px 18px', background: acceptTerms ? '#f0fdf4' : '#fff7ed', border: `1.5px solid ${acceptTerms ? '#86efac' : '#fed7aa'}`, borderRadius: '12px' }}>
-                <input type="checkbox" id="accept_terms" checked={acceptTerms} onChange={e => setAcceptTerms(e.target.checked)}
-                  style={{ width: 18, height: 18, marginTop: 2, accentColor: '#22C55E', cursor: 'pointer', flexShrink: 0 }} />
-                <label htmlFor="accept_terms" style={{ fontSize: '13px', color: '#2F3A40', cursor: 'pointer', lineHeight: 1.5 }}>
-                  He leído y acepto los{' '}
-                  <button type="button" onClick={async () => {
-                    setShowTermsModal(true);
-                    if (!termsContent) {
-                      try {
-                        const res = await getRiderPolicy();
-                        setTermsContent(res.data?.terms || res.data?.rider_terms || 'No se pudieron cargar los términos.');
-                      } catch { setTermsContent('No se pudieron cargar los términos. Intenta más tarde.'); }
-                    }
-                  }} style={{ background: 'none', border: 'none', color: '#F59E0B', fontWeight: 800, cursor: 'pointer', textDecoration: 'underline', padding: 0, fontSize: '13px' }}>
-                    Términos y Condiciones del Rider
-                  </button>
-                  {' '}(comisiones, pagos, obligaciones).
-                </label>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px',
+                background: acceptTerms ? '#f0fdf4' : '#fff7ed',
+                border: `1.5px solid ${acceptTerms ? '#86efac' : '#fed7aa'}`,
+                borderRadius: '12px', transition: 'all 0.2s',
+              }}>
+                <div
+                  onClick={() => setAcceptTerms(prev => !prev)}
+                  style={{
+                    width: 22, height: 22, minWidth: 22, borderRadius: '6px',
+                    border: `2px solid ${acceptTerms ? '#22C55E' : '#d1d5db'}`,
+                    background: acceptTerms ? '#22C55E' : '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0,
+                  }}
+                >
+                  {acceptTerms && <Check size={14} color="#fff" strokeWidth={3} />}
+                </div>
+                <span style={{ fontSize: '13px', color: '#2F3A40', lineHeight: 1.5, flex: 1 }}>
+                  {acceptTerms ? (
+                    <>✅ Has aceptado los <strong>Términos y Condiciones del Rider</strong></>
+                  ) : (
+                    <>Debes leer y aceptar los{' '}
+                      <strong>Términos del Rider</strong>
+                    </>
+                  )}
+                </span>
+                <button type="button" onClick={async () => {
+                  setShowTermsModal(true);
+                  setReachedBottom(false);
+                  setTimeout(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, 50);
+                  if (!termsContent) {
+                    try {
+                      const res = await getRiderPolicy();
+                      setTermsContent(res.data?.terms || res.data?.rider_terms || 'No se pudieron cargar los términos.');
+                    } catch { setTermsContent('No se pudieron cargar los términos. Intenta más tarde.'); }
+                  }
+                }} style={{
+                  background: acceptTerms ? '#e0f2fe' : '#F59E0B', color: acceptTerms ? '#0077B6' : '#fff',
+                  border: 'none', borderRadius: '8px', padding: '8px 14px',
+                  fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'all 0.2s',
+                }}>
+                  {acceptTerms ? 'Ver de nuevo' : 'Leer TyC'}
+                </button>
               </div>
 
               {/* Info box about process */}
@@ -476,28 +505,90 @@ const RiderRegisterPage = () => {
           onClick={() => setShowTermsModal(false)}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }} />
           <div onClick={e => e.stopPropagation()} style={{
-            position: 'relative', background: '#fff', borderRadius: 20, padding: '24px 20px', width: '100%', maxWidth: 600,
-            maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            position: 'relative', background: '#fff', borderRadius: 20, width: '100%', maxWidth: 600,
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            overflow: 'hidden',
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontWeight: 900, color: '#2F3A40', fontSize: 18 }}>📋 Términos y Condiciones del Rider</h3>
-              <button onClick={() => setShowTermsModal(false)} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9ca3af', fontWeight: 700 }}>✕</button>
-            </div>
-            {termsContent ? (
-              <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151' }}
-                dangerouslySetInnerHTML={{ __html: termsContent }} />
-            ) : (
-              <div style={{ flex: 1, overflowY: 'auto', fontSize: 13, lineHeight: 1.8, color: '#374151' }}>
-                ⏳ Cargando términos...
+            {/* Header */}
+            <div style={{ padding: '20px 24px 16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontWeight: 900, color: '#2F3A40', fontSize: 18 }}>📋 Términos y Condiciones del Rider</h3>
+                <button onClick={() => setShowTermsModal(false)} style={{
+                  background: '#f3f4f6', border: 'none', borderRadius: '8px',
+                  width: 32, height: 32, fontSize: '18px', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280',
+                }}>✕</button>
               </div>
-            )}
-            <button onClick={() => { setAcceptTerms(true); setShowTermsModal(false); }} style={{
-              marginTop: 16, width: '100%', padding: 14, background: 'linear-gradient(135deg, #22C55E, #16a34a)',
-              color: '#fff', border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14, cursor: 'pointer',
-              boxShadow: '0 4px 14px rgba(34,197,94,0.35)',
+            </div>
+
+            {/* Scrollable content */}
+            <div
+              ref={scrollRef}
+              onScroll={() => {
+                const el = scrollRef.current;
+                if (!el) return;
+                if (el.scrollHeight - el.scrollTop - el.clientHeight < 30) setReachedBottom(true);
+              }}
+              style={{
+                flex: 1, overflowY: 'auto', padding: '0 24px 20px',
+                fontSize: 13, lineHeight: 1.8, color: '#374151',
+                minHeight: '300px', maxHeight: '55vh',
+              }}
+            >
+              {termsContent ? (
+                <>
+                  <div dangerouslySetInnerHTML={{ __html: termsContent }} className="rider-legal-content" />
+                  <style>{`
+                    .rider-legal-content h2 { font-size: 16px; font-weight: 800; color: #2F3A40; margin: 24px 0 8px; }
+                    .rider-legal-content p { margin-bottom: 10px; }
+                    .rider-legal-content ul, .rider-legal-content ol { padding-left: 20px; margin-bottom: 10px; }
+                    .rider-legal-content li { margin-bottom: 4px; }
+                    .rider-legal-content strong { color: #2F3A40; }
+                  `}</style>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '12px', animation: 'spin 1s linear infinite' }}>⏳</div>
+                  <p>Cargando términos...</p>
+                  <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                </div>
+              )}
+            </div>
+
+            {/* Scroll indicator + Accept button */}
+            <div style={{
+              padding: '16px 24px', borderTop: '1px solid #e5e7eb',
+              background: '#fafafa',
             }}>
-              ✅ He leído y acepto los términos
-            </button>
+              {!reachedBottom && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  fontSize: '12px', color: '#f59e0b', fontWeight: 600, marginBottom: '10px',
+                  animation: 'bounce 1.5s infinite',
+                }}>
+                  <ChevronDown size={16} /> Desplázate hacia abajo para continuar <ChevronDown size={16} />
+                  <style>{`@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }`}</style>
+                </div>
+              )}
+              <button
+                onClick={() => {
+                  if (reachedBottom) {
+                    setAcceptTerms(true);
+                    setShowTermsModal(false);
+                  }
+                }}
+                disabled={!reachedBottom}
+                style={{
+                  width: '100%', padding: 14, border: 'none', borderRadius: 12,
+                  fontSize: 15, fontWeight: 800, cursor: reachedBottom ? 'pointer' : 'not-allowed',
+                  background: reachedBottom ? 'linear-gradient(135deg, #22C55E, #16a34a)' : '#d1d5db',
+                  color: '#fff', transition: 'all 0.3s',
+                  boxShadow: reachedBottom ? '0 4px 14px rgba(34,197,94,0.35)' : 'none',
+                }}
+              >
+                {reachedBottom ? '✅ He leído y acepto los términos' : '↓ Lee hasta el final para aceptar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

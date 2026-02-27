@@ -122,6 +122,7 @@ class PetsGo_Core {
 
         // ── Login page branding (solo CSS, no rompe nada) ──
         add_action('login_enqueue_scripts', [$this, 'login_branding_styles']);
+        add_action('login_footer',          [$this, 'login_loading_overlay']);
         add_filter('login_headerurl',       [$this, 'login_logo_url']);
         add_filter('login_headertext',      [$this, 'login_logo_text']);
 
@@ -375,6 +376,310 @@ class PetsGo_Core {
             }
         }
         </style>
+        <?php
+    }
+
+    // ============================================================
+    // LOGIN FOOTER — Overlay animado 3D con mascotas saliendo de la pantalla
+    // ============================================================
+    public function login_loading_overlay() {
+        $primary  = esc_attr($this->pg_setting('color_primary',  '#00A8E8'));
+        $dark     = esc_attr($this->pg_setting('color_dark',     '#2F3A40'));
+        $logo_id  = intval($this->pg_setting('logo_id', 0));
+        $logo_url = $logo_id ? wp_get_attachment_image_url($logo_id, 'medium') : '';
+        if (!$logo_url) {
+            $logo_url = plugins_url('petsgo-lib/logo-petsgo.png', __FILE__);
+        }
+        $logo_url = esc_url($logo_url);
+        $company  = esc_attr($this->pg_setting('company_name', 'PetsGo'));
+        ?>
+        <!-- PetsGo Login Overlay 3D -->
+        <div id="petsgo-login-overlay" role="status" aria-label="Iniciando sesión">
+
+            <!-- Centro: logo + texto + dots -->
+            <img class="pglo-logo" src="<?php echo $logo_url; ?>" alt="<?php echo $company; ?>" />
+            <div class="pglo-text">🔐 Verificando credenciales&hellip;</div>
+            <div class="pglo-dots">
+                <span></span><span></span><span></span>
+            </div>
+
+            <!-- Escenario 3D: las mascotas salen de la pantalla -->
+            <div class="pglo-stage">
+                <!-- Cada mascota arranca desde el fondo (Z -800px) y revienta hacia el espectador -->
+                <span class="pglo-pet pglo-pet-1">🐕</span>
+                <span class="pglo-pet pglo-pet-2">🐈</span>
+                <span class="pglo-pet pglo-pet-3">🐩</span>
+                <span class="pglo-pet pglo-pet-4">🐱</span>
+                <span class="pglo-pet pglo-pet-5">🐹</span>
+            </div>
+        </div>
+
+        <style>
+        /* ───────────────────────────────────────────────
+           KEYFRAMES
+        ─────────────────────────────────────────────── */
+
+        /* Entrada del overlay */
+        @keyframes pgFadeIn {
+            from { opacity:0; }
+            to   { opacity:1; }
+        }
+
+        /* Logo + texto: suben suavemente */
+        @keyframes pgFadeUp {
+            from { opacity:0; transform:translateY(22px); }
+            to   { opacity:1; transform:translateY(0);    }
+        }
+
+        /* Texto shimmer */
+        @keyframes pgShimmer {
+            0%   { background-position: -700px 0; }
+            100% { background-position: 700px 0;  }
+        }
+
+        /* Puntos rebotando */
+        @keyframes pgDotBounce {
+            0%,80%,100% { transform:scaleY(1);   opacity:0.45; }
+            40%          { transform:scaleY(1.7); opacity:1;    }
+        }
+
+        /* ── EFECTO 3D PRINCIPAL ──
+           La mascota parte pequeña/lejos (Z=-800px) y vuela
+           hacia el espectador hasta "atravesar" la pantalla (Z=450px),
+           aumentando de tamaño gracias a la perspectiva del contenedor.
+           La ruta X/Y viene de variables CSS por animal. */
+        @keyframes pgBurst {
+            0%   {
+                transform: translate3d(var(--pgx0), var(--pgy0), -800px)
+                           rotateY(var(--pgr0)) rotateX(18deg);
+                opacity: 0;
+                filter: blur(8px);
+            }
+            7%   { opacity: 1;   filter: blur(3px); }
+            42%  {
+                transform: translate3d(var(--pgx1), var(--pgy1), 0px)
+                           rotateY(0deg) rotateX(0deg);
+                opacity: 1;
+                filter: blur(0);
+            }
+            70%  {
+                transform: translate3d(var(--pgx2), var(--pgy2), 380px)
+                           rotateY(var(--pgr1)) rotateX(-12deg);
+                opacity: 0.65;
+                filter: blur(2px);
+            }
+            87%  { opacity: 0; filter: blur(6px); }
+            100% {
+                transform: translate3d(var(--pgx2), var(--pgy2), 580px)
+                           rotateY(var(--pgr1)) rotateX(-14deg);
+                opacity: 0;
+                filter: blur(10px);
+            }
+        }
+
+        /* Huellas apareciendo / desapareciendo */
+        @keyframes pgPawPop {
+            0%   { opacity:0; transform:scale(0)   rotate(-25deg); }
+            35%  { opacity:1; transform:scale(1.4) rotate(-5deg);  }
+            65%  { opacity:1; transform:scale(1)   rotate(0deg);   }
+            100% { opacity:0; transform:scale(0.7) rotate(12deg);  }
+        }
+
+        /* ───────────────────────────────────────────────
+           OVERLAY PRINCIPAL
+        ─────────────────────────────────────────────── */
+        #petsgo-login-overlay {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, <?php echo $dark; ?> 0%, #111820 55%, <?php echo $dark; ?> 100%);
+            z-index: 99999;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: clamp(10px, 2vw, 22px);
+            padding: 24px;
+            box-sizing: border-box;
+            animation: pgFadeIn .35s ease forwards;
+        }
+
+        /* ── Logo ── */
+        .pglo-logo {
+            width: clamp(90px, 28vw, 170px);
+            height: auto;
+            opacity: .96;
+            animation: pgFadeUp .5s ease forwards;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ── Shimmer text ── */
+        .pglo-text {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: clamp(13px, 3.2vw, 17px);
+            font-weight: 700;
+            letter-spacing: .6px;
+            text-align: center;
+            background: linear-gradient(90deg, #555 10%, #fff 50%, #555 90%);
+            background-size: 700px auto;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: pgShimmer 2.4s linear infinite, pgFadeUp .5s .12s ease both;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ── Dots ── */
+        .pglo-dots {
+            display: flex;
+            gap: clamp(6px, 1.5vw, 10px);
+            animation: pgFadeUp .5s .24s ease both;
+            opacity: 0;
+            position: relative;
+            z-index: 2;
+        }
+        .pglo-dots span {
+            width:  clamp(8px, 1.8vw, 11px);
+            height: clamp(8px, 1.8vw, 11px);
+            border-radius: 50%;
+            background: <?php echo $primary; ?>;
+            display: inline-block;
+            animation: pgDotBounce 1.1s ease-in-out infinite;
+        }
+        .pglo-dots span:nth-child(2) { animation-delay: .18s; }
+        .pglo-dots span:nth-child(3) { animation-delay: .36s; }
+
+        /* ── Escenario 3D: ocupa todo el overlay ── */
+        .pglo-stage {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            /* Perspectiva: cuánto "profundidad" tiene el espacio 3D */
+            perspective: 850px;
+            perspective-origin: 50% 45%;
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        /* ── Cada mascota: centrada, animación 3D ── */
+        .pglo-pet {
+            position: absolute;
+            /* Centro como origen de la ruta 3D */
+            top: 50%;
+            left: 50%;
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            line-height: 1;
+            animation: pgBurst ease-in-out infinite;
+            will-change: transform, opacity;
+        }
+
+        /* Rutas individuales:
+           --pgx0/1/2 = X inicial / medio / final  (relativo al centro)
+           --pgy0/1/2 = Y inicial / medio / final
+           --pgr0/1   = rotateY inicial / final
+           animation-duration = velocidad del ciclo */
+
+        .pglo-pet-1 {   /* 🐕 abajo-izq → centro → arriba-der */
+            --pgx0: -38vw;  --pgy0: 28vh;
+            --pgx1:  -4vw;  --pgy1:  4vh;
+            --pgx2:  24vw;  --pgy2: -14vh;
+            --pgr0: -22deg; --pgr1: 16deg;
+            animation-duration: 7.2s;
+            animation-delay: 0.0s;
+        }
+        .pglo-pet-2 {   /* 🐈 abajo-der → centro → arriba-izq */
+            --pgx0:  36vw;  --pgy0: 32vh;
+            --pgx1:   6vw;  --pgy1:  2vh;
+            --pgx2: -22vw;  --pgy2: -12vh;
+            --pgr0:  22deg; --pgr1: -18deg;
+            animation-duration: 8.6s;
+            animation-delay: 1.6s;
+        }
+        .pglo-pet-3 {   /* 🐩 arriba-der → centro → abajo-izq */
+            --pgx0:  28vw;  --pgy0: -28vh;
+            --pgx1:   4vw;  --pgy1: -4vh;
+            --pgx2: -18vw;  --pgy2: 14vh;
+            --pgr0:  18deg; --pgr1: -14deg;
+            animation-duration: 6.8s;
+            animation-delay: 3.2s;
+        }
+        .pglo-pet-4 {   /* 🐱 izq-centro → derecho frontal */
+            --pgx0: -44vw;  --pgy0: 10vh;
+            --pgx1:  -2vw;  --pgy1:  0vh;
+            --pgx2:  30vw;  --pgy2: -6vh;
+            --pgr0: -25deg; --pgr1: 20deg;
+            animation-duration: 9.1s;
+            animation-delay: 0.9s;
+        }
+        .pglo-pet-5 {   /* 🐹 desde el fondo centro-centro */
+            --pgx0:   4vw;  --pgy0: 18vh;
+            --pgx1:   1vw;  --pgy1:  2vh;
+            --pgx2:  -4vw;  --pgy2: -8vh;
+            --pgr0:  -8deg; --pgr1:  8deg;
+            animation-duration: 7.8s;
+            animation-delay: 2.4s;
+        }
+
+        /* ── Huellas flotantes (JS) ── */
+        .pglo-paw {
+            position: fixed;
+            font-size: clamp(18px, 4vw, 28px);
+            pointer-events: none;
+            animation: pgPawPop 1.1s ease forwards;
+            z-index: 100000;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 480px) {
+            .pglo-text { letter-spacing: .2px; }
+            .pglo-stage { perspective: 600px; }
+        }
+        </style>
+
+        <script>
+        (function () {
+            var DELAY   = 4000;
+            var overlay = document.getElementById('petsgo-login-overlay');
+            var form    = document.getElementById('loginform');
+            if (!form || !overlay) return;
+
+            var submitted = false;
+
+            form.addEventListener('submit', function (e) {
+                if (submitted) return;
+                e.preventDefault();
+
+                overlay.style.display = 'flex';
+
+                var btn = document.getElementById('wp-submit');
+                if (btn) {
+                    btn.disabled      = true;
+                    btn.value         = '\u23F3  Iniciando sesi\u00F3n\u2026';
+                    btn.style.opacity = '0.70';
+                }
+
+                /* Huellas random por toda la pantalla */
+                var pawInterval = setInterval(function () {
+                    var paw = document.createElement('span');
+                    paw.className   = 'pglo-paw';
+                    paw.textContent = '\uD83D\uDC3E';
+                    paw.style.left  = (Math.random() * 88) + 'vw';
+                    paw.style.top   = (Math.random() * 80) + 'vh';
+                    paw.style.transform = 'rotate(' + (Math.random() * 60 - 30) + 'deg)';
+                    document.body.appendChild(paw);
+                    setTimeout(function () { if (paw.parentNode) paw.parentNode.removeChild(paw); }, 1100);
+                }, 320);
+
+                setTimeout(function () {
+                    clearInterval(pawInterval);
+                    submitted = true;
+                    if (btn) { btn.disabled = false; }
+                    form.submit();
+                }, DELAY);
+            });
+        })();
+        </script>
         <?php
     }
 
@@ -1075,6 +1380,16 @@ class PetsGo_Core {
         .petsgo-table th{background:#00A8E8;color:#fff;padding:10px 14px;text-align:left}
         .petsgo-table td{padding:10px 14px;border-bottom:1px solid #eee;vertical-align:middle}
         .petsgo-table tr:hover td{background:#f0faff}
+        /* ── Responsive table wrapper with sticky last column ── */
+        .petsgo-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:8px;margin:0 0 8px}
+        .petsgo-table-wrap .petsgo-table{min-width:1100px}
+        .petsgo-table-wrap .petsgo-table th,.petsgo-table-wrap .petsgo-table td{padding:8px 10px;font-size:13px}
+        .petsgo-table-wrap .petsgo-table th:last-child,.petsgo-table-wrap .petsgo-table td:last-child{position:sticky;right:0;z-index:2;white-space:nowrap}
+        .petsgo-table-wrap .petsgo-table th:last-child{background:#00A8E8;box-shadow:-4px 0 8px rgba(0,0,0,.1)}
+        .petsgo-table-wrap .petsgo-table td:last-child{background:#fff;box-shadow:-4px 0 8px rgba(0,0,0,.05)}
+        .petsgo-table-wrap .petsgo-table tr:hover td:last-child{background:#f0faff}
+        .petsgo-table-wrap .petsgo-table .pg-trunc{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .petsgo-table-wrap .petsgo-table td.pg-compact{font-size:11px;white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis}
         .petsgo-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
         .petsgo-badge.active,.petsgo-badge.delivered{background:#d4edda;color:#155724}
         .petsgo-badge.pending,.petsgo-badge.payment_pending{background:#fff3cd;color:#856404}
@@ -1201,8 +1516,10 @@ class PetsGo_Core {
             .petsgo-cards{grid-template-columns:1fr}
             .petsgo-search-bar{flex-direction:column;align-items:stretch}
             .petsgo-search-bar input[type=text]{min-width:auto;width:100%}
-            .petsgo-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;font-size:12px}
+            .petsgo-table:not(.petsgo-table-wrap .petsgo-table){display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+            .petsgo-table{font-size:12px}
             .petsgo-table th,.petsgo-table td{padding:8px 10px;white-space:nowrap}
+            .petsgo-table-wrap .petsgo-table .pg-trunc{max-width:130px}
             .petsgo-form-section{padding:14px}
             .petsgo-img-upload{justify-content:center}
             .petsgo-img-slot{width:120px;height:120px}
@@ -1483,7 +1800,7 @@ class PetsGo_Core {
         @media(max-width:1100px){.pg-filter-bar .fg{flex:1 1 140px}}
         @media(max-width:900px){.pg-charts-grid{grid-template-columns:1fr}.pg-kpi-grid{grid-template-columns:repeat(2,1fr)}}
         @media(max-width:600px){.pg-kpi-grid{grid-template-columns:1fr}.pg-filter-bar{flex-direction:column}.pg-filter-bar .fg{flex:1 1 100%}.pg-export-bar{flex-direction:column;align-items:stretch}.pg-export-bar .ebtn{justify-content:center}.pg-section .tbl-filter{flex-direction:column}}
-        @media(max-width:480px){.pg-dash h1{font-size:18px}.pg-kpi .kv{font-size:20px}.pg-section .petsgo-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}}
+        @media(max-width:480px){.pg-dash h1{font-size:18px}.pg-kpi .kv{font-size:20px}}
         @media print{.no-print,.pg-filter-bar,.pg-export-bar{display:none!important}.pg-dash{padding:0}.pg-kpi,.pg-chart-card,.pg-section{break-inside:avoid}}
         </style>
 
@@ -1619,6 +1936,7 @@ class PetsGo_Core {
             <div class="pg-section" style="border-left:4px solid #e65100;">
                 <h3>⏰ Alertas de Renovación de Suscripción</h3>
                 <p style="font-size:12px;color:#888;margin:0 0 12px;">Tiendas cuya suscripción vence en los próximos 10 días o ya venció.</p>
+                <div class="petsgo-table-wrap">
                 <table class="petsgo-table">
                     <thead><tr><th>ID</th><th>Tienda</th><th>Plan</th><th>Email</th><th>Vencimiento</th><th>Estado</th><th>Acciones</th></tr></thead>
                     <tbody>
@@ -1640,6 +1958,7 @@ class PetsGo_Core {
                     <?php endforeach; ?>
                     </tbody>
                 </table>
+                </div>
             </div>
             <?php endif; ?>
             <?php endif; ?>
@@ -1769,7 +2088,7 @@ class PetsGo_Core {
                 if(d.top_riders&&d.top_riders.length){
                     h+='<div class="pg-section"><h3>🚴 Riders Destacados</h3>';
                     h+='<div class="tbl-filter"><input type="text" placeholder="Buscar rider..." onkeyup="pgTblFilter(this,\'tbl-riders\')"></div>';
-                    h+='<div style="overflow-x:auto"><table class="petsgo-table" id="tbl-riders"><thead><tr><th>#</th><th>Rider</th><th>Entregas</th><th>Asignadas</th><th>Tasa Éxito</th><th>Fees</th></tr></thead><tbody>';
+                    h+='<div class="petsgo-table-wrap"><table class="petsgo-table" id="tbl-riders"><thead><tr><th>#</th><th>Rider</th><th>Entregas</th><th>Asignadas</th><th>Tasa Éxito</th><th>Fees</th></tr></thead><tbody>';
                     $.each(d.top_riders,function(i,r){
                         var rate=r.total>0?Math.round(r.delivered/r.total*1000)/10:0;
                         var cls=rate>=80?'active':(rate>=50?'pending':'cancelled');
@@ -1783,7 +2102,7 @@ class PetsGo_Core {
                 if(isAdmin&&d.top_vendors&&d.top_vendors.length){
                     h+='<div class="pg-section"><h3>🏆 Top Tiendas por Ingresos</h3>';
                     h+='<div class="tbl-filter"><input type="text" placeholder="Buscar tienda..." onkeyup="pgTblFilter(this,\'tbl-vendors\')"></div>';
-                    h+='<div style="overflow-x:auto"><table class="petsgo-table" id="tbl-vendors"><thead><tr><th>#</th><th>Tienda</th><th>Estado</th><th>Pedidos</th><th>Ingresos</th><th>Comisión</th></tr></thead><tbody>';
+                    h+='<div class="petsgo-table-wrap"><table class="petsgo-table" id="tbl-vendors"><thead><tr><th>#</th><th>Tienda</th><th>Estado</th><th>Pedidos</th><th>Ingresos</th><th>Comisión</th></tr></thead><tbody>';
                     $.each(d.top_vendors,function(i,v){
                         h+='<tr><td>'+(i+1)+'</td><td><strong>'+PG.esc(v.store_name)+'</strong></td>';
                         h+='<td>'+PG.badge(v.status)+'</td><td>'+v.orders+'</td>';
@@ -1801,7 +2120,7 @@ class PetsGo_Core {
                     h+='</select>';
                     h+='<select onchange="pgTblFilterCol(this,\'tbl-products\',-1)"><option value="">Stock</option><option value="sinstock">Sin Stock</option><option value="bajo">Stock Bajo</option><option value="ok">OK</option></select>';
                     h+='</div>';
-                    h+='<div style="overflow-x:auto"><table class="petsgo-table" id="tbl-products"><thead><tr><th>Producto</th><th>Categoría</th>';
+                    h+='<div class="petsgo-table-wrap"><table class="petsgo-table" id="tbl-products"><thead><tr><th>Producto</th><th>Categoría</th>';
                     if(isAdmin) h+='<th>Tienda</th>';
                     h+='<th>Precio</th><th>Stock</th><th>Estado</th></tr></thead><tbody>';
                     $.each(d.products,function(i,p){
@@ -1828,7 +2147,7 @@ class PetsGo_Core {
                 if(!d.recent_orders||!d.recent_orders.length){
                     h+='<p style="color:#999;text-align:center;padding:20px;">No hay pedidos con estos filtros.</p>';
                 }else{
-                    h+='<div style="overflow-x:auto"><table class="petsgo-table" id="tbl-orders"><thead><tr><th>#</th><th>Cliente</th>';
+                    h+='<div class="petsgo-table-wrap"><table class="petsgo-table" id="tbl-orders"><thead><tr><th>#</th><th>Cliente</th>';
                     if(isAdmin) h+='<th>Tienda</th>';
                     h+='<th>Total</th><th>Comisión</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>';
                     $.each(d.recent_orders,function(i,o){
@@ -1946,10 +2265,12 @@ class PetsGo_Core {
                 <a href="<?php echo admin_url('admin.php?page=petsgo-product-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Producto</a>
             </div>
 
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table">
                 <thead id="pg-thead"><tr><th style="width:50px">Foto</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th style="width:140px">Acciones</th></tr></thead>
                 <tbody id="pg-products-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody>
             </table>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -2283,8 +2604,10 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pv-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-vendor-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nueva Tienda</a>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead id="pv-thead"><tr><th>ID</th><th>Tienda</th><th>RUT</th><th>Email</th><th>Plan</th><th>Suscripción</th><th>Comisión</th><th>Productos</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="pv-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -2488,8 +2811,10 @@ class PetsGo_Core {
                 <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="po-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="po-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead id="po-thead"><tr><th>#</th><th>Cliente</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th>Total</th><th>Comisión</th><th>Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Cambiar</th><?php endif; ?></tr></thead>
             <tbody id="po-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -2565,25 +2890,26 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pu-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <a href="<?php echo admin_url('admin.php?page=petsgo-user-form'); ?>" class="petsgo-btn petsgo-btn-primary" style="margin-left:auto;">➕ Nuevo Usuario</a>
             </div>
-            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>RUT/Doc</th><th>Rol</th><th>Tienda</th><th>🐾</th><th>Registrado</th><th>Estado</th><th>Acciones</th></tr></thead>
+            <div class="petsgo-table-wrap">
+            <table class="petsgo-table"><thead id="pu-thead"><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>RUT/Doc</th><th>Rol</th><th>Tienda</th><th>Registrado</th><th>Estado</th><th>Acciones</th></tr></thead>
             <tbody id="pu-body"><tr><td colspan="11" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
         <script>
         jQuery(function($){
             var t;
             var tbl=PG.table({
                 thead:'#pu-thead',body:'#pu-body',perPage:25,defaultSort:'ID',defaultDir:'desc',
-                columns:['ID','user_login','display_name','user_email','phone','id_number','role_label','store_name','pet_count','user_registered','user_status','_actions'],
+                columns:['ID','user_login','display_name','user_email','phone','id_number','role_label','store_name','user_registered','user_status','_actions'],
                 emptyMsg:'Sin resultados.',
                 onTotal:function(n){$('#pu-total').text(n);},
                 renderRow:function(u){
-                    var r='<tr><td>'+u.ID+'</td><td>'+PG.esc(u.user_login)+'</td><td>'+PG.esc(u.display_name)+'</td>';
-                    r+='<td>'+PG.esc(u.user_email)+'</td>';
-                    r+='<td style="font-size:12px;">'+PG.esc(u.phone||'—')+'</td>';
-                    r+='<td style="font-size:12px;">'+PG.esc(u.id_number||'—')+'</td>';
+                    var r='<tr><td>'+u.ID+'</td><td class="pg-compact">'+PG.esc(u.user_login)+'</td><td class="pg-compact">'+PG.esc(u.display_name)+'</td>';
+                    r+='<td class="pg-trunc" title="'+PG.esc(u.user_email)+'">'+PG.esc(u.user_email)+'</td>';
+                    r+='<td class="pg-compact">'+PG.esc(u.phone||'—')+'</td>';
+                    r+='<td class="pg-compact">'+PG.esc(u.id_number||'—')+'</td>';
                     r+='<td><span class="petsgo-role-tag '+u.role_key+'">'+PG.esc(u.role_label)+'</span></td>';
                     r+='<td>'+PG.esc(u.store_name||'—')+'</td>';
-                    r+='<td style="text-align:center;">'+(u.pet_count>0?'🐾 '+u.pet_count:'—')+'</td>';
                     r+='<td>'+PG.esc(u.user_registered)+'</td>';
                     var statusBadge = u.user_status==='inactive'
                         ? '<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:#fef2f2;color:#dc2626;border:1px solid #fecaca;">Inactivo</span>'
@@ -2636,6 +2962,9 @@ class PetsGo_Core {
         $roles = ['subscriber'=>'Cliente','petsgo_vendor'=>'Tienda (Vendor)','petsgo_rider'=>'Delivery (Rider)','petsgo_support'=>'Soporte','administrator'=>'Administrador'];
         $current_role = $user ? (in_array('administrator',$user->roles)?'administrator':(in_array('petsgo_vendor',$user->roles)?'petsgo_vendor':(in_array('petsgo_rider',$user->roles)?'petsgo_rider':(in_array('petsgo_support',$user->roles)?'petsgo_support':'subscriber')))) : 'subscriber';
         $pet_types = ['perro'=>'🐕 Perro','gato'=>'🐱 Gato','ave'=>'🐦 Ave','conejo'=>'🐰 Conejo','hamster'=>'🐹 Hámster','pez'=>'🐟 Pez','reptil'=>'🦎 Reptil','otro'=>'🐾 Otro'];
+        // Vendors list for dropdown
+        $vendors = $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name ASC");
+        $current_vendor_id = $uid ? intval($wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $uid))) : 0;
         ?>
         <div class="wrap petsgo-wrap">
             <h1>👤 <?php echo $uid ? 'Editar Usuario #'.$uid : 'Nuevo Usuario'; ?></h1>
@@ -2665,6 +2994,17 @@ class PetsGo_Core {
                     <div class="petsgo-field"><label>Contraseña <?php echo $uid?'(dejar vacío para no cambiar)':'*'; ?></label><input type="password" id="uf-pass" autocomplete="new-password"><div class="field-hint"><?php echo $uid?'':'Mín. 8 caracteres, mayúscula, minúscula, número y especial.'; ?></div></div>
                     <div class="petsgo-field" id="uf-f-role"><label>Rol *</label>
                         <select id="uf-role"><?php foreach ($roles as $k=>$v): ?><option value="<?php echo $k; ?>" <?php selected($current_role, $k); ?>><?php echo $v; ?></option><?php endforeach; ?></select>
+                    </div>
+                    <div class="petsgo-field" id="uf-f-vendor" style="display:<?php echo $current_role==='petsgo_vendor'?'block':'none'; ?>;">
+                        <label>🏪 Tienda Asociada *</label>
+                        <select id="uf-vendor">
+                            <option value="">— Selecciona una tienda —</option>
+                            <?php foreach ($vendors as $v): ?>
+                            <option value="<?php echo $v->id; ?>" <?php selected($current_vendor_id, $v->id); ?>><?php echo esc_html($v->store_name); ?> (ID: <?php echo $v->id; ?>)</option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div class="field-error">Debes seleccionar una tienda para el rol Vendor.</div>
+                        <p style="font-size:11px;color:#666;margin-top:4px;">Si la tienda no existe, <a href="<?php echo admin_url('admin.php?page=petsgo-vendor-form'); ?>" target="_blank">créala primero aquí</a>.</p>
                     </div>
                     <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
                         <button type="submit" class="petsgo-btn petsgo-btn-primary"><?php echo $uid?'💾 Guardar':'✅ Crear'; ?></button>
@@ -2730,6 +3070,8 @@ class PetsGo_Core {
                 if(!$.trim($('#uf-fname').val())){$('#uf-f-fname').addClass('has-error');ok=false;}else{$('#uf-f-fname').removeClass('has-error');}
                 if(!$.trim($('#uf-lname').val())){$('#uf-f-lname').addClass('has-error');ok=false;}else{$('#uf-f-lname').removeClass('has-error');}
                 if(!$('#uf-email').val()||$('#uf-email').val().indexOf('@')<1){$('#uf-f-email').addClass('has-error');ok=false;}else{$('#uf-f-email').removeClass('has-error');}
+                // Vendor store validation
+                if($('#uf-role').val()==='petsgo_vendor' && !$('#uf-vendor').val()){$('#uf-f-vendor').addClass('has-error');ok=false;}else{$('#uf-f-vendor').removeClass('has-error');}
                 if(!ok)return;
                 $('#uf-loader').addClass('active');$('#uf-msg').hide();
                 PG.post('petsgo_save_user',{
@@ -2738,13 +3080,18 @@ class PetsGo_Core {
                     first_name:$('#uf-fname').val(),last_name:$('#uf-lname').val(),
                     user_email:$('#uf-email').val(),password:$('#uf-pass').val(),role:$('#uf-role').val(),
                     id_type:$('#uf-idtype').val(),id_number:$('#uf-idnum').val(),
-                    phone:'+569'+$('#uf-phone').val(),birth_date:$('#uf-birth').val()
+                    phone:'+569'+$('#uf-phone').val(),birth_date:$('#uf-birth').val(),
+                    vendor_id:$('#uf-role').val()==='petsgo_vendor'?$('#uf-vendor').val():''
                 },function(r){
                     $('#uf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
                     $('#uf-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
                     if(r.success&&!$('#uf-id').val()&&r.data.id){$('#uf-id').val(r.data.id);location.href=PG.adminUrl+'?page=petsgo-user-form&id='+r.data.id;}
                 });
+            });
+            // Show/hide vendor dropdown based on role
+            $('#uf-role').on('change',function(){
+                if($(this).val()==='petsgo_vendor'){$('#uf-f-vendor').slideDown(200);}else{$('#uf-f-vendor').slideUp(200).removeClass('has-error');}
             });
             $('.petsgo-field input,.petsgo-field select').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
 
@@ -2857,8 +3204,10 @@ class PetsGo_Core {
                 <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="pd-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="pd-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead id="pd-thead"><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
             <tbody id="pd-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
             </div>
             <?php if ($is_admin): ?>
             <!-- Documentos Riders Tab -->
@@ -2871,8 +3220,10 @@ class PetsGo_Core {
                         <button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="loadRiderSummary(1)">🔍 Buscar</button>
                         <span class="petsgo-loader" id="pdr-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                     </div>
+                    <div class="petsgo-table-wrap">
                     <table class="petsgo-table"><thead><tr><th>Rider</th><th>Email</th><th>RUT/DNI</th><th>Vehículo</th><th>Ubicación</th><th>Documentos</th><th>Estado Rider</th><th>Registro</th><th>Acciones</th></tr></thead>
                     <tbody id="pdr-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+                    </div>
                     <div id="pdr-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;"></div>
                 </div>
                 <!-- Detail View (hidden by default) -->
@@ -2882,8 +3233,10 @@ class PetsGo_Core {
                         <h3 id="pdr-detail-title" style="margin:0;font-weight:800;font-size:16px;color:#2F3A40;"></h3>
                     </div>
                     <div id="pdr-detail-info" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;"></div>
+                    <div class="petsgo-table-wrap">
                     <table class="petsgo-table"><thead><tr><th>Documento</th><th>Archivo</th><th>Estado</th><th>Fecha Subida</th><th>Revisado por</th><th>Notas</th><th>Acciones</th></tr></thead>
                     <tbody id="pdr-detail-body"></tbody></table>
+                    </div>
                 </div>
                 <!-- Document Preview Modal -->
                 <div id="pdr-preview-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;">
@@ -2918,8 +3271,10 @@ class PetsGo_Core {
                 </select>
                 <button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="loadRiderRatings()">🔍 Buscar</button>
                 <span class="petsgo-loader" id="pdrt-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span></div>
+                <div class="petsgo-table-wrap">
                 <table class="petsgo-table"><thead id="pdrt-thead"><tr><th>Rider</th><th>Pedido #</th><th>Valoró</th><th>Tipo</th><th>⭐ Rating</th><th>Comentario</th><th>Fecha</th></tr></thead>
                 <tbody id="pdrt-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+                </div>
             </div>
             <!-- Pagos Riders Tab -->
             <div id="pd-tab-payouts" class="pd-tab-content" style="display:none;">
@@ -2950,8 +3305,10 @@ class PetsGo_Core {
                         <p style="font-size:22px;font-weight:900;color:#00A8E8;margin:4px 0 0;"><?php echo intval($this->pg_setting('rider_commission_pct', 88)); ?>%</p>
                     </div>
                 </div>
+                <div class="petsgo-table-wrap">
                 <table class="petsgo-table"><thead id="pdp-thead"><tr><th>ID</th><th>Rider</th><th>Período</th><th>Entregas</th><th>Ganado</th><th>Neto</th><th>Estado</th><th>Pagado</th><th>Acciones</th></tr></thead>
                 <tbody id="pdp-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+                </div>
                 <!-- Payment Proof Modal -->
                 <div id="pdp-pay-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,0.7);justify-content:center;align-items:center;">
                     <div style="background:#fff;border-radius:12px;max-width:520px;width:95%;box-shadow:0 20px 60px rgba(0,0,0,0.4);overflow:hidden;">
@@ -3309,8 +3666,10 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pp-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                 <button class="petsgo-btn petsgo-btn-primary" id="pp-add-btn" style="margin-left:auto;">➕ Nuevo Plan</button>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead><tr><th>ID</th><th>Plan</th><th>Precio/mes</th><th>Características</th><th>Acciones</th></tr></thead>
             <tbody id="pp-body"><tr><td colspan="5" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
 
             <!-- Frontend Preview -->
             <div style="margin-top:30px;padding:24px;background:#f8f9fa;border-radius:12px;border:1px solid #e5e7eb;">
@@ -3740,6 +4099,16 @@ Dashboard con analíticas"></textarea>
             $pdata = ['first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null];
             if($exists){$wpdb->update("{$wpdb->prefix}petsgo_user_profiles",$pdata,['user_id'=>$id]);}
             else{$pdata['user_id']=$id;$wpdb->insert("{$wpdb->prefix}petsgo_user_profiles",$pdata);}
+
+            // Update vendor linkage if role is petsgo_vendor
+            $vendor_id = intval($_POST['vendor_id'] ?? 0);
+            if ($role === 'petsgo_vendor' && $vendor_id) {
+                // Unlink this user from any previous vendor
+                $wpdb->query($wpdb->prepare("UPDATE {$wpdb->prefix}petsgo_vendors SET user_id=0 WHERE user_id=%d AND id!=%d", $id, $vendor_id));
+                // Link to selected vendor
+                $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['user_id' => $id], ['id' => $vendor_id]);
+            }
+
             $this->audit('user_update','user',$id,$name);
             wp_send_json_success(['message'=>'Usuario actualizado','id'=>$id]);
         }else{
@@ -3748,6 +4117,12 @@ Dashboard con analíticas"></textarea>
             wp_update_user(['ID'=>$uid,'display_name'=>$name,'first_name'=>$first_name,'last_name'=>$last_name]);
             $user=get_userdata($uid);$user->set_role($role);
             $wpdb->insert("{$wpdb->prefix}petsgo_user_profiles",['user_id'=>$uid,'first_name'=>$first_name,'last_name'=>$last_name,'id_type'=>$id_type,'id_number'=>$id_type==='rut'&&$id_number?self::format_rut($id_number):$id_number,'phone'=>$phone?self::normalize_phone($phone):$phone,'birth_date'=>$birth_date?:null]);
+
+            // Link vendor if role is petsgo_vendor
+            $vendor_id = intval($_POST['vendor_id'] ?? 0);
+            if ($role === 'petsgo_vendor' && $vendor_id) {
+                $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['user_id' => $uid], ['id' => $vendor_id]);
+            }
 
             // Marcar que debe cambiar contraseña al primer login
             update_user_meta($uid, 'petsgo_must_change_password', '1');
@@ -4296,8 +4671,10 @@ Dashboard con analíticas"></textarea>
                 <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="bi-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="bi-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead id="bi-thead"><tr><th>#</th><th>Nº Boleta</th><th>Pedido</th><th>Tienda</th><th>Cliente</th><th>Total</th><th>Fecha</th><th>Acciones</th></tr></thead>
             <tbody id="bi-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -4497,8 +4874,10 @@ Dashboard con analíticas"></textarea>
                 <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="au-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="au-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table"><thead id="au-thead"><tr><th>#</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID Ent.</th><th>Detalles</th><th>IP</th><th>Fecha</th></tr></thead>
             <tbody id="au-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
         <script>
         jQuery(function($){
@@ -6265,9 +6644,9 @@ Dashboard con analíticas"></textarea>
             <!-- Download demo subscription PDF button (vendor_welcome tab) -->
             <div id="ep-pdf-subscription" style="margin-top:16px;display:none;">
                 <a href="<?php echo admin_url('admin-ajax.php?action=petsgo_download_demo_subscription&_wpnonce=' . wp_create_nonce('petsgo_ajax')); ?>" class="petsgo-btn petsgo-btn-success" target="_blank" style="font-size:15px;padding:10px 24px;background:#00A8E8;border-color:#00A8E8;">
-                    📥 Descargar PDF de ejemplo (Boleta Suscripcion)
+                    📥 Descargar PDF de ejemplo (Boleta Suscripción)
                 </a>
-                <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de suscripcion de plan con datos ficticios para verificar el diseño.</span>
+                <span style="margin-left:12px;font-size:13px;color:#888;">Genera un PDF de suscripción de plan con datos ficticios para verificar el diseño.</span>
             </div>
 
             <!-- ===== CONFIGURACIÓN BCC TICKETS ===== -->
@@ -7465,6 +7844,12 @@ Dashboard con analíticas"></textarea>
         // Block unverified riders — require email verification first
         if ($role === 'rider') {
             $rider_status = get_user_meta($user->ID, 'petsgo_rider_status', true) ?: 'pending_email';
+            if ($rider_status === 'pending_email') {
+                return new WP_Error('rider_pending_email',
+                    'Tu correo electrónico aún no ha sido verificado. Debes ingresar el código de verificación que enviamos a tu email para continuar.',
+                    ['status' => 403, 'email' => $user->user_email]
+                );
+            }
             if ($rider_status === 'rejected') {
                 return new WP_Error('rider_rejected', 'Tu solicitud como Rider ha sido rechazada. Contacta a contacto@petsgo.cl para más información.', ['status' => 403]);
             }
@@ -7538,7 +7923,7 @@ Dashboard con analíticas"></textarea>
         elseif (!self::validate_name($first_name)) $errors[] = 'Nombre solo puede contener letras';
         if (!$last_name) $errors[] = 'Apellido es obligatorio';
         elseif (!self::validate_name($last_name)) $errors[] = 'Apellido solo puede contener letras';
-        if (!$accept_terms) $errors[] = 'Debes aceptar los términos y condiciones del rider';
+        if (!$accept_terms) $errors[] = 'Debes aceptar los términos y condiciones';
         if (!$email || !is_email($email)) $errors[] = 'Email válido es obligatorio';
         if (email_exists($email)) $errors[] = 'Este email ya está registrado';
 
@@ -7780,7 +8165,7 @@ Dashboard con analíticas"></textarea>
         $email = sanitize_email($p['email'] ?? '');
         $code  = strtoupper(sanitize_text_field($p['code'] ?? ''));
 
-        if (!$email || !$code) return new WP_Error('missing', 'Email y codigo son obligatorios', ['status' => 400]);
+        if (!$email || !$code) return new WP_Error('missing', 'Email y código son obligatorios', ['status' => 400]);
 
         $user = get_user_by('email', $email);
         if (!$user) return new WP_Error('not_found', 'Usuario no encontrado', ['status' => 404]);
@@ -7794,11 +8179,11 @@ Dashboard con analíticas"></textarea>
         }
 
         if (!$stored_code || $stored_code !== $code) {
-            return new WP_Error('invalid_code', 'Codigo de verificacion invalido', ['status' => 400]);
+            return new WP_Error('invalid_code', 'Código de verificación inválido', ['status' => 400]);
         }
 
         if ($stored_expiry && strtotime($stored_expiry) < time()) {
-            return new WP_Error('expired', 'El codigo ha expirado. Solicita uno nuevo.', ['status' => 400]);
+            return new WP_Error('expired', 'El código ha expirado. Solicita uno nuevo.', ['status' => 400]);
         }
 
         // Email verified -> advance to step 2 (upload docs)
@@ -7836,20 +8221,20 @@ Dashboard con analíticas"></textarea>
         $first_name = get_user_meta($user->ID, 'first_name', true) ?: $user->display_name;
         $inner = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🚴</p>
-      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Aqui tienes tu nuevo codigo de verificacion:</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Aquí tienes tu nuevo código de verificación:</p>
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
         <tr><td align="center" style="background-color:#fff8ed;border-radius:12px;padding:30px 24px;">
           <p style="margin:0;font-size:36px;font-weight:900;letter-spacing:6px;color:#F59E0B;font-family:monospace;">' . $verify_code . '</p>
-          <p style="margin:12px 0 0;font-size:12px;color:#999;">Valido por 48 horas</p>
+          <p style="margin:12px 0 0;font-size:12px;color:#999;">Válido por 48 horas</p>
         </td></tr>
       </table>';
-        $html = $this->email_wrap($inner, 'Nuevo codigo de verificacion');
+        $html = $this->email_wrap($inner, 'Nuevo código de verificación');
         $company = $this->pg_setting('company_name', 'PetsGo');
         $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
         $headers = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
-        @wp_mail($email, "Nuevo codigo de verificacion - {$company} 🚴", $html, $headers);
+        @wp_mail($email, "Nuevo código de verificación - {$company} 🚴", $html, $headers);
 
-        return rest_ensure_response(['message' => 'Se ha enviado un nuevo codigo de verificacion a tu email.']);
+        return rest_ensure_response(['message' => 'Se ha enviado un nuevo código de verificación a tu email.']);
     }
 
     // --- Rider Documents API ---
@@ -9586,7 +9971,7 @@ Dashboard con analíticas"></textarea>
                         var icons = {nuevo:'🆕',contactado:'📞',contratado:'✅',declinado:'❌'};
                         return '<span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;' + (m[s]||'') + '">' + (icons[s]||'') + ' ' + s.charAt(0).toUpperCase()+s.slice(1) + '</span>';
                     };
-                    var html = '<table class="petsgo-table"><thead><tr><th>Tienda</th><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>';
+                    var html = '<div class="petsgo-table-wrap"><table class="petsgo-table"><thead><tr><th>Tienda</th><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>';
                     rows.forEach(function(l) {
                         html += '<tr>';
                         html += '<td><strong>' + PG.esc(l.store_name) + '</strong>' + (l.comuna ? '<br><small style="color:#888;">' + PG.esc(l.comuna) + '</small>' : '') + '</td>';
@@ -9599,7 +9984,7 @@ Dashboard con analíticas"></textarea>
                         html += '<td><button class="petsgo-btn petsgo-btn-small" onclick=\'openLead(' + JSON.stringify(l).replace(/\'/g,"&#39;") + ')\'>✏️ Gestionar</button></td>';
                         html += '</tr>';
                     });
-                    html += '</tbody></table>';
+                    html += '</tbody></table></div>';
                     html += '<div class="petsgo-pagination-bar"><span>' + rows.length + ' lead(s) encontrado(s)</span></div>';
                     $('#leads-grid').html(html);
                 });
@@ -10386,6 +10771,7 @@ Dashboard con analíticas"></textarea>
                 <span class="petsgo-loader" id="cat-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
 
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table" id="cat-table">
                 <thead>
                     <tr>
@@ -10394,6 +10780,7 @@ Dashboard con analíticas"></textarea>
                 </thead>
                 <tbody id="cat-body"></tbody>
             </table>
+            </div>
 
             <!-- Modal -->
             <div id="cat-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
@@ -10497,6 +10884,7 @@ Dashboard con analíticas"></textarea>
                 <span class="petsgo-loader" id="cpn-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
 
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table" id="cpn-table">
                 <thead>
                     <tr>
@@ -10506,6 +10894,7 @@ Dashboard con analíticas"></textarea>
                 </thead>
                 <tbody id="cpn-body"></tbody>
             </table>
+            </div>
 
             <!-- Modal -->
             <div id="cpn-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
@@ -11404,6 +11793,7 @@ Dashboard con analíticas"></textarea>
             <!-- Stats -->
             <div class="petsgo-cards" id="tk-stats" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;"></div>
 
+            <div class="petsgo-table-wrap">
             <table class="petsgo-table" id="tk-table">
                 <thead>
                     <tr>
@@ -11412,6 +11802,7 @@ Dashboard con analíticas"></textarea>
                 </thead>
                 <tbody id="tk-body"></tbody>
             </table>
+            </div>
 
             <!-- Pagination -->
             <div id="tk-pagination" style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:10px;">

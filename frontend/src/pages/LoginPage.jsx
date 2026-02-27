@@ -35,6 +35,14 @@ const LoginPage = () => {
         else navigate('/');
       }, 1800);
     } catch (err) {
+      const code = err.response?.data?.code;
+      const data = err.response?.data?.data;
+      // Rider con email pendiente de verificación → redirigir
+      if (code === 'rider_pending_email') {
+        const riderEmail = data?.email || username;
+        navigate(`/verificar-rider?email=${encodeURIComponent(riderEmail)}`);
+        return;
+      }
       setError(err.response?.data?.message || 'Error de conexión. Verifica que WordPress esté activo.');
     } finally {
       setLoading(false);

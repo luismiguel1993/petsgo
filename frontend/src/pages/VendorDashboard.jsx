@@ -313,13 +313,13 @@ const VendorDashboard = () => {
                   />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Descripcion</label>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Descripción</label>
                   <textarea
                     value={formData.description}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={2}
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium resize-none"
-                    placeholder="Descripcion del producto..."
+                    placeholder="Descripción del producto..."
                   />
                 </div>
                 <div>
@@ -347,14 +347,14 @@ const VendorDashboard = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Categoria</label>
+                  <label className="block text-sm font-bold text-[#2F3A40] mb-1">Categoría</label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 focus:border-[#00A8E8] outline-none text-sm font-medium"
                   >
                     <option value="">Seleccionar...</option>
-                    {['Alimento', 'Accesorios', 'Juguetes', 'Higiene', 'Farmacia', 'Transporte', 'Tecnologia', 'Snacks'].map((c) => (
+                    {['Alimento', 'Accesorios', 'Juguetes', 'Higiene', 'Farmacia', 'Transporte', 'Tecnología', 'Snacks'].map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -387,7 +387,7 @@ const VendorDashboard = () => {
                 <thead>
                   <tr className="border-b border-gray-200">
                     <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Producto</th>
-                    <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Categoria</th>
+                    <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Categoría</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Precio</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Stock</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>

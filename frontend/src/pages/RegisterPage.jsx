@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Eye, EyeOff, Check, X, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Check, X, AlertCircle, CheckCircle, FileText, Shield, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { getLegalPage } from '../services/api';
 import huellaSvg from '../assets/Huella-1.svg';
 import { REGIONES, getComunas, validateRut, formatRut, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, sanitizeName, isValidName, checkFormForSqlInjection } from '../utils/chile';
 
@@ -22,8 +23,88 @@ const RegisterPage = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [countdown, setCountdown] = useState(3);
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [termsTab, setTermsTab] = useState('terms'); // 'terms' | 'privacy'
+  const [reachedBottom, setReachedBottom] = useState(false);
+  const [termsHtml, setTermsHtml] = useState('');
+  const [privacyHtml, setPrivacyHtml] = useState('');
+  const [termsLoading, setTermsLoading] = useState(false);
+  const scrollRef = useRef(null);
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  // Countdown timer for success modal
+  useEffect(() => {
+    if (!showSuccessModal) return;
+    if (countdown <= 0) { navigate('/login'); return; }
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [showSuccessModal, countdown, navigate]);
+
+  // Default legal content (fallback)
+  const defaultTerms = `
+    <h2>1. Aceptación de los Términos</h2><p>Al acceder y utilizar PetsGo, aceptas estar sujeto a estos términos y condiciones de uso.</p>
+    <h2>2. Descripción del Servicio</h2><p>PetsGo es un marketplace en línea que conecta tiendas de mascotas con clientes, facilitando la compra y despacho de productos para mascotas en Chile.</p>
+    <h2>3. Registro y Cuentas</h2><p>Para utilizar ciertas funcionalidades, debes crear una cuenta proporcionando información veraz y actualizada. Eres responsable de mantener la confidencialidad de tu contraseña.</p>
+    <h2>4. Compras y Pagos</h2><p>Los precios de los productos son establecidos por cada tienda vendedora. PetsGo se reserva el derecho de aplicar cargos por servicio o despacho.</p>
+    <h2>5. Despacho</h2><p>Los tiempos de despacho dependerán de la disponibilidad del producto, la ubicación del cliente y la cobertura del servicio.</p>
+    <h2>6. Devoluciones y Reembolsos</h2><p>Los clientes pueden solicitar devoluciones dentro de los plazos establecidos por la ley de protección al consumidor chilena.</p>
+    <h2>7. Responsabilidad</h2><p>PetsGo no se hace responsable por la calidad de los productos vendidos por las tiendas adheridas, actuando únicamente como plataforma intermediaria.</p>
+    <h2>8. Propiedad Intelectual</h2><p>Todo el contenido del marketplace, incluyendo logos, diseños y textos, son propiedad de PetsGo SpA.</p>
+    <h2>9. Modificaciones</h2><p>PetsGo se reserva el derecho de modificar estos términos en cualquier momento.</p>
+    <h2>10. Legislación Aplicable</h2><p>Estos términos se rigen por las leyes de la República de Chile.</p>
+  `;
+  const defaultPrivacy = `
+    <h2>1. Información que Recopilamos</h2><p>Recopilamos la información personal que nos proporcionas al registrarte: nombre, correo electrónico, teléfono, dirección y datos de pago.</p>
+    <h2>2. Uso de la Información</h2><p>Tu información se utiliza para procesar pedidos, comunicarnos contigo, mejorar nuestros servicios y cumplir con obligaciones legales.</p>
+    <h2>3. Compartir Información</h2><p>Compartimos tu información solo con tiendas vendedoras, riders, procesadores de pago y autoridades cuando sea requerido por ley.</p>
+    <h2>4. Protección de Datos</h2><p>Implementamos medidas de seguridad técnicas y organizativas. Utilizamos encriptación SSL para todas las comunicaciones.</p>
+    <h2>5. Cookies</h2><p>Utilizamos cookies para mejorar la experiencia de navegación y analizar el uso del sitio.</p>
+    <h2>6. Derechos del Usuario</h2><p>Tienes derecho a acceder, rectificar, eliminar tus datos y oponerte al tratamiento para fines de marketing (Ley N° 19.628).</p>
+    <h2>7. Retención de Datos</h2><p>Conservamos tu información mientras tu cuenta esté activa o según sea necesario para cumplir obligaciones legales.</p>
+    <h2>8. Contacto</h2><p>Para consultas sobre privacidad: contacto@petsgo.cl</p>
+    <h2>9. Cambios en la Política</h2><p>Podemos actualizar esta política periódicamente. Te notificaremos sobre cambios significativos.</p>
+  `;
+
+  // Load legal content when modal opens
+  const openTermsModal = useCallback(async () => {
+    setShowTermsModal(true);
+    setReachedBottom(false);
+    if (!termsHtml) {
+      setTermsLoading(true);
+      try {
+        const [tRes, pRes] = await Promise.allSettled([
+          getLegalPage('terminos-y-condiciones'),
+          getLegalPage('politica-de-privacidad'),
+        ]);
+        setTermsHtml(tRes.status === 'fulfilled' && tRes.value?.data?.content ? tRes.value.data.content : defaultTerms);
+        setPrivacyHtml(pRes.status === 'fulfilled' && pRes.value?.data?.content ? pRes.value.data.content : defaultPrivacy);
+      } catch {
+        setTermsHtml(defaultTerms);
+        setPrivacyHtml(defaultPrivacy);
+      } finally { setTermsLoading(false); }
+    }
+  }, [termsHtml]);
+
+  // Detect scroll reached bottom
+  const handleTermsScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 30) {
+      setReachedBottom(true);
+    }
+  }, []);
+
+  // Reset scroll detection when switching tabs
+  useEffect(() => {
+    if (showTermsModal) {
+      setReachedBottom(false);
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    }
+  }, [termsTab]);
 
   const handleChange = (field) => (e) => {
     let value = e.target.value;
@@ -67,6 +148,7 @@ const RegisterPage = () => {
     if (!form.phone || !isValidPhoneDigits(form.phone)) errors.push('Debes completar los 8 dígitos del teléfono');
     if (!form.region) errors.push('Región es obligatoria');
     if (!form.comuna) errors.push('Comuna es obligatoria');
+    if (!acceptTerms) errors.push('Debes aceptar los Términos y Condiciones');
     if (errors.length) { setError(errors.join('. ')); return; }
 
     setLoading(true);
@@ -77,9 +159,9 @@ const RegisterPage = () => {
         id_type: form.id_type, id_number: form.id_number,
         phone: buildFullPhone(form.phone), birth_date: form.birth_date,
         region: form.region, comuna: form.comuna,
+        accept_terms: true,
       });
-      setSuccess('¡Cuenta creada! Ahora puedes iniciar sesión.');
-      setTimeout(() => navigate('/login'), 2000);
+      setShowSuccessModal(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Error al registrar. Intenta nuevamente.');
     } finally {
@@ -253,6 +335,39 @@ const RegisterPage = () => {
               )}
             </div>
 
+            {/* Términos y Condiciones */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px',
+              background: acceptTerms ? '#f0fdf4' : '#fff7ed',
+              border: `1.5px solid ${acceptTerms ? '#86efac' : '#fed7aa'}`,
+              borderRadius: '12px', transition: 'all 0.2s',
+            }}>
+              <div style={{
+                width: 22, height: 22, minWidth: 22, borderRadius: '6px',
+                border: `2px solid ${acceptTerms ? '#00A8E8' : '#d1d5db'}`,
+                background: acceptTerms ? '#00A8E8' : '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'all 0.2s',
+              }}>
+                {acceptTerms && <Check size={14} color="#fff" strokeWidth={3} />}
+              </div>
+              <span style={{ fontSize: '13px', color: '#2F3A40', lineHeight: 1.5, flex: 1 }}>
+                {acceptTerms ? (
+                  <>✅ Has aceptado los <strong>Términos y Condiciones</strong> y la <strong>Política de Privacidad</strong></>
+                ) : (
+                  <>Debes leer y aceptar los <strong>Términos y Condiciones</strong></>
+                )}
+              </span>
+              <button type="button" onClick={openTermsModal} style={{
+                background: acceptTerms ? '#e0f2fe' : '#00A8E8', color: acceptTerms ? '#0077B6' : '#fff',
+                border: 'none', borderRadius: '8px', padding: '8px 14px',
+                fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap',
+                transition: 'all 0.2s',
+              }}>
+                {acceptTerms ? 'Ver de nuevo' : 'Leer TyC'}
+              </button>
+            </div>
+
             <button type="submit" disabled={loading} style={{
               width: '100%', padding: '14px', background: loading ? '#93c5fd' : '#00A8E8',
               color: '#fff', border: 'none', borderRadius: '12px', fontSize: '16px',
@@ -276,6 +391,181 @@ const RegisterPage = () => {
             <Link to="/registro-rider" style={{ color: '#f59e0b', fontWeight: 700, textDecoration: 'none' }}>Regístrate como Rider 🚴</Link>
           </p>
         </div>
+
+        {/* ===== MODAL TÉRMINOS Y CONDICIONES ===== */}
+        {showTermsModal && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 9998,
+            background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '20px',
+              maxWidth: '560px', width: '100%', maxHeight: '90vh',
+              display: 'flex', flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+              overflow: 'hidden',
+            }}>
+              {/* Header */}
+              <div style={{
+                padding: '20px 24px 0', borderBottom: 'none',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 900, color: '#2F3A40', margin: 0 }}>
+                    📋 Términos y Condiciones
+                  </h3>
+                  <button onClick={() => setShowTermsModal(false)} style={{
+                    background: '#f3f4f6', border: 'none', borderRadius: '8px',
+                    width: 32, height: 32, fontSize: '18px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280',
+                  }}>✕</button>
+                </div>
+                {/* Tabs */}
+                <div style={{ display: 'flex', gap: '4px', background: '#f3f4f6', borderRadius: '10px', padding: '3px' }}>
+                  {[
+                    { key: 'terms', label: 'Términos y Condiciones', icon: <FileText size={14} /> },
+                    { key: 'privacy', label: 'Política de Privacidad', icon: <Shield size={14} /> },
+                  ].map(tab => (
+                    <button key={tab.key} onClick={() => setTermsTab(tab.key)} style={{
+                      flex: 1, padding: '8px 12px', border: 'none', borderRadius: '8px', cursor: 'pointer',
+                      fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      background: termsTab === tab.key ? '#fff' : 'transparent',
+                      color: termsTab === tab.key ? '#00A8E8' : '#6b7280',
+                      boxShadow: termsTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.2s',
+                    }}>
+                      {tab.icon} {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Scrollable content */}
+              <div
+                ref={scrollRef}
+                onScroll={handleTermsScroll}
+                style={{
+                  flex: 1, overflowY: 'auto', padding: '20px 24px',
+                  fontSize: '13px', lineHeight: 1.8, color: '#374151',
+                  minHeight: '300px', maxHeight: '55vh',
+                }}
+              >
+                {termsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '60px 0', color: '#9ca3af' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '12px', animation: 'spin 1s linear infinite' }}>⏳</div>
+                    <p>Cargando contenido...</p>
+                    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                  </div>
+                ) : (
+                  <>
+                    <div
+                      dangerouslySetInnerHTML={{ __html: termsTab === 'terms' ? (termsHtml || defaultTerms) : (privacyHtml || defaultPrivacy) }}
+                      className="legal-modal-content"
+                    />
+                    <style>{`
+                      .legal-modal-content h2 { font-size: 16px; font-weight: 800; color: #2F3A40; margin: 24px 0 8px; }
+                      .legal-modal-content p { margin-bottom: 10px; }
+                      .legal-modal-content ul, .legal-modal-content ol { padding-left: 20px; margin-bottom: 10px; }
+                      .legal-modal-content li { margin-bottom: 4px; }
+                      .legal-modal-content strong { color: #2F3A40; }
+                    `}</style>
+                  </>
+                )}
+              </div>
+
+              {/* Scroll indicator + Accept button */}
+              <div style={{
+                padding: '16px 24px', borderTop: '1px solid #e5e7eb',
+                background: '#fafafa',
+              }}>
+                {!reachedBottom && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    fontSize: '12px', color: '#f59e0b', fontWeight: 600, marginBottom: '10px',
+                    animation: 'bounce 1.5s infinite',
+                  }}>
+                    <ChevronDown size={16} /> Desplázate hacia abajo para continuar <ChevronDown size={16} />
+                    <style>{`@keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(4px); } }`}</style>
+                  </div>
+                )}
+                <button
+                  onClick={() => {
+                    if (reachedBottom) {
+                      setAcceptTerms(true);
+                      setShowTermsModal(false);
+                    }
+                  }}
+                  disabled={!reachedBottom}
+                  style={{
+                    width: '100%', padding: '14px', border: 'none', borderRadius: '12px',
+                    fontSize: '15px', fontWeight: 800, cursor: reachedBottom ? 'pointer' : 'not-allowed',
+                    background: reachedBottom ? '#00A8E8' : '#d1d5db',
+                    color: '#fff', transition: 'all 0.3s',
+                    boxShadow: reachedBottom ? '0 4px 14px rgba(0,168,232,0.35)' : 'none',
+                  }}
+                >
+                  {reachedBottom ? '✅ He leído y acepto los Términos y Condiciones' : '↓ Lee hasta el final para aceptar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== MODAL ÉXITO ===== */}
+        {showSuccessModal && (
+          <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '16px',
+          }}>
+            <div style={{
+              background: '#fff', borderRadius: '24px', padding: '36px 28px',
+              maxWidth: '420px', width: '100%', textAlign: 'center',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+              animation: 'fadeInUp 0.3s ease-out',
+            }}>
+              <div style={{
+                width: '72px', height: '72px', borderRadius: '50%',
+                background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 20px',
+                boxShadow: '0 8px 25px rgba(34,197,94,0.35)',
+              }}>
+                <CheckCircle size={40} color="#fff" />
+              </div>
+              <h3 style={{ fontSize: '22px', fontWeight: 900, color: '#2F3A40', margin: '0 0 8px' }}>
+                ¡Cuenta Creada!
+              </h3>
+              <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 6px', lineHeight: 1.6 }}>
+                Tu cuenta se ha registrado exitosamente.
+              </p>
+              <p style={{ fontSize: '14px', color: '#6b7280', margin: '0 0 20px' }}>
+                Serás redirigido al inicio de sesión en...
+              </p>
+              <div style={{
+                width: '56px', height: '56px', borderRadius: '50%',
+                background: '#f0fdf4', border: '3px solid #22c55e',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 20px', fontSize: '24px', fontWeight: 900, color: '#16a34a',
+              }}>
+                {countdown}
+              </div>
+              <button
+                onClick={() => navigate('/login')}
+                style={{
+                  width: '100%', padding: '14px', background: '#00A8E8',
+                  color: '#fff', border: 'none', borderRadius: '12px',
+                  fontSize: '15px', fontWeight: 800, cursor: 'pointer',
+                  boxShadow: '0 4px 14px rgba(0,168,232,0.35)',
+                }}
+              >
+                Ir a Iniciar Sesión Ahora
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
