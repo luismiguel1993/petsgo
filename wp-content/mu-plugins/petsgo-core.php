@@ -3016,8 +3016,8 @@ class PetsGo_Core {
                 </div>
             </form>
 
-            <!-- Right: Pets (only if editing existing user) -->
-            <?php if ($uid): ?>
+            <!-- Right: Pets (only for customers, not riders/vendors/admins) -->
+            <?php if ($uid && $current_role === 'subscriber'): ?>
             <div class="petsgo-form-section" style="flex:1;min-width:320px;max-width:550px;">
                 <h3>🐾 Mascotas de <?php echo esc_html($user->display_name); ?> (<span id="pet-count">0</span>)</h3>
                 <div id="pet-list" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;"></div>
@@ -4433,6 +4433,12 @@ Dashboard con analíticas"></textarea>
             {$where}";
         $total = $args ? (int)$wpdb->get_var($wpdb->prepare($count_sql, ...$args)) : (int)$wpdb->get_var($count_sql);
 
+        // Check if expiry_date column exists for safe subquery
+        $has_expiry = (bool)$wpdb->get_var("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{$wpdb->prefix}petsgo_rider_documents' AND COLUMN_NAME='expiry_date'");
+        $expiry_sub = $has_expiry
+            ? "(SELECT MIN(rde.expiry_date) FROM {$wpdb->prefix}petsgo_rider_documents rde WHERE rde.rider_id=u.ID AND rde.status='approved' AND rde.expiry_date IS NOT NULL AND rde.doc_type IN ('id_card','license','vehicle_registration')) AS nearest_expiry,"
+            : "NULL AS nearest_expiry,";
+
         $sql = "SELECT u.ID AS rider_id, u.display_name AS rider_name, u.user_email,
                     up.id_type, up.id_number, up.vehicle_type, up.phone, up.region, up.comuna,
                     COALESCE((SELECT umr.meta_value FROM {$wpdb->usermeta} umr WHERE umr.user_id=u.ID AND umr.meta_key='petsgo_rider_status'), 'pending_email') AS rider_status,
@@ -4440,7 +4446,7 @@ Dashboard con analíticas"></textarea>
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='approved') AS approved_docs,
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='pending') AS pending_docs,
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='rejected') AS rejected_docs,
-                    (SELECT MIN(rde.expiry_date) FROM {$wpdb->prefix}petsgo_rider_documents rde WHERE rde.rider_id=u.ID AND rde.status='approved' AND rde.expiry_date IS NOT NULL AND rde.doc_type IN ('id_card','license','vehicle_registration')) AS nearest_expiry,
+                    {$expiry_sub}
                     u.user_registered
                 FROM {$wpdb->users} u
                 INNER JOIN {$wpdb->usermeta} um ON u.ID=um.user_id
@@ -4450,6 +4456,7 @@ Dashboard con analíticas"></textarea>
                 ORDER BY u.user_registered DESC
                 LIMIT {$per_page} OFFSET {$offset}";
         $riders = $args ? $wpdb->get_results($wpdb->prepare($sql, ...$args)) : $wpdb->get_results($sql);
+        if ($riders === null) $riders = []; // SQL error fallback
         wp_send_json_success(['riders' => $riders, 'total' => $total, 'page' => $page, 'per_page' => $per_page, 'pages' => ceil($total / $per_page)]);
     }
 
@@ -4507,20 +4514,24 @@ Dashboard con analíticas"></textarea>
             'status'      => $status,
             'admin_notes' => $notes,
         ];
+        // Check if expiry columns exist
+        $has_expiry_cols = (bool)$wpdb->get_var("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{$wpdb->prefix}petsgo_rider_documents' AND COLUMN_NAME='expiry_date'");
         if ($status === 'pending') {
             $update_data['reviewed_by'] = null;
             $update_data['reviewed_at'] = null;
-            $update_data['expiry_date'] = null;
-            $update_data['expiry_notified_30'] = 0;
-            $update_data['expiry_notified_15'] = 0;
-            $update_data['expiry_notified_1'] = 0;
+            if ($has_expiry_cols) {
+                $update_data['expiry_date'] = null;
+                $update_data['expiry_notified_30'] = 0;
+                $update_data['expiry_notified_15'] = 0;
+                $update_data['expiry_notified_1'] = 0;
+            }
         } else {
             $update_data['reviewed_by'] = get_current_user_id();
             $update_data['reviewed_at'] = current_time('mysql');
         }
 
         // Guardar fecha de vencimiento al aprobar documentos que lo requieren
-        if ($status === 'approved' && $expiry_date) {
+        if ($status === 'approved' && $expiry_date && $has_expiry_cols) {
             // Validar formato fecha
             $dt = \DateTime::createFromFormat('Y-m-d', $expiry_date);
             if ($dt && $dt->format('Y-m-d') === $expiry_date) {
@@ -4534,11 +4545,11 @@ Dashboard con analíticas"></textarea>
         // Validar que docs que requieren fecha de vencimiento la tengan
         $doc = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_rider_documents WHERE id=%d", $doc_id));
         $docs_with_expiry = ['id_card', 'license', 'vehicle_registration'];
-        if ($status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && empty($expiry_date)) {
+        if ($has_expiry_cols && $status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && empty($expiry_date)) {
             wp_send_json_error('Debe ingresar la fecha de vencimiento para este documento.');
             return;
         }
-        if ($status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && !empty($expiry_date)) {
+        if ($has_expiry_cols && $status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && !empty($expiry_date)) {
             // Validar que la fecha no esté vencida
             if (strtotime($expiry_date) < strtotime(date('Y-m-d'))) {
                 wp_send_json_error('La fecha de vencimiento no puede ser una fecha pasada.');
@@ -7465,6 +7476,9 @@ Dashboard con analíticas"></textarea>
      */
     public function process_rider_doc_expiry() {
         global $wpdb;
+        // Safety: skip if expiry columns don't exist yet
+        $has_col = (bool)$wpdb->get_var("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{$wpdb->prefix}petsgo_rider_documents' AND COLUMN_NAME='expiry_date'");
+        if (!$has_col) return;
         $today = date('Y-m-d');
         $company = $this->pg_setting('company_name', 'PetsGo');
         $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
@@ -8613,8 +8627,11 @@ Dashboard con analíticas"></textarea>
         $status = get_user_meta($uid, 'petsgo_rider_status', true) ?: 'pending_email';
         $vehicle = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
         $email_verified = !in_array($status, ['pending_email']);
+        // Safe column check for expiry_date
+        $has_expiry_col = (bool)$wpdb->get_var("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{$wpdb->prefix}petsgo_rider_documents' AND COLUMN_NAME='expiry_date'");
+        $doc_cols = $has_expiry_col ? 'doc_type, status, admin_notes, expiry_date' : 'doc_type, status, admin_notes';
         $docs = $wpdb->get_results($wpdb->prepare(
-            "SELECT doc_type, status, admin_notes, expiry_date FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
+            "SELECT {$doc_cols} FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
         ));
         $pending_docs = array_filter($docs, fn($d) => $d->status === 'pending');
         $rejected_docs = array_filter($docs, fn($d) => $d->status === 'rejected');
@@ -8649,8 +8666,9 @@ Dashboard con analíticas"></textarea>
             'id_card' => 'Documento de Identidad',
         ];
         foreach ($docs as $d) {
-            if ($d->expiry_date && in_array($d->doc_type, ['id_card', 'license', 'vehicle_registration'])) {
-                $days_left = (int) round((strtotime($d->expiry_date) - strtotime($today)) / 86400);
+            $exp = $d->expiry_date ?? null;
+            if ($exp && in_array($d->doc_type, ['id_card', 'license', 'vehicle_registration'])) {
+                $days_left = (int) round((strtotime($exp) - strtotime($today)) / 86400);
                 $expiry_status = 'ok';
                 if ($days_left < 0) $expiry_status = 'expired';
                 elseif ($days_left <= 15) $expiry_status = 'critical';
@@ -8658,7 +8676,7 @@ Dashboard con analíticas"></textarea>
                 $expiry_alerts[] = [
                     'doc_type'      => $d->doc_type,
                     'doc_label'     => $docLabelsMap[$d->doc_type] ?? $d->doc_type,
-                    'expiry_date'   => $d->expiry_date,
+                    'expiry_date'   => $exp,
                     'days_left'     => $days_left,
                     'expiry_status' => $expiry_status,
                 ];
