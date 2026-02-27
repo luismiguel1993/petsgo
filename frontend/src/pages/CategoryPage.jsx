@@ -44,6 +44,14 @@ const DEMO_PRODUCTS = {
     { id: 9006, vendor_id: 906, product_name: 'Arnés Reflectante Ajustable', price: 22990, stock: 30, category: 'Perros', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 22990 },
     { id: 9007, vendor_id: 901, product_name: 'Snack Dental DentaStix x7', price: 5990, stock: 100, category: 'Perros', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 5990 },
     { id: 9008, vendor_id: 902, product_name: 'Chaleco Abrigador Talla M', price: 16990, stock: 20, category: 'Perros', store_name: 'Mundo Animal Centro', image_url: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&q=80&w=800', discount_percent: 20, discount_active: true, final_price: 13592 },
+    { id: 9101, vendor_id: 903, product_name: 'Correa Extensible 8m Reforzada', price: 19990, stock: 30, category: 'Perros', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1601758174114-e711c0cbaa69?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 19990 },
+    { id: 9102, vendor_id: 904, product_name: 'Plato Antideslizante Comedero L', price: 11990, stock: 50, category: 'Perros', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 11990 },
+    { id: 9103, vendor_id: 905, product_name: 'Pro Plan Adult Razas Grandes 18kg', price: 62990, stock: 10, category: 'Perros', store_name: 'Happy Pets Providencia', image_url: 'https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?auto=format&fit=crop&q=80&w=800', discount_percent: 10, discount_active: true, final_price: 56691 },
+    { id: 9104, vendor_id: 906, product_name: 'Transportador Rígido Viaje XL', price: 49990, stock: 8, category: 'Perros', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 49990 },
+    { id: 9105, vendor_id: 901, product_name: 'Pelota Indestructible Caucho M', price: 7990, stock: 65, category: 'Perros', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 7990 },
+    { id: 9106, vendor_id: 902, product_name: 'Pechera Deportiva Trekking L', price: 28990, stock: 18, category: 'Perros', store_name: 'Mundo Animal Centro', image_url: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800', discount_percent: 15, discount_active: true, final_price: 24642 },
+    { id: 9107, vendor_id: 903, product_name: 'Cepillo Dental Dedo Silicona x3', price: 5990, stock: 90, category: 'Perros', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1585584114963-503344a119b0?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 5990 },
+    { id: 9108, vendor_id: 904, product_name: 'Dispensador Agua Automático 3.8L', price: 24990, stock: 22, category: 'Perros', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1576201836106-db1758fd1c97?auto=format&fit=crop&q=80&w=800', discount_percent: 25, discount_active: true, final_price: 18743 },
   ],
   Gatos: [
     { id: 9010, vendor_id: 903, product_name: 'Royal Canin Indoor Cat 7.5kg', price: 42990, stock: 20, category: 'Gatos', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 42990 },
@@ -89,6 +97,14 @@ const DEMO_PRODUCTS = {
     { id: 9053, vendor_id: 904, product_name: 'Bebedero Fuente Automática 2.5L', price: 29990, stock: 12, category: 'Accesorios', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 29990 },
     { id: 9054, vendor_id: 905, product_name: 'Dispensador Snacks Interactivo', price: 18990, stock: 20, category: 'Accesorios', store_name: 'Happy Pets Providencia', image_url: 'https://images.unsplash.com/photo-1530281700549-e82e7bf110d6?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 18990 },
     { id: 9055, vendor_id: 906, product_name: 'Ratón Electrónico Gato Interactivo', price: 9990, stock: 40, category: 'Accesorios', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&q=80&w=800', discount_percent: 10, discount_active: true, final_price: 8991 },
+    { id: 9056, vendor_id: 901, product_name: 'Guante Masaje Deslanador', price: 6990, stock: 55, category: 'Accesorios', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 6990 },
+    { id: 9057, vendor_id: 902, product_name: 'Mochila Transporte Mascota S', price: 34990, stock: 10, category: 'Accesorios', store_name: 'Mundo Animal Centro', image_url: 'https://images.unsplash.com/photo-1574158622682-e40e69881006?auto=format&fit=crop&q=80&w=800', discount_percent: 20, discount_active: true, final_price: 27992 },
+    { id: 9058, vendor_id: 903, product_name: 'Puerta Mascota Magnética Talla M', price: 22990, stock: 15, category: 'Accesorios', store_name: 'La Huella Store', image_url: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 22990 },
+    { id: 9059, vendor_id: 904, product_name: 'Hamaca Ventana Gato con Ventosa', price: 15990, stock: 28, category: 'Accesorios', store_name: 'Patitas Chile', image_url: 'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 15990 },
+    { id: 9150, vendor_id: 905, product_name: 'Túnel Plegable Gato 3 Vías', price: 12990, stock: 32, category: 'Accesorios', store_name: 'Happy Pets Providencia', image_url: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&q=80&w=800', discount_percent: 15, discount_active: true, final_price: 11042 },
+    { id: 9151, vendor_id: 906, product_name: 'Cinta LED Collar Recargable USB', price: 8990, stock: 45, category: 'Accesorios', store_name: 'Vet & Shop', image_url: 'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 8990 },
+    { id: 9152, vendor_id: 901, product_name: 'Cepillo Interactivo Goma Natural', price: 7990, stock: 60, category: 'Accesorios', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 7990 },
+    { id: 9153, vendor_id: 902, product_name: 'Alfombra Olfativa Snuffle Mat', price: 16990, stock: 20, category: 'Accesorios', store_name: 'Mundo Animal Centro', image_url: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&q=80&w=800', discount_percent: 10, discount_active: true, final_price: 15291 },
   ],
   Higiene: [
     { id: 9060, vendor_id: 901, product_name: 'Shampoo Hipoalergénico 500ml', price: 8990, stock: 50, category: 'Higiene', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1625794084867-8ddd239946b1?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 8990 },
@@ -143,6 +159,9 @@ const DEMO_PRODUCTS = {
     { id: 9117, vendor_id: 901, product_name: 'Cepillo Autolimpiante One-Click', price: 9990, stock: 35, category: 'Higiene', store_name: 'PetShop Las Condes', image_url: 'https://images.unsplash.com/photo-1544568100-847a948585b9?auto=format&fit=crop&q=80&w=800', discount_percent: 0, discount_active: false, final_price: 9990 },
   ],
 };
+
+const PRODUCTS_PER_PAGE = 12;
+
 const CategoryPage = () => {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
@@ -160,6 +179,7 @@ const CategoryPage = () => {
   const [priceRange, setPriceRange] = useState([0, 200000]);
   const [priceMax, setPriceMax] = useState(200000);
   const [sortBy, setSortBy] = useState('default');
+  const [currentPage, setCurrentPage] = useState(1);
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   /* Cargar categorías desde la API */
@@ -247,6 +267,16 @@ const CategoryPage = () => {
     else if (sortBy === 'discount') result = [...result].sort((a, b) => (Number(b.discount_percent) || 0) - (Number(a.discount_percent) || 0));
     return result;
   }, [products, searchTerm, priceRange, sortBy]);
+
+  /* Resetear página al cambiar filtros */
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, priceRange, sortBy, categoryName]);
+
+  /* Paginación */
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+  const paginatedProducts = filteredProducts.slice(
+    (currentPage - 1) * PRODUCTS_PER_PAGE,
+    currentPage * PRODUCTS_PER_PAGE,
+  );
 
   /* Obtener vendors únicos que venden en esta categoría */
   const categoryVendors = useMemo(() => {
@@ -538,7 +568,7 @@ const CategoryPage = () => {
                 gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
                 gap: '24px',
               }}>
-                {filteredProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   const qty = getItemQuantity(product.id);
                   return (
                     <Link
@@ -668,6 +698,66 @@ const CategoryPage = () => {
                     </Link>
                   );
                 })}
+              </div>
+            )}
+
+            {/* ── Paginación ── */}
+            {totalPages > 1 && (
+              <div style={{
+                display: 'flex', justifyContent: 'center', alignItems: 'center',
+                gap: '8px', marginTop: '32px', flexWrap: 'wrap',
+              }}>
+                <button
+                  onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  disabled={currentPage === 1}
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: '2px solid #e5e7eb',
+                    background: currentPage === 1 ? '#f9fafb' : '#fff',
+                    color: currentPage === 1 ? '#d1d5db' : '#374151',
+                    fontWeight: 700, fontSize: '13px', cursor: currentPage === 1 ? 'default' : 'pointer',
+                    fontFamily: 'Poppins, sans-serif', transition: 'all 0.2s',
+                  }}
+                >
+                  ← Anterior
+                </button>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => { setCurrentPage(page); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                    style={{
+                      width: '40px', height: '40px', borderRadius: '10px',
+                      border: page === currentPage ? '2px solid #00A8E8' : '2px solid #e5e7eb',
+                      background: page === currentPage ? '#00A8E8' : '#fff',
+                      color: page === currentPage ? '#fff' : '#374151',
+                      fontWeight: 800, fontSize: '14px', cursor: 'pointer',
+                      fontFamily: 'Poppins, sans-serif', transition: 'all 0.2s',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  disabled={currentPage === totalPages}
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: '2px solid #e5e7eb',
+                    background: currentPage === totalPages ? '#f9fafb' : '#fff',
+                    color: currentPage === totalPages ? '#d1d5db' : '#374151',
+                    fontWeight: 700, fontSize: '13px', cursor: currentPage === totalPages ? 'default' : 'pointer',
+                    fontFamily: 'Poppins, sans-serif', transition: 'all 0.2s',
+                  }}
+                >
+                  Siguiente →
+                </button>
+
+                <div style={{ width: '100%', textAlign: 'center', marginTop: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#9ca3af' }}>
+                    Mostrando {(currentPage - 1) * PRODUCTS_PER_PAGE + 1}–{Math.min(currentPage * PRODUCTS_PER_PAGE, filteredProducts.length)} de {filteredProducts.length} productos
+                  </span>
+                </div>
               </div>
             )}
           </>
