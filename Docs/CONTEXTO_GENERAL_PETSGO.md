@@ -82,6 +82,8 @@ PetsGo conecta tres actores principales:
 | **Ganancias** | Ver detalle de ganancias, propinas y pagos semanales |
 | **Estadísticas** | Entregas completadas, valoración promedio, km recorridos |
 | **Documentos** | Subir y gestionar documentación requerida |
+| **Vigencia documental** | Alertas de vencimiento en el dashboard (🟡 30d / 🟠 15d / 🔴 vencido) y emails automáticos |
+| **Validación bancaria** | RUT de la cuenta bancaria debe coincidir con el RUT personal del rider |
 
 ---
 

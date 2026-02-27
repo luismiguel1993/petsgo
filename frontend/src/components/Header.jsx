@@ -117,7 +117,8 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
               />
             </Link>
 
-            {/* Buscador Central - Más ancho */}
+            {/* Buscador Central - Oculto para riders (no navegan el marketplace) */}
+            {!isRider() && (
             <div className="hidden md:flex flex-1 max-w-3xl">
               <div className="w-full relative">
                 <input
@@ -134,11 +135,13 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                 </button>
               </div>
             </div>
+            )}
 
             {/* Acciones */}
             <div className="flex items-center gap-3 lg:gap-5">
 
-              {/* Ubicación / Comuna */}
+              {/* Ubicación / Comuna — Oculto para riders */}
+              {!isRider() && (
               <div className="relative">
                 <button
                   onClick={() => setLocationOpen(!locationOpen)}
@@ -206,8 +209,10 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                   </div>
                 )}
               </div>
+              )}
               
-              {/* Carrito - Flotante dinámico */}
+              {/* Carrito - Oculto para riders */}
+              {!isRider() && (
               <button 
                 onClick={onCartToggle}
                 className="relative flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-[#FFC400]/20 rounded-xl transition-all group"
@@ -226,6 +231,7 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                   Carrito
                 </span>
               </button>
+              )}
 
               {/* Usuario */}
               {isAuthenticated ? (
@@ -307,11 +313,12 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                         {/* Menu items */}
                         <div style={{ padding: '6px' }}>
                           {[
-                            { to: '/perfil', icon: <User size={17} />, label: 'Mi Perfil', emoji: '👤', color: '#00A8E8' },
+                            // Mi Perfil solo para clientes y admin (riders/vendors tienen perfil en su dashboard)
+                            ...(!isRider() && !isVendor() ? [{ to: '/perfil', icon: <User size={17} />, label: 'Mi Perfil', emoji: '👤', color: '#00A8E8' }] : []),
                             {
                               to: getDashboardLink(),
                               icon: isAdmin() ? <Shield size={17} /> : isVendor() ? <Store size={17} /> : isRider() ? <Truck size={17} /> : <Package size={17} />,
-                              label: isAdmin() ? 'Panel Admin' : isVendor() ? 'Mi Tienda' : isRider() ? 'Mis Entregas' : 'Mis Pedidos',
+                              label: isAdmin() ? 'Panel Admin' : isVendor() ? 'Mi Tienda' : isRider() ? 'Panel Rider' : 'Mis Pedidos',
                               emoji: isAdmin() ? '⚙️' : isVendor() ? '🏪' : isRider() ? '🚚' : '📦',
                               color: isAdmin() ? '#8B5CF6' : isVendor() ? '#F59E0B' : isRider() ? '#22C55E' : '#00A8E8',
                             },
@@ -385,7 +392,8 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
             </div>
           </div>
 
-          {/* Navegación Categorías Desktop */}
+          {/* Navegación Categorías Desktop — Oculto para riders */}
+          {!isRider() && (
           <nav className="hidden md:flex items-center justify-center gap-1 py-2 border-t border-gray-100">
             {categories.map((cat) => (
               <Link
@@ -407,11 +415,14 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
               Tiendas
             </Link>
           </nav>
+          )}
         </div>
 
-        {/* Menú Móvil */}
+        {/* Menú Móvil — Para riders solo muestra enlace a su panel */}
         {menuOpen && (
           <div className="md:hidden bg-white border-t px-4 py-4 space-y-2">
+            {!isRider() && (
+            <>
             <div className="relative mb-4">
               <input
                 type="text"
@@ -446,6 +457,18 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
               <Store size={20} />
               Tiendas
             </Link>
+            </>
+            )}
+            {isRider() && (
+              <Link 
+                to="/rider" 
+                onClick={() => setMenuOpen(false)} 
+                className="flex items-center gap-3 py-3 px-4 text-gray-700 hover:bg-gray-50 rounded-xl no-underline font-medium"
+              >
+                <Truck size={20} />
+                Panel de Rider
+              </Link>
+            )}
           </div>
         )}
       </header>

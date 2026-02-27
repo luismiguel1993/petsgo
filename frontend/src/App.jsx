@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import BotChatOverlay from './components/BotChatOverlay'
@@ -33,8 +33,17 @@ import RiderVerifyEmailPage from './pages/RiderVerifyEmailPage'
 function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const { setOnCartOpen } = useCart()
-  const { loggedOut } = useAuth()
+  const { loggedOut, user, isRider } = useAuth()
   const autoCloseTimer = useRef(null)
+
+  // Rider logueado: restringir navegación — solo puede ver su panel
+  const activeRider = isRider();
+  // Rider no aprobado: mostrar banner de estado
+  const isUnapprovedRider = activeRider && user?.rider_status && user.rider_status !== 'approved';
+  const riderStatusLabels = {
+    pending_docs: '📋 Sube tus documentos para completar tu registro como Rider.',
+    pending_review: '⏳ Tus documentos están en revisión. Te notificaremos cuando sean aprobados.',
+  };
 
   const openCartWithAutoClose = useCallback(() => {
     setCartOpen(true)
@@ -63,8 +72,9 @@ function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f5f5f5]">
-      <Header onCartToggle={() => { setCartOpen(true); handleCartInteraction(); }} />
-      <FloatingCart isOpen={cartOpen} onClose={handleCartClose} onInteraction={handleCartInteraction} />
+      <Header onCartToggle={() => { if (!activeRider) { setCartOpen(true); handleCartInteraction(); } }} />
+      {/* FloatingCart oculto para riders */}
+      {!activeRider && <FloatingCart isOpen={cartOpen} onClose={handleCartClose} onInteraction={handleCartInteraction} />}
 
       {/* Logout toast */}
       {loggedOut && (
@@ -93,10 +103,31 @@ function App() {
           </div>
         </div>
       )}
+      {/* Banner persistente para riders no aprobados */}
+      {isUnapprovedRider && (
+        <div style={{
+          background: 'linear-gradient(135deg, #FEF3C7, #FFF7ED)',
+          borderBottom: '2px solid #FCD34D',
+          padding: '12px 24px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px',
+          fontFamily: 'Poppins, sans-serif', flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: '14px', fontWeight: 600, color: '#92400E' }}>
+            {riderStatusLabels[user.rider_status] || '⏳ Tu cuenta de Rider está en proceso de verificación.'}
+          </span>
+          <a href="/rider" style={{
+            padding: '6px 16px', background: '#F97316', color: '#fff', borderRadius: '8px',
+            fontSize: '12px', fontWeight: 700, textDecoration: 'none',
+          }}>
+            Ir a mi Panel de Rider
+          </a>
+        </div>
+      )}
+
       <main className="flex-1 pb-8">
         <Routes>
-          {/* Rutas públicas */}
-          <Route path="/" element={<HomePage />} />
+          {/* Rutas públicas — Riders logueados son redirigidos a su panel */}
+          <Route path="/" element={activeRider ? <Navigate to="/rider" /> : <HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/registro" element={<RegisterPage />} />
           <Route path="/registro-rider" element={<RiderRegisterPage />} />
@@ -104,21 +135,21 @@ function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/cambiar-contrasena" element={<ForceChangePasswordPage />} />
-          <Route path="/tiendas" element={<VendorsPage />} />
-          <Route path="/tienda/:id" element={<VendorDetailPage />} />
-          <Route path="/categoria/:slug" element={<CategoryPage />} />
-          <Route path="/producto/:id" element={<ProductDetailPage />} />
-          <Route path="/carrito" element={<CartPage />} />
-          <Route path="/planes" element={<PlansPage />} />
+          <Route path="/tiendas" element={activeRider ? <Navigate to="/rider" /> : <VendorsPage />} />
+          <Route path="/tienda/:id" element={activeRider ? <Navigate to="/rider" /> : <VendorDetailPage />} />
+          <Route path="/categoria/:slug" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
+          <Route path="/producto/:id" element={activeRider ? <Navigate to="/rider" /> : <ProductDetailPage />} />
+          <Route path="/carrito" element={activeRider ? <Navigate to="/rider" /> : <CartPage />} />
+          <Route path="/planes" element={activeRider ? <Navigate to="/rider" /> : <PlansPage />} />
           <Route path="/centro-de-ayuda" element={<HelpCenterPage />} />
           <Route path="/terminos-y-condiciones" element={<LegalPage slug="terminos-y-condiciones" />} />
           <Route path="/politica-de-privacidad" element={<LegalPage slug="politica-de-privacidad" />} />
           <Route path="/politica-de-envios" element={<LegalPage slug="politica-de-envios" />} />
           <Route path="/verificar-boleta/:token" element={<InvoiceVerifyPage />} />
 
-          {/* Rutas autenticadas */}
-          <Route path="/mis-pedidos" element={<MyOrdersPage />} />
-          <Route path="/perfil" element={<UserProfilePage />} />
+          {/* Rutas autenticadas — Rider va a su panel, no al perfil de cliente */}
+          <Route path="/mis-pedidos" element={activeRider ? <Navigate to="/rider" /> : <MyOrdersPage />} />
+          <Route path="/perfil" element={activeRider ? <Navigate to="/rider" /> : <UserProfilePage />} />
           <Route path="/soporte" element={<SupportPage />} />
 
           {/* Dashboards por rol */}

@@ -12,7 +12,7 @@ import {
   getRiderStats,
 } from '../services/api';
 import { Download, BarChart3 } from 'lucide-react';
-import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
+import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName, validateRut, formatRut } from '../utils/chile';
 
 /* ───── constants ───── */
 const STATUS_CONFIG = {
@@ -110,6 +110,9 @@ const RiderDashboard = () => {
   const [ratings, setRatings] = useState([]);
   const [avgRating, setAvgRating] = useState(null);
 
+  /* ── expiry alerts ── */
+  const [expiryAlerts, setExpiryAlerts] = useState([]);
+
   /* ── earnings ── */
   const [earnings, setEarnings] = useState(null);
 
@@ -136,7 +139,8 @@ const RiderDashboard = () => {
       setAvgRating(data.average_rating);
       setIdType(data.id_type || '');
       setIdNumber(data.id_number || '');
-      if (data.rider_status === 'pending_docs') setTab('documents');
+      setExpiryAlerts(data.expiry_alerts || []);
+      if (data.rider_status === 'pending_docs' || data.rider_status === 'suspended') setTab('documents');
     } catch { /* keep defaults */ }
   }, []);
 
@@ -153,6 +157,7 @@ const RiderDashboard = () => {
         bankName: data.bankName || '',
         bankAccountType: data.bankAccountType || '',
         bankAccountNumber: data.bankAccountNumber || '',
+        bankHolderRut: data.bankHolderRut || '',
       });
     } catch { /* keep defaults */ }
   }, []);
@@ -203,6 +208,13 @@ const RiderDashboard = () => {
     loadProfile();
   }, [loadStatus, loadProfile]);
 
+  /* ── Forzar tab documentos cuando pending_docs ── */
+  useEffect(() => {
+    if (riderStatus === 'pending_docs' && tab !== 'documents') {
+      setTab('documents');
+    }
+  }, [riderStatus, tab]);
+
   /* ── tab-based loading ── */
   useEffect(() => {
     if (tab === 'home' && riderStatus === 'approved') { loadDeliveries(); loadEarnings(); }
@@ -243,6 +255,29 @@ const RiderDashboard = () => {
 
   const handleSaveProfile = async () => {
     setSavingProfile(true); setProfileMsg('');
+    // Validar RUT bancario si se está configurando cuenta bancaria
+    if (profileForm.bankName && profileForm.bankHolderRut) {
+      if (!validateRut(profileForm.bankHolderRut)) {
+        setProfileMsg('❌ El RUT del titular de la cuenta bancaria no es válido.');
+        setSavingProfile(false);
+        return;
+      }
+      // Comparar RUT bancario con RUT del rider (solo si id_type es rut)
+      if (idType === 'rut' && idNumber) {
+        const cleanBank = profileForm.bankHolderRut.replace(/[^0-9kK]/gi, '').toUpperCase();
+        const cleanRider = idNumber.replace(/[^0-9kK]/gi, '').toUpperCase();
+        if (cleanBank !== cleanRider) {
+          setProfileMsg('❌ El RUT del titular debe coincidir con tu RUT personal (' + idNumber + '). La cuenta bancaria debe ser propia, no de terceros.');
+          setSavingProfile(false);
+          return;
+        }
+      }
+    }
+    if (profileForm.bankName && !profileForm.bankHolderRut) {
+      setProfileMsg('❌ Debes ingresar el RUT del titular de la cuenta bancaria.');
+      setSavingProfile(false);
+      return;
+    }
     try {
       await updateRiderProfile({ ...profileForm, phone: buildFullPhone(profileForm.phone) });
       setProfileMsg('✅ Perfil actualizado correctamente');
@@ -280,6 +315,8 @@ const RiderDashboard = () => {
       pending_docs:  { bg: '#FFF7ED', border: '#FDBA74', icon: '📋', color: '#9A3412', title: 'Sube tus documentos', desc: `Pendientes: ${requiredDocs.map(d => DOC_TYPES[d]?.label || d).join(', ')}` },
       pending_review:{ bg: '#EFF6FF', border: '#93C5FD', icon: '⏳', color: '#1E40AF', title: 'Documentos en revisión', desc: 'Te notificaremos cuando sean aprobados.' },
       approved:      { bg: '#F0FDF4', border: '#86EFAC', icon: '✅', color: '#166534', title: 'Cuenta aprobada', desc: 'Puedes recibir y realizar entregas.' },
+      suspended:     { bg: '#FEF2F2', border: '#FECACA', icon: '🚫', color: '#991B1B', title: 'Cuenta suspendida', desc: 'Uno o más documentos vencieron. Re-sube los documentos vencidos para reactivar tu cuenta.' },
+      rejected:      { bg: '#FEF2F2', border: '#FECACA', icon: '❌', color: '#991B1B', title: 'Cuenta rechazada', desc: 'Por favor revisa los motivos de rechazo en tus documentos y vuelve a subirlos.' },
     };
     const c = cfgs[riderStatus] || cfgs.pending_email;
     return (
@@ -393,6 +430,7 @@ const RiderDashboard = () => {
       <StatusBanner />
 
       {/* ── Tabs ── */}
+      {/* pending_docs: solo Documentos | pending_review: Docs + Perfil | approved: todos */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {isApproved && tabBtn('home', '🏠', 'Inicio')}
         {isApproved && tabBtn('deliveries', '📦', 'Entregas')}
@@ -400,8 +438,20 @@ const RiderDashboard = () => {
         {isApproved && tabBtn('stats', '📊', 'Estadísticas')}
         {tabBtn('documents', '📋', 'Documentos')}
         {isApproved && tabBtn('ratings', '⭐', 'Valoraciones')}
-        {tabBtn('profile', '👤', 'Perfil')}
+        {riderStatus !== 'pending_docs' && tabBtn('profile', '👤', 'Perfil')}
       </div>
+
+      {/* Aviso bloqueante para riders con documentación pendiente */}
+      {riderStatus === 'pending_docs' && tab !== 'documents' && (
+        <Card style={{ textAlign: 'center', padding: 32, borderLeft: '4px solid #F97316', marginBottom: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+          <h3 style={{ fontWeight: 800, color: '#9A3412', margin: '0 0 8px' }}>Completa tu registro primero</h3>
+          <p style={{ fontSize: 14, color: '#C2410C', margin: '0 0 16px' }}>Debes subir todos los documentos requeridos antes de poder acceder a otras secciones del panel.</p>
+          <button onClick={() => setTab('documents')} style={{ padding: '12px 24px', borderRadius: 12, background: '#F97316', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            📋 Ir a Documentos
+          </button>
+        </Card>
+      )}
 
       {/* ══════════════════════════════════════════════
          TAB: INICIO (Dashboard Home)
@@ -416,6 +466,47 @@ const RiderDashboard = () => {
             <StatBox label="Aceptación" value={`${profile?.acceptanceRate ?? earnings?.acceptanceRate ?? 100}%`} sub={`${profile?.totalOffers ?? earnings?.totalOffers ?? 0} ofertas`} color="#8B5CF6" icon={CheckCircle2} />
             <StatBox label="Rating" value={avgRating ? `⭐ ${avgRating}` : '—'} sub={`${profile?.totalRatings || 0} valoraciones`} color="#F59E0B" icon={Star} />
           </div>
+
+          {/* ── document expiry alerts ── */}
+          {expiryAlerts.length > 0 && expiryAlerts.some(a => a.expiry_status !== 'ok') && (
+            <Card style={{ borderLeft: '4px solid #EF4444', marginBottom: 20, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <AlertTriangle size={20} color="#EF4444" />
+                <strong style={{ color: '#991B1B', fontSize: 14 }}>Vigencia de documentos</strong>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {expiryAlerts.filter(a => a.expiry_status !== 'ok').map(a => {
+                  const palettes = {
+                    expired:  { bg: '#FEF2F2', border: '#FECACA', color: '#991B1B', icon: '🔴', label: 'VENCIDO' },
+                    critical: { bg: '#FFF7ED', border: '#FED7AA', color: '#C2410C', icon: '🟠', label: `${a.days_left}d restantes` },
+                    warning:  { bg: '#FFFBEB', border: '#FDE68A', color: '#92400E', icon: '🟡', label: `${a.days_left}d restantes` },
+                  };
+                  const p = palettes[a.expiry_status] || palettes.warning;
+                  return (
+                    <div key={a.doc_type} style={{ background: p.bg, border: `1px solid ${p.border}`, borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 18 }}>{p.icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <strong style={{ color: p.color, fontSize: 13 }}>{a.doc_label}</strong>
+                        <p style={{ fontSize: 11, color: p.color, margin: '2px 0 0', opacity: 0.85 }}>
+                          Vence: {fmtDate(a.expiry_date)} — <strong>{p.label}</strong>
+                        </p>
+                      </div>
+                      {a.expiry_status === 'expired' && (
+                        <button onClick={() => setTab('documents')} style={{ padding: '6px 14px', borderRadius: 8, background: '#EF4444', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 11 }}>
+                          Re-subir
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {expiryAlerts.some(a => a.expiry_status === 'expired') && (
+                <p style={{ fontSize: 11, color: '#991B1B', marginTop: 10, fontStyle: 'italic' }}>
+                  ⚠️ Los documentos vencidos deben ser renovados para mantener tu cuenta activa.
+                </p>
+              )}
+            </Card>
+          )}
 
           {/* Bank account notice */}
           {!profile?.bankName && (
@@ -705,8 +796,31 @@ const RiderDashboard = () => {
             </Card>
           )}
 
-          {['pending_docs', 'pending_review', 'approved'].includes(riderStatus) && (
+          {['pending_docs', 'pending_review', 'approved', 'suspended', 'rejected'].includes(riderStatus) && (
             <>
+              {/* Suspended alert */}
+              {riderStatus === 'suspended' && (
+                <Card style={{ borderLeft: '4px solid #EF4444', marginBottom: 16, padding: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 28 }}>🚫</span>
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ color: '#991B1B', fontSize: 14 }}>Cuenta suspendida por documentos vencidos</strong>
+                      <p style={{ fontSize: 12, color: '#991B1B', margin: '4px 0 0', opacity: 0.85 }}>
+                        Uno o más documentos han expirado. Sube versiones actualizadas para reactivar tu cuenta.
+                      </p>
+                    </div>
+                  </div>
+                  {expiryAlerts.filter(a => a.expiry_status === 'expired').length > 0 && (
+                    <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {expiryAlerts.filter(a => a.expiry_status === 'expired').map(a => (
+                        <span key={a.doc_type} style={{ background: '#fce4ec', color: '#c62828', padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700 }}>
+                          🔴 {a.doc_label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )}
               {/* Vehicle info */}
               <Card style={{ marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
@@ -736,7 +850,7 @@ const RiderDashboard = () => {
                   const statusLabels = { approved: '✅ Aprobado', rejected: '❌ Rechazado', pending: '⏳ En revisión', missing: '📤 No subido' };
                   const statusBg = { approved: '#e8f5e9', rejected: '#fce4ec', pending: '#fff3e0', missing: '#f5f5f5' };
                   const statusClr = { approved: '#2e7d32', rejected: '#c62828', pending: '#e65100', missing: '#9ca3af' };
-                  const canUp = riderStatus === 'pending_docs' || (riderStatus === 'pending_review' && docStatus === 'rejected');
+                  const canUp = riderStatus === 'pending_docs' || riderStatus === 'suspended' || (riderStatus === 'pending_review' && docStatus === 'rejected');
                   return (
                     <Card key={key} style={{ border: `1px solid ${docStatus === 'rejected' ? '#ef9a9a' : missingDocs.includes(key) ? '#FDBA74' : '#f0f0f0'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -749,6 +863,22 @@ const RiderDashboard = () => {
                         </div>
                         <span style={{ padding: '4px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: statusBg[docStatus], color: statusClr[docStatus] }}>{statusLabels[docStatus]}</span>
                       </div>
+                      {/* Expiry badge for approved docs */}
+                      {docStatus === 'approved' && (() => {
+                        const alert = expiryAlerts.find(a => a.doc_type === key);
+                        if (!alert || alert.expiry_status === 'ok') return null;
+                        const exCfg = {
+                          expired:  { bg: '#fce4ec', color: '#c62828', icon: '🔴', text: 'Vencido' },
+                          critical: { bg: '#fff3e0', color: '#e65100', icon: '🟠', text: `Vence en ${alert.days_left} días` },
+                          warning:  { bg: '#fffbeb', color: '#92400e', icon: '🟡', text: `Vence en ${alert.days_left} días` },
+                        };
+                        const ec = exCfg[alert.expiry_status] || exCfg.warning;
+                        return (
+                          <div style={{ background: ec.bg, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: ec.color, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {ec.icon} <strong>{ec.text}</strong> — Vence: {fmtDate(alert.expiry_date)}
+                          </div>
+                        );
+                      })()}
                       {doc?.admin_notes && docStatus === 'rejected' && (
                         <div style={{ background: '#fce4ec', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#c62828', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
                           <AlertTriangle size={14} /> <strong>Motivo:</strong> {doc.admin_notes}
@@ -922,7 +1052,7 @@ const RiderDashboard = () => {
             <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 4px', display: 'flex', alignItems: 'center', gap: 8 }}>
               <CreditCard size={18} color="#00A8E8" /> Cuenta bancaria
             </h3>
-            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>Aquí recibirás tus pagos semanales. Asegúrate de ingresar datos válidos.</p>
+            <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 16px' }}>Aquí recibirás tus pagos semanales. La cuenta debe ser propia (mismo RUT).</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
               <div style={{ flex: '1 1 100%' }}>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Banco</label>
@@ -951,6 +1081,23 @@ const RiderDashboard = () => {
                     {showAccount ? <EyeOff size={16} color="#9ca3af" /> : <Eye size={16} color="#9ca3af" />}
                   </button>
                 </div>
+              </div>
+              <div style={{ flex: '1 1 100%' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>RUT del Titular</label>
+                <input value={profileForm.bankHolderRut || ''}
+                  onChange={e => setProfileForm({ ...profileForm, bankHolderRut: formatRut(e.target.value) })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1px solid ${profileForm.bankHolderRut ? (validateRut(profileForm.bankHolderRut) ? (idType === 'rut' && idNumber && profileForm.bankHolderRut.replace(/[^0-9kK]/gi, '').toUpperCase() === idNumber.replace(/[^0-9kK]/gi, '').toUpperCase() ? '#16a34a' : '#dc2626') : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }}
+                  placeholder="12.345.678-K" maxLength={12} />
+                {idType === 'rut' && idNumber && (
+                  <div style={{ marginTop: 6, padding: '8px 12px', background: '#EFF6FF', borderRadius: 8, fontSize: 12, color: '#1E40AF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Shield size={14} /> La cuenta debe ser propia. Tu RUT: <strong>{idNumber}</strong>
+                  </div>
+                )}
+                {profileForm.bankHolderRut && validateRut(profileForm.bankHolderRut) && idType === 'rut' && idNumber && profileForm.bankHolderRut.replace(/[^0-9kK]/gi, '').toUpperCase() !== idNumber.replace(/[^0-9kK]/gi, '').toUpperCase() && (
+                  <div style={{ marginTop: 6, padding: '8px 12px', background: '#fce4ec', borderRadius: 8, fontSize: 12, color: '#c62828', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertTriangle size={14} /> El RUT no coincide con tu RUT personal. La cuenta bancaria debe ser propia, no de terceros.
+                  </div>
+                )}
               </div>
             </div>
           </Card>

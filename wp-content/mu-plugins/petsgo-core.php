@@ -64,6 +64,8 @@ class PetsGo_Core {
         add_action('init', [$this, 'ensure_petsgo_vendor']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
+        add_action('init', [$this, 'schedule_rider_doc_expiry_cron']);
+        add_action('petsgo_check_rider_doc_expiry', [$this, 'process_rider_doc_expiry']);
         add_filter('determine_current_user', [$this, 'resolve_api_token'], 20);
         add_filter('rest_authentication_errors', [$this, 'bypass_cookie_nonce_for_token'], 90);
         add_action('rest_api_init', [$this, 'register_api_endpoints']);
@@ -3221,8 +3223,8 @@ class PetsGo_Core {
                         <span class="petsgo-loader" id="pdr-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
                     </div>
                     <div class="petsgo-table-wrap">
-                    <table class="petsgo-table"><thead><tr><th>Rider</th><th>Email</th><th>RUT/DNI</th><th>Vehículo</th><th>Ubicación</th><th>Documentos</th><th>Estado Rider</th><th>Registro</th><th>Acciones</th></tr></thead>
-                    <tbody id="pdr-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
+                    <table class="petsgo-table"><thead><tr><th>Rider</th><th>Email</th><th>RUT/DNI</th><th>Vehículo</th><th>Ubicación</th><th>Documentos</th><th>Vigencia</th><th>Estado Rider</th><th>Registro</th><th>Acciones</th></tr></thead>
+                    <tbody id="pdr-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Haz clic en Buscar para cargar.</td></tr></tbody></table>
                     </div>
                     <div id="pdr-pagination" style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;"></div>
                 </div>
@@ -3234,7 +3236,7 @@ class PetsGo_Core {
                     </div>
                     <div id="pdr-detail-info" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;"></div>
                     <div class="petsgo-table-wrap">
-                    <table class="petsgo-table"><thead><tr><th>Documento</th><th>Archivo</th><th>Estado</th><th>Fecha Subida</th><th>Revisado por</th><th>Notas</th><th>Acciones</th></tr></thead>
+                    <table class="petsgo-table"><thead><tr><th>Documento</th><th>Archivo</th><th>Estado</th><th>Vigencia</th><th>Vencimiento</th><th>Fecha Subida</th><th>Revisado por</th><th>Notas</th><th>Acciones</th></tr></thead>
                     <tbody id="pdr-detail-body"></tbody></table>
                     </div>
                 </div>
@@ -3257,6 +3259,12 @@ class PetsGo_Core {
                             <div style="margin-bottom:12px;">
                                 <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:4px;">📝 Notas del admin:</label>
                                 <textarea id="pdr-modal-notes" rows="2" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;resize:vertical;" placeholder="Agregar observaciones..."></textarea>
+                            </div>
+                            <div id="pdr-modal-expiry-wrap" style="margin-bottom:12px;display:none;">
+                                <label style="font-size:12px;font-weight:700;color:#555;display:block;margin-bottom:4px;">📅 Fecha de vencimiento del documento: <span style="color:#dc2626;">*</span></label>
+                                <input type="date" id="pdr-modal-expiry" style="width:100%;border:1px solid #ddd;border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit;" />
+                                <div id="pdr-modal-expiry-info" style="margin-top:6px;display:none;"></div>
+                                <p style="font-size:11px;color:#999;margin:4px 0 0;">Requerido al aprobar: Cédula de Identidad, Licencia de Conducir, Permiso de Circulación.</p>
                             </div>
                             <div id="pdr-modal-actions" style="display:flex;gap:8px;justify-content:flex-end;"></div>
                         </div>
@@ -3397,7 +3405,7 @@ class PetsGo_Core {
                 $('#pdr-loader').addClass('active');
                 PG.post('petsgo_search_rider_summary',{status:$('#pdr-filter-status').val(),search:$('#pdr-search').val(),page:pdrCurrentPage},function(r){
                     $('#pdr-loader').removeClass('active');
-                    if(!r.success||!r.data.riders||!r.data.riders.length){$('#pdr-body').html('<tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">No se encontraron riders.</td></tr>');$('#pdr-pagination').html('');return;}
+                    if(!r.success||!r.data.riders||!r.data.riders.length){$('#pdr-body').html('<tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">No se encontraron riders.</td></tr>');$('#pdr-pagination').html('');return;}
                     var h='';
                     $.each(r.data.riders,function(i,rd){
                         var vtIcon=rd.vehicle_type==='moto'?'🏍️':rd.vehicle_type==='auto'?'🚗':rd.vehicle_type==='bicicleta'?'🚲':rd.vehicle_type==='scooter'?'🛵':'🚶';
@@ -3408,12 +3416,21 @@ class PetsGo_Core {
                         if(parseInt(rd.pending_docs)>0) docInfo+=' <span style="color:#F97316;font-weight:600;">'+rd.pending_docs+'</span>⏳';
                         if(parseInt(rd.rejected_docs)>0) docInfo+=' <span style="color:#EF4444;font-weight:600;">'+rd.rejected_docs+'</span>❌';
                         docInfo+=' <small style="color:#999;">('+rd.total_docs+' total)</small>';
+                        var vigIcon='';
+                        if(rd.nearest_expiry){
+                            var dLeft=Math.round((new Date(rd.nearest_expiry+'T12:00:00')-new Date())/(86400000));
+                            if(dLeft<0) vigIcon='<span title="Doc vencido ('+rd.nearest_expiry+')" style="background:#fce4ec;color:#c62828;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;cursor:help;">🔴 Vencido</span>';
+                            else if(dLeft<=15) vigIcon='<span title="Vence en '+dLeft+'d ('+rd.nearest_expiry+')" style="background:#fff3e0;color:#e65100;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;cursor:help;">🟠 '+dLeft+'d</span>';
+                            else if(dLeft<=30) vigIcon='<span title="Vence en '+dLeft+'d ('+rd.nearest_expiry+')" style="background:#fffbeb;color:#92400e;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;cursor:help;">🟡 '+dLeft+'d</span>';
+                            else vigIcon='<span title="Docs al día ('+rd.nearest_expiry+')" style="background:#e8f5e9;color:#2e7d32;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;cursor:help;">🟢 Al día</span>';
+                        }
                         h+='<tr style="cursor:pointer;" onclick="openRiderDetail('+rd.rider_id+',\''+PG.esc(rd.rider_name)+'\')"><td><strong>'+PG.esc(rd.rider_name)+'</strong></td>';
                         h+='<td style="font-size:12px;">'+PG.esc(rd.user_email)+'</td>';
                         h+='<td>'+PG.esc(rd.id_number||'N/A')+'</td>';
                         h+='<td>'+vtIcon+' '+PG.esc(rd.vehicle_type||'N/A')+'</td>';
                         h+='<td style="font-size:12px;">'+PG.esc((rd.comuna||'')+', '+(rd.region||''))+'</td>';
                         h+='<td>'+docInfo+'</td>';
+                        h+='<td>'+vigIcon+'</td>';
                         h+='<td>'+stBadge+'</td>';
                         h+='<td style="font-size:12px;">'+PG.fdate(rd.user_registered)+'</td>';
                         h+='<td><button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary" onclick="event.stopPropagation();openRiderDetail('+rd.rider_id+',\''+PG.esc(rd.rider_name)+'\')" title="Ver documentos">📋 Ver</button></td></tr>';
@@ -3440,9 +3457,9 @@ class PetsGo_Core {
                 $('#pdr-summary-view').hide();
                 $('#pdr-detail-view').show();
                 $('#pdr-detail-title').html('📋 Documentos de '+PG.esc(name));
-                $('#pdr-detail-body').html('<tr><td colspan="7" style="text-align:center;padding:20px;color:#999;">Cargando...</td></tr>');
+                $('#pdr-detail-body').html('<tr><td colspan="9" style="text-align:center;padding:20px;color:#999;">Cargando...</td></tr>');
                 PG.post('petsgo_search_rider_docs',{rider_id:riderId},function(r){
-                    if(!r.success||!r.data.length){$('#pdr-detail-body').html('<tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Sin documentos subidos.</td></tr>');$('#pdr-detail-info').html('');return;}
+                    if(!r.success||!r.data.length){$('#pdr-detail-body').html('<tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Sin documentos subidos.</td></tr>');$('#pdr-detail-info').html('');return;}
                     // Info cards
                     var d0=r.data[0];
                     var vtIcon=(d0.vehicle_type||'')==='moto'?'🏍️':(d0.vehicle_type||'')==='auto'?'🚗':'🚶';
@@ -3480,6 +3497,7 @@ class PetsGo_Core {
             window.openDocPreview=function(jsonStr){
                 var d=JSON.parse(jsonStr);
                 pdrModalDocId=d.id;
+                window._pdrModalDocType=d.doc_type;
                 var lbl=docLabels[d.doc_type]||d.doc_type;
                 $('#pdr-modal-title').text(lbl+' — '+PG.esc(d.file_name||'Documento'));
                 var ext=(d.file_name||'').toLowerCase().split('.').pop();
@@ -3490,6 +3508,23 @@ class PetsGo_Core {
                 $('#pdr-modal-status').html('Estado: '+stBadge);
                 $('#pdr-modal-date').text('Subido: '+PG.fdate(d.uploaded_at)+(d.reviewed_at?' | Revisado: '+PG.fdate(d.reviewed_at):''));
                 $('#pdr-modal-notes').val(d.admin_notes||'');
+                // Expiry date field — solo mostrar para docs que lo requieren
+                var expiryTypes=['id_card','license','vehicle_registration'];
+                if(expiryTypes.indexOf(d.doc_type)!==-1){
+                    $('#pdr-modal-expiry-wrap').show();
+                    $('#pdr-modal-expiry').val(d.expiry_date||'');
+                    // Vigencia info
+                    if(d.expiry_date){
+                        var dLeft=Math.round((new Date(d.expiry_date+'T12:00:00')-new Date())/(86400000));
+                        var vigTxt=dLeft<0?'🔴 Vencido hace '+Math.abs(dLeft)+' días':dLeft<=15?'🟠 Vence en '+dLeft+' días':dLeft<=30?'🟡 Vence en '+dLeft+' días':'🟢 Vigente ('+dLeft+' días restantes)';
+                        var vigClr=dLeft<0?'#c62828':dLeft<=15?'#e65100':dLeft<=30?'#92400e':'#2e7d32';
+                        $('#pdr-modal-expiry-info').html('<span style="font-size:12px;font-weight:600;color:'+vigClr+';">'+vigTxt+'</span>').show();
+                    } else { $('#pdr-modal-expiry-info').hide(); }
+                } else {
+                    $('#pdr-modal-expiry-wrap').hide();
+                    $('#pdr-modal-expiry').val('');
+                    $('#pdr-modal-expiry-info').hide();
+                }
                 var acts='';
                 if(d.status==='pending'){
                     acts+='<button class="petsgo-btn petsgo-btn-success" onclick="reviewFromModal(\'approved\')">✅ Aprobar</button>';
@@ -3507,7 +3542,14 @@ class PetsGo_Core {
             window.reviewFromModal=function(action){
                 if(!pdrModalDocId)return;
                 var notes=$('#pdr-modal-notes').val()||'';
-                PG.post('petsgo_review_rider_doc',{doc_id:pdrModalDocId,status:action,notes:notes},function(r){
+                var expiry=$('#pdr-modal-expiry').val()||'';
+                var expiryTypes=['id_card','license','vehicle_registration'];
+                // Validar fecha de vencimiento al aprobar docs que lo requieren
+                if(action==='approved' && expiryTypes.indexOf(window._pdrModalDocType)!==-1){
+                    if(!expiry){alert('⚠️ Debe ingresar la fecha de vencimiento para este documento.');return;}
+                    if(new Date(expiry+'T12:00:00')<new Date()){alert('⚠️ La fecha de vencimiento no puede ser pasada.');return;}
+                }
+                PG.post('petsgo_review_rider_doc',{doc_id:pdrModalDocId,status:action,notes:notes,expiry_date:expiry},function(r){
                     if(r.success){closePdrModal();if(pdrCurrentRider)openRiderDetail(pdrCurrentRider,$('#pdr-detail-title').text().replace('📋 Documentos de ',''));}
                     else alert(r.data);
                 });
@@ -4398,6 +4440,7 @@ Dashboard con analíticas"></textarea>
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='approved') AS approved_docs,
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='pending') AS pending_docs,
                     (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_rider_documents rd WHERE rd.rider_id=u.ID AND rd.status='rejected') AS rejected_docs,
+                    (SELECT MIN(rde.expiry_date) FROM {$wpdb->prefix}petsgo_rider_documents rde WHERE rde.rider_id=u.ID AND rde.status='approved' AND rde.expiry_date IS NOT NULL AND rde.doc_type IN ('id_card','license','vehicle_registration')) AS nearest_expiry,
                     u.user_registered
                 FROM {$wpdb->users} u
                 INNER JOIN {$wpdb->usermeta} um ON u.ID=um.user_id
@@ -4457,6 +4500,7 @@ Dashboard con analíticas"></textarea>
         $doc_id = intval($_POST['doc_id'] ?? 0);
         $status = sanitize_text_field($_POST['status'] ?? '');
         $notes  = sanitize_textarea_field($_POST['notes'] ?? '');
+        $expiry_date = sanitize_text_field($_POST['expiry_date'] ?? '');
         if (!$doc_id || !in_array($status, ['approved', 'rejected', 'pending'])) wp_send_json_error('Datos inválidos');
 
         $update_data = [
@@ -4466,10 +4510,42 @@ Dashboard con analíticas"></textarea>
         if ($status === 'pending') {
             $update_data['reviewed_by'] = null;
             $update_data['reviewed_at'] = null;
+            $update_data['expiry_date'] = null;
+            $update_data['expiry_notified_30'] = 0;
+            $update_data['expiry_notified_15'] = 0;
+            $update_data['expiry_notified_1'] = 0;
         } else {
             $update_data['reviewed_by'] = get_current_user_id();
             $update_data['reviewed_at'] = current_time('mysql');
         }
+
+        // Guardar fecha de vencimiento al aprobar documentos que lo requieren
+        if ($status === 'approved' && $expiry_date) {
+            // Validar formato fecha
+            $dt = \DateTime::createFromFormat('Y-m-d', $expiry_date);
+            if ($dt && $dt->format('Y-m-d') === $expiry_date) {
+                $update_data['expiry_date'] = $expiry_date;
+                $update_data['expiry_notified_30'] = 0;
+                $update_data['expiry_notified_15'] = 0;
+                $update_data['expiry_notified_1'] = 0;
+            }
+        }
+
+        // Validar que docs que requieren fecha de vencimiento la tengan
+        $doc = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_rider_documents WHERE id=%d", $doc_id));
+        $docs_with_expiry = ['id_card', 'license', 'vehicle_registration'];
+        if ($status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && empty($expiry_date)) {
+            wp_send_json_error('Debe ingresar la fecha de vencimiento para este documento.');
+            return;
+        }
+        if ($status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && !empty($expiry_date)) {
+            // Validar que la fecha no esté vencida
+            if (strtotime($expiry_date) < strtotime(date('Y-m-d'))) {
+                wp_send_json_error('La fecha de vencimiento no puede ser una fecha pasada.');
+                return;
+            }
+        }
+
         $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", $update_data, ['id' => $doc_id]);
 
         $doc = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_rider_documents WHERE id=%d", $doc_id));
@@ -6813,10 +6889,23 @@ Dashboard con analíticas"></textarea>
             admin_notes text DEFAULT NULL,
             reviewed_by bigint(20) DEFAULT NULL,
             reviewed_at datetime DEFAULT NULL,
+            expiry_date date DEFAULT NULL,
+            expiry_notified_30 tinyint(1) DEFAULT 0,
+            expiry_notified_15 tinyint(1) DEFAULT 0,
+            expiry_notified_1 tinyint(1) DEFAULT 0,
             uploaded_at timestamp DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY rider_id (rider_id)
         ) {$charset}");
+
+        // Add expiry columns if missing (upgrade path)
+        $doc_cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_rider_documents", 0);
+        if (!in_array('expiry_date', $doc_cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_date date DEFAULT NULL AFTER reviewed_at");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_30 tinyint(1) DEFAULT 0 AFTER expiry_date");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_15 tinyint(1) DEFAULT 0 AFTER expiry_notified_30");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_1 tinyint(1) DEFAULT 0 AFTER expiry_notified_15");
+        }
 
         $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_delivery_ratings (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -6908,6 +6997,9 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_name varchar(100) DEFAULT NULL AFTER vehicle_type");
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_account_type varchar(30) DEFAULT NULL AFTER bank_name");
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_account_number varchar(50) DEFAULT NULL AFTER bank_account_type");
+        }
+        if (!in_array('bank_holder_rut', $pcols2)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN bank_holder_rut varchar(20) DEFAULT NULL AFTER bank_account_number");
         }
 
         // Region / comuna columns in user_profiles
@@ -7356,6 +7448,180 @@ Dashboard con analíticas"></textarea>
       </p>';
 
         return $this->email_wrap($inner, $urgency_icon . ' Tu suscripción vence en ' . $days . ' día' . ($days > 1 ? 's' : ''));
+    }
+
+    /**
+     * Schedule daily cron for rider document expiry checks.
+     */
+    public function schedule_rider_doc_expiry_cron() {
+        if (!wp_next_scheduled('petsgo_check_rider_doc_expiry')) {
+            wp_schedule_event(time(), 'daily', 'petsgo_check_rider_doc_expiry');
+        }
+    }
+
+    /**
+     * Process rider document expiry: notify 30/15/1 days before, block on expiry.
+     * Applies to: id_card (all riders), license + vehicle_registration (moto/auto).
+     */
+    public function process_rider_doc_expiry() {
+        global $wpdb;
+        $today = date('Y-m-d');
+        $company = $this->pg_setting('company_name', 'PetsGo');
+        $from_email = $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl');
+        $hdrs = ['Content-Type: text/html; charset=UTF-8', "From: {$company} <{$from_email}>"];
+
+        // 1. Send reminders at 30, 15, and 1 day(s) before expiry
+        $reminder_config = [
+            ['days' => 30, 'col' => 'expiry_notified_30'],
+            ['days' => 15, 'col' => 'expiry_notified_15'],
+            ['days' =>  1, 'col' => 'expiry_notified_1'],
+        ];
+
+        $docLabels = [
+            'license' => 'Licencia de Conducir',
+            'vehicle_registration' => 'Permiso de Circulación / Padrón del Vehículo',
+            'id_card' => 'Documento de Identidad (Cédula)',
+        ];
+
+        foreach ($reminder_config as $rc) {
+            $target_date = date('Y-m-d', strtotime("+{$rc['days']} days"));
+            $docs = $wpdb->get_results($wpdb->prepare(
+                "SELECT rd.*, u.user_email, u.display_name,
+                        (SELECT umr.meta_value FROM {$wpdb->usermeta} umr WHERE umr.user_id=rd.rider_id AND umr.meta_key='petsgo_rider_status') AS rider_status
+                 FROM {$wpdb->prefix}petsgo_rider_documents rd
+                 JOIN {$wpdb->users} u ON rd.rider_id = u.ID
+                 WHERE rd.status = 'approved'
+                   AND rd.expiry_date = %s
+                   AND rd.{$rc['col']} = 0
+                   AND rd.doc_type IN ('id_card','license','vehicle_registration')",
+                $target_date
+            ));
+
+            foreach ($docs as $d) {
+                // Skip if rider already blocked/rejected
+                if (in_array($d->rider_status, ['rejected', 'suspended'])) continue;
+
+                $rider_name = get_user_meta($d->rider_id, 'first_name', true) ?: $d->display_name;
+                $docLabel = $docLabels[$d->doc_type] ?? $d->doc_type;
+                $expiry_fmt = date('d/m/Y', strtotime($d->expiry_date));
+                $urgency = $rc['days'] <= 1 ? '🚨' : ($rc['days'] <= 15 ? '⚠️' : '⏰');
+                $urgency_color = $rc['days'] <= 1 ? '#dc2626' : ($rc['days'] <= 15 ? '#e65100' : '#F59E0B');
+                $urgency_bg = $rc['days'] <= 1 ? '#fef2f2' : ($rc['days'] <= 15 ? '#fff3e0' : '#fffbeb');
+
+                $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($rider_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que uno de tus documentos est' . chr(225) . ' pr' . chr(243) . 'ximo a vencer.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:' . $urgency_bg . ';border-left:4px solid ' . $urgency_color . ';border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 8px;font-size:16px;font-weight:700;color:' . $urgency_color . ';">' . $urgency . ' Documento por vencer en ' . $rc['days'] . ' d' . chr(237) . 'a' . ($rc['days'] > 1 ? 's' : '') . '</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><td style="padding:4px 0;font-weight:600;width:160px;">Documento:</td><td style="padding:4px 0;"><strong>' . esc_html($docLabel) . '</strong></td></tr>
+            <tr><td style="padding:4px 0;font-weight:600;">Fecha de vencimiento:</td><td style="padding:4px 0;font-weight:700;color:' . $urgency_color . ';">' . $expiry_fmt . '</td></tr>
+          </table>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:8px;padding:16px 24px;">
+          <p style="margin:0;font-size:13px;color:#991b1b;line-height:1.6;">
+            <strong>⚠️ Importante:</strong> Si no actualizas este documento antes de su vencimiento, tu cuenta de Rider ser' . chr(225) . ' <strong>bloqueada autom' . chr(225) . 'ticamente</strong> y no podr' . chr(225) . 's realizar entregas hasta que subas el documento actualizado.
+          </p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#F97316;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Actualizar Documento</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($d->user_email) . '</span> como recordatorio de vencimiento de documentaci' . chr(243) . 'n Rider en PetsGo.
+      </p>';
+
+                $html = $this->email_wrap($inner, $urgency . ' Tu ' . $docLabel . ' vence en ' . $rc['days'] . ' d' . chr(237) . 'a' . ($rc['days'] > 1 ? 's' : ''));
+                @wp_mail($d->user_email, "{$urgency} Tu documento vence en {$rc['days']} día" . ($rc['days'] > 1 ? 's' : '') . " - {$company}", $html, $hdrs);
+
+                // Mark as notified
+                $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", [$rc['col'] => 1], ['id' => $d->id]);
+                $this->audit('rider_doc_expiry_reminder', 'rider_document', $d->id, "Recordatorio {$rc['days']}d: {$d->doc_type} vence {$d->expiry_date}");
+            }
+        }
+
+        // 2. Block riders with expired documents
+        $expired_docs = $wpdb->get_results(
+            "SELECT rd.rider_id, rd.doc_type, rd.expiry_date, u.user_email, u.display_name,
+                    (SELECT umr.meta_value FROM {$wpdb->usermeta} umr WHERE umr.user_id=rd.rider_id AND umr.meta_key='petsgo_rider_status') AS rider_status
+             FROM {$wpdb->prefix}petsgo_rider_documents rd
+             JOIN {$wpdb->users} u ON rd.rider_id = u.ID
+             WHERE rd.status = 'approved'
+               AND rd.expiry_date IS NOT NULL
+               AND rd.expiry_date < CURDATE()
+               AND rd.doc_type IN ('id_card','license','vehicle_registration')"
+        );
+
+        // Group by rider
+        $riders_to_block = [];
+        foreach ($expired_docs as $ed) {
+            if ($ed->rider_status !== 'approved') continue; // Solo bloquear riders aprobados
+            $riders_to_block[$ed->rider_id][] = $ed;
+        }
+
+        foreach ($riders_to_block as $rider_id => $docs) {
+            // Change status to suspended
+            update_user_meta($rider_id, 'petsgo_rider_status', 'suspended');
+
+            // Set expired docs back to pending so rider can re-upload
+            foreach ($docs as $d) {
+                $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", [
+                    'status' => 'pending',
+                    'admin_notes' => 'Documento vencido el ' . $d->expiry_date . '. Debe subir documento actualizado.',
+                    'expiry_notified_30' => 0,
+                    'expiry_notified_15' => 0,
+                    'expiry_notified_1' => 0,
+                ], ['rider_id' => $rider_id, 'doc_type' => $d->doc_type, 'status' => 'approved']);
+            }
+
+            // Send blocking email
+            $rider_user = get_userdata($rider_id);
+            $rider_name = get_user_meta($rider_id, 'first_name', true) ?: $rider_user->display_name;
+            $doc_list_html = '';
+            foreach ($docs as $d) {
+                $docLabel = $docLabels[$d->doc_type] ?? $d->doc_type;
+                $doc_list_html .= '<tr><td style="padding:4px 8px;border-bottom:1px solid #fee2e2;">' . esc_html($docLabel) . '</td><td style="padding:4px 8px;border-bottom:1px solid #fee2e2;font-weight:700;color:#dc2626;">' . date('d/m/Y', strtotime($d->expiry_date)) . '</td></tr>';
+            }
+
+            $block_inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($rider_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Lamentamos informarte que tu cuenta de Rider ha sido <strong style="color:#dc2626;">suspendida</strong> debido a documentaci' . chr(243) . 'n vencida.</p>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fef2f2;border-left:4px solid #dc2626;border-radius:8px;padding:20px 24px;">
+          <p style="margin:0 0 12px;font-size:14px;color:#991b1b;font-weight:700;">🚫 Cuenta Suspendida — Documentos Vencidos</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="font-size:13px;color:#555;">
+            <tr><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #fca5a5;">Documento</th><th style="text-align:left;padding:4px 8px;border-bottom:2px solid #fca5a5;">Vencimiento</th></tr>
+            ' . $doc_list_html . '
+          </table>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr><td style="background-color:#fff8ed;border-left:4px solid #FFC400;border-radius:8px;padding:16px 24px;">
+          <p style="margin:0;font-size:13px;color:#92400e;line-height:1.6;">
+            📋 <strong>&iquest;C' . chr(243) . 'mo reactivar tu cuenta?</strong><br>
+            Ingresa a tu Panel de Rider y sube los documentos actualizados. Una vez que sean revisados y aprobados por nuestro equipo, tu cuenta ser' . chr(225) . ' reactivada autom' . chr(225) . 'ticamente.
+          </p>
+        </td></tr>
+      </table>
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+        <tr><td align="center">
+          <a href="' . esc_url(home_url()) . '" style="display:inline-block;background:#F97316;color:#fff;font-size:14px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:8px;">Actualizar Documentos</a>
+        </td></tr>
+      </table>
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este correo fue enviado a <span style="color:#888;">' . esc_html($rider_user->user_email) . '</span> por vencimiento de documentaci' . chr(243) . 'n Rider en PetsGo.
+      </p>';
+
+            $block_html = $this->email_wrap($block_inner, '🚫 Cuenta Rider Suspendida — Documentos Vencidos');
+            @wp_mail($rider_user->user_email, "🚫 Tu cuenta Rider ha sido suspendida - {$company}", $block_html, $hdrs);
+
+            $this->audit('rider_doc_expired_block', 'user', $rider_id, 'Rider bloqueado por documentos vencidos: ' . implode(', ', array_map(fn($d) => $d->doc_type, $docs)));
+        }
     }
 
     // ============================================================
@@ -8348,7 +8614,7 @@ Dashboard con analíticas"></textarea>
         $vehicle = get_user_meta($uid, 'petsgo_vehicle', true) ?: '';
         $email_verified = !in_array($status, ['pending_email']);
         $docs = $wpdb->get_results($wpdb->prepare(
-            "SELECT doc_type, status, admin_notes FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
+            "SELECT doc_type, status, admin_notes, expiry_date FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d", $uid
         ));
         $pending_docs = array_filter($docs, fn($d) => $d->status === 'pending');
         $rejected_docs = array_filter($docs, fn($d) => $d->status === 'rejected');
@@ -8374,6 +8640,31 @@ Dashboard con analíticas"></textarea>
         // Profile data for document matching
         $profile = $wpdb->get_row($wpdb->prepare("SELECT id_type, id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
 
+        // Document expiry alerts for rider dashboard
+        $today = date('Y-m-d');
+        $expiry_alerts = [];
+        $docLabelsMap = [
+            'license' => 'Licencia de Conducir',
+            'vehicle_registration' => 'Permiso de Circulación',
+            'id_card' => 'Documento de Identidad',
+        ];
+        foreach ($docs as $d) {
+            if ($d->expiry_date && in_array($d->doc_type, ['id_card', 'license', 'vehicle_registration'])) {
+                $days_left = (int) round((strtotime($d->expiry_date) - strtotime($today)) / 86400);
+                $expiry_status = 'ok';
+                if ($days_left < 0) $expiry_status = 'expired';
+                elseif ($days_left <= 15) $expiry_status = 'critical';
+                elseif ($days_left <= 30) $expiry_status = 'warning';
+                $expiry_alerts[] = [
+                    'doc_type'      => $d->doc_type,
+                    'doc_label'     => $docLabelsMap[$d->doc_type] ?? $d->doc_type,
+                    'expiry_date'   => $d->expiry_date,
+                    'days_left'     => $days_left,
+                    'expiry_status' => $expiry_status,
+                ];
+            }
+        }
+
         return rest_ensure_response([
             'rider_status'    => $status,
             'email_verified'  => $email_verified,
@@ -8386,6 +8677,7 @@ Dashboard con analíticas"></textarea>
             'average_rating'  => $avg ? round(floatval($avg), 1) : null,
             'id_type'         => $profile->id_type ?? '',
             'id_number'       => $profile->id_number ?? '',
+            'expiry_alerts'   => $expiry_alerts,
         ]);
     }
 
@@ -8460,6 +8752,7 @@ Dashboard con analíticas"></textarea>
             'bankName'         => $profile->bank_name ?? '',
             'bankAccountType'  => $profile->bank_account_type ?? '',
             'bankAccountNumber'=> $profile->bank_account_number ?? '',
+            'bankHolderRut'    => $profile->bank_holder_rut ?? '',
             // Location
             'region'           => $profile->region ?? '',
             'comuna'           => $profile->comuna ?? '',
@@ -8489,6 +8782,7 @@ Dashboard con analíticas"></textarea>
         $bank_name  = sanitize_text_field($p['bankName'] ?? '');
         $bank_type  = sanitize_text_field($p['bankAccountType'] ?? '');
         $bank_num   = sanitize_text_field($p['bankAccountNumber'] ?? '');
+        $bank_rut   = sanitize_text_field($p['bankHolderRut'] ?? '');
         $region     = sanitize_text_field($p['region'] ?? '');
         $comuna     = sanitize_text_field($p['comuna'] ?? '');
 
@@ -8524,6 +8818,19 @@ Dashboard con analíticas"></textarea>
         if ($bank_name !== '') $data['bank_name'] = $bank_name;
         if ($bank_type !== '') $data['bank_account_type'] = $bank_type;
         if ($bank_num !== '') $data['bank_account_number'] = $bank_num;
+        if ($bank_rut !== '') {
+            // Validar que el RUT de la cuenta bancaria coincida con el RUT del rider
+            $rider_id_type = $wpdb->get_var($wpdb->prepare("SELECT id_type FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+            if ($rider_id_type === 'rut') {
+                $rider_rut = $wpdb->get_var($wpdb->prepare("SELECT id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+                $clean_bank = strtoupper(preg_replace('/[^0-9kK]/', '', $bank_rut));
+                $clean_rider = strtoupper(preg_replace('/[^0-9kK]/', '', $rider_rut));
+                if ($clean_bank !== $clean_rider) {
+                    return new WP_Error('rut_mismatch', 'El RUT de la cuenta bancaria debe coincidir con tu RUT personal. La cuenta debe ser propia.', ['status' => 400]);
+                }
+            }
+            $data['bank_holder_rut'] = $bank_rut;
+        }
         if ($region !== '') $data['region'] = $region;
         if ($comuna !== '') $data['comuna'] = $comuna;
 

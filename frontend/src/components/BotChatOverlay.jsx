@@ -712,6 +712,23 @@ const BotChatOverlay = ({ cartOpen = false }) => {
   
   const [messages, setMessages] = useState([]);
 
+  // ── Resetear todo el estado del chat cuando cambia el usuario (login/logout) ──
+  const prevUserIdRef = useRef(user?.id ?? null);
+  useEffect(() => {
+    const currentId = user?.id ?? null;
+    if (currentId !== prevUserIdRef.current) {
+      // Usuario cambió (logout → login, login → otro usuario, etc.)
+      conversationRef.current = [];
+      conversationIdRef.current = null;
+      systemPromptRef.current = '';
+      historyLoadedRef.current = false;
+      setMessages([]);
+      setConversations([]);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      prevUserIdRef.current = currentId;
+    }
+  }, [user?.id]);
+
   // ── Estado del panel de historial ──
   const [conversations, setConversations] = useState([]);
   const [historySearch, setHistorySearch] = useState('');

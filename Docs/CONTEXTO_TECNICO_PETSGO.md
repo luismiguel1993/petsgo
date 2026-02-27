@@ -174,7 +174,7 @@ PetsGoDev/
 | 6 | `wp_petsgo_orders` | Pedidos | customer_id, vendor_id, rider_id, total_amount, status, commission splits |
 | 7 | `wp_petsgo_order_items` | Items por pedido | order_id, product_id, quantity, unit_price, subtotal |
 | 8 | `wp_petsgo_invoices` | Boletas/Facturas | order_id, invoice_number, qr_token, pdf_path |
-| 9 | `wp_petsgo_rider_documents` | Documentos rider | rider_id, doc_type, file_url, status, admin_notes |
+| 9 | `wp_petsgo_rider_documents` | Documentos rider | rider_id, doc_type, file_url, status, admin_notes, **expiry_date**, expiry_notified_30/15/1 |
 | 10 | `wp_petsgo_delivery_ratings` | Valoraciones de entregas | order_id, rider_id, rater_type, rating (1-5) |
 | 11 | `wp_petsgo_rider_delivery_offers` | Ofertas de entrega | order_id, rider_id, status |
 | 12 | `wp_petsgo_rider_payouts` | Pagos a riders | rider_id, period, total_earned, net_amount |
@@ -202,6 +202,13 @@ PetsGoDev/
 
 ### Flujo de estados del Rider:
 `pending_email` → (verifica email) → `pending_docs` → (sube documentos) → `pending_review` → (admin aprueba) → `approved` / `rejected`
+
+**Bloqueo por vigencia:** `approved` → (cron detecta docs vencidos) → `suspended` → (rider re-sube docs + admin aprueba) → `approved`
+
+**Vigencia documental:**
+- Documentos con vencimiento obligatorio: `id_card`, `license`, `vehicle_registration`
+- Admin ingresa fecha al aprobar → notificaciones automáticas a 30/15/1 días → bloqueo si expira
+- `GET /rider/status` retorna `expiry_alerts[]` con `doc_type`, `doc_label`, `expiry_date`, `days_left`, `expiry_status` (ok/warning/critical/expired)
 
 ---
 
@@ -340,6 +347,10 @@ Todos los emails usan `email_wrap()` — template HTML corporativo con logo, col
 | Lead auto-respuesta | Formulario contacto | Lead |
 | Recordatorio renovación | Cron diario | Vendor |
 | Creación usuario por admin | Admin crea usuario | Usuario |
+| Doc. por vencer (30d) | Cron diario | Rider |
+| Doc. por vencer (15d) | Cron diario | Rider |
+| Doc. urgente (1d) | Cron diario | Rider |
+| Cuenta suspendida por docs vencidos | Cron diario | Rider |
 
 **BCC Global:** Todos los emails se copian a `soporte@petsgo.cl`
 
@@ -432,6 +443,7 @@ También: `cancelled`
 | Evento | Frecuencia | Handler | Propósito |
 |---|---|---|---|
 | `petsgo_check_renewals` | Diario | `process_renewal_reminders` | Enviar recordatorios de renovación de suscripción a vendors |
+| `petsgo_check_rider_doc_expiry` | Diario | `process_rider_doc_expiry` | Notificar vigencia docs rider (30/15/1d) + auto-bloqueo por vencimiento |
 
 ---
 

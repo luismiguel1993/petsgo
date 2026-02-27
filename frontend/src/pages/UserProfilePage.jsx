@@ -331,7 +331,8 @@ const UserProfilePage = () => {
             </div>
           </div>
 
-          {/* Pets Card */}
+          {/* Pets Card — Solo visible para clientes (rider, vendor, admin usan su propio dashboard) */}
+          {(!user?.role || user.role === 'customer') && (
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40' }}>🐾 Mis Mascotas</h2>
@@ -391,11 +392,12 @@ const UserProfilePage = () => {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
-      {/* Pet Modal */}
-      {petModal && (
+      {/* Pet Modal — Solo para clientes */}
+      {(!user?.role || user.role === 'customer') && petModal && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
