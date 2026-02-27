@@ -3533,6 +3533,7 @@ class PetsGo_Core {
                     acts+='<button class="petsgo-btn" onclick="reviewFromModal(\'pending\')" style="background:#fff3e0;color:#e65100;border:1px solid #fed7aa;">↩️ Revertir a Pendiente</button>';
                     if(d.status!=='approved') acts+='<button class="petsgo-btn petsgo-btn-success" onclick="reviewFromModal(\'approved\')">✅ Aprobar</button>';
                     if(d.status!=='rejected') acts+='<button class="petsgo-btn petsgo-btn-danger" onclick="reviewFromModal(\'rejected\')">❌ Rechazar</button>';
+                    if(d.status==='approved' && ['id_card','license','vehicle_registration'].indexOf(d.doc_type)!==-1) acts+='<button class="petsgo-btn" onclick="reviewFromModal(\'update_expiry\')" style="background:#e3f2fd;color:#1565c0;border:1px solid #90caf9;">📅 Actualizar Fecha</button>';
                 }
                 $('#pdr-modal-actions').html(acts);
                 $('#pdr-preview-modal').css('display','flex');
@@ -3544,8 +3545,8 @@ class PetsGo_Core {
                 var notes=$('#pdr-modal-notes').val()||'';
                 var expiry=$('#pdr-modal-expiry').val()||'';
                 var expiryTypes=['id_card','license','vehicle_registration'];
-                // Validar fecha de vencimiento al aprobar docs que lo requieren
-                if(action==='approved' && expiryTypes.indexOf(window._pdrModalDocType)!==-1){
+                // Validar fecha de vencimiento al aprobar o actualizar docs que lo requieren
+                if((action==='approved'||action==='update_expiry') && expiryTypes.indexOf(window._pdrModalDocType)!==-1){
                     if(!expiry){alert('⚠️ Debe ingresar la fecha de vencimiento para este documento.');return;}
                     if(new Date(expiry+'T12:00:00')<new Date()){alert('⚠️ La fecha de vencimiento no puede ser pasada.');return;}
                 }
@@ -4508,7 +4509,27 @@ Dashboard con analíticas"></textarea>
         $status = sanitize_text_field($_POST['status'] ?? '');
         $notes  = sanitize_textarea_field($_POST['notes'] ?? '');
         $expiry_date = sanitize_text_field($_POST['expiry_date'] ?? '');
-        if (!$doc_id || !in_array($status, ['approved', 'rejected', 'pending'])) wp_send_json_error('Datos inválidos');
+        if (!$doc_id || !in_array($status, ['approved', 'rejected', 'pending', 'update_expiry'])) wp_send_json_error('Datos inválidos');
+
+        // Handle expiry-only update (no status change)
+        if ($status === 'update_expiry') {
+            $has_expiry_cols = (bool)$wpdb->get_var("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{$wpdb->prefix}petsgo_rider_documents' AND COLUMN_NAME='expiry_date'");
+            if (!$has_expiry_cols) { wp_send_json_error('Columnas de vigencia no disponibles.'); return; }
+            if (empty($expiry_date)) { wp_send_json_error('Debe ingresar una fecha de vencimiento.'); return; }
+            $dt = \DateTime::createFromFormat('Y-m-d', $expiry_date);
+            if (!$dt || $dt->format('Y-m-d') !== $expiry_date) { wp_send_json_error('Formato de fecha inválido.'); return; }
+            if (strtotime($expiry_date) < strtotime(date('Y-m-d'))) { wp_send_json_error('La fecha no puede ser pasada.'); return; }
+            $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", [
+                'expiry_date' => $expiry_date,
+                'expiry_notified_30' => 0,
+                'expiry_notified_15' => 0,
+                'expiry_notified_1' => 0,
+            ], ['id' => $doc_id]);
+            if ($notes) $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", ['admin_notes' => $notes], ['id' => $doc_id]);
+            $this->audit('update_doc_expiry', 'rider_document', $doc_id, "Fecha vencimiento → {$expiry_date}");
+            wp_send_json_success('Fecha de vencimiento actualizada.');
+            return;
+        }
 
         $update_data = [
             'status'      => $status,
