@@ -6908,6 +6908,18 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD INDEX idx_purchase_group (purchase_group)");
         }
 
+        // Add expiry columns to rider_documents if missing (independent of v5 guard)
+        $rd_table = $wpdb->prefix . 'petsgo_rider_documents';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$rd_table}'") === $rd_table) {
+            $doc_cols = $wpdb->get_col("SHOW COLUMNS FROM {$rd_table}", 0);
+            if (is_array($doc_cols) && !in_array('expiry_date', $doc_cols)) {
+                $wpdb->query("ALTER TABLE {$rd_table} ADD COLUMN expiry_date date DEFAULT NULL AFTER reviewed_at");
+                $wpdb->query("ALTER TABLE {$rd_table} ADD COLUMN expiry_notified_30 tinyint(1) DEFAULT 0 AFTER expiry_date");
+                $wpdb->query("ALTER TABLE {$rd_table} ADD COLUMN expiry_notified_15 tinyint(1) DEFAULT 0 AFTER expiry_notified_30");
+                $wpdb->query("ALTER TABLE {$rd_table} ADD COLUMN expiry_notified_1 tinyint(1) DEFAULT 0 AFTER expiry_notified_15");
+            }
+        }
+
         if (get_option('petsgo_rider_tables_v5', false)) return;
         $charset = $wpdb->get_charset_collate();
 
@@ -6929,15 +6941,6 @@ Dashboard con analíticas"></textarea>
             PRIMARY KEY (id),
             KEY rider_id (rider_id)
         ) {$charset}");
-
-        // Add expiry columns if missing (upgrade path)
-        $doc_cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_rider_documents", 0);
-        if (!in_array('expiry_date', $doc_cols)) {
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_date date DEFAULT NULL AFTER reviewed_at");
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_30 tinyint(1) DEFAULT 0 AFTER expiry_date");
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_15 tinyint(1) DEFAULT 0 AFTER expiry_notified_30");
-            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_rider_documents ADD COLUMN expiry_notified_1 tinyint(1) DEFAULT 0 AFTER expiry_notified_15");
-        }
 
         $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_delivery_ratings (
             id bigint(20) NOT NULL AUTO_INCREMENT,
