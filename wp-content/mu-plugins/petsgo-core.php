@@ -1571,6 +1571,18 @@ class PetsGo_Core {
                 var dd=String(d.getDate()).padStart(2,'0'),mm=String(d.getMonth()+1).padStart(2,'0'),yy=d.getFullYear();
                 var hh=String(d.getHours()).padStart(2,'0'),mi=String(d.getMinutes()).padStart(2,'0');
                 return dd+'-'+mm+'-'+yy+' '+hh+':'+mi;
+            },
+            toast: function(msg,type){
+                type=type||'info';
+                var colors={success:'#22C55E',error:'#EF4444',info:'#3B82F6',warning:'#F97316'};
+                var icons={success:'✅',error:'❌',info:'ℹ️',warning:'⚠️'};
+                var wrap=document.getElementById('pg-toast-wrap');
+                if(!wrap){wrap=document.createElement('div');wrap.id='pg-toast-wrap';wrap.style.cssText='position:fixed;top:40px;right:24px;z-index:160000;display:flex;flex-direction:column;gap:10px;pointer-events:none;';document.body.appendChild(wrap);}
+                var el=document.createElement('div');
+                el.style.cssText='pointer-events:auto;background:#fff;border-left:5px solid '+(colors[type]||colors.info)+';border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:16px 40px 16px 18px;max-width:420px;min-width:280px;font-family:Poppins,Segoe UI,sans-serif;font-size:14px;color:#333;position:relative;animation:pgToastIn .4s ease;';
+                el.innerHTML=(icons[type]||'')+' '+msg+'<button onclick="this.parentNode.remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#999;padding:0;line-height:1">&times;</button>';
+                wrap.appendChild(el);
+                setTimeout(function(){if(el.parentNode)el.remove();},4000);
             }
         };
         /* ── Sortable Table + Pagination Engine ── */
