@@ -371,9 +371,9 @@ const HomePage = () => {
         {/* ========== PRODUCTOS DESTACADOS ========== */}
         <section style={{ marginTop: '80px' }}>
           <div className="flex flex-col items-center mb-8 text-center">
-            <h2 className="text-4xl font-black text-gray-800 mb-2">Top Ventas</h2>
+            <h2 className="text-4xl font-black text-gray-800 mb-2">Productos Destacados</h2>
             <p className="font-bold text-gray-400 uppercase tracking-widest text-xs italic mb-3">
-              Sugerido para tu mascota 🦴
+              Los favoritos de nuestras mascotas 🐾
             </p>
             <Link to="/tiendas" className="flex items-center gap-2 text-[#00A8E8] font-bold hover:gap-4 transition-all no-underline uppercase text-sm tracking-wide">
               Ver todas <ArrowRight size={18} />
