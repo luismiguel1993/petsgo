@@ -258,18 +258,37 @@ const CategoryPage = () => {
 
   /* ── Vista de lista de categorías (sin slug) ──────── */
   if (!categoryName) {
-    const allCats = Object.entries(categoryMeta);
+    const allCats = Object.entries(categoryMeta).filter(([k]) => k !== 'Todos');
+    const [catSort, setCatSort] = React.useState('default');
+    const sortedCats = [...allCats].sort((a, b) => {
+      if (catSort === 'az') return a[1].label.localeCompare(b[1].label);
+      if (catSort === 'za') return b[1].label.localeCompare(a[1].label);
+      return 0;
+    });
     return (
       <div style={{ fontFamily: 'Poppins, sans-serif', maxWidth: '1280px', margin: '0 auto', padding: '32px 20px' }}>
         <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontWeight: 700, fontSize: '13px', textDecoration: 'none', marginBottom: '24px' }}>
           <ArrowLeft size={16} /> Volver al Inicio
         </Link>
-        <div style={{ background: 'linear-gradient(135deg, #00A8E8 0%, #0077B6 100%)', borderRadius: '20px', padding: '32px', marginBottom: '32px', color: '#fff', textAlign: 'center' }}>
+        <div style={{ background: 'linear-gradient(135deg, #00A8E8 0%, #0077B6 100%)', borderRadius: '20px', padding: '32px', marginBottom: '24px', color: '#fff', textAlign: 'center' }}>
           <h1 style={{ fontSize: '32px', fontWeight: 900, marginBottom: '8px' }}>🐾 Categorías</h1>
           <p style={{ fontSize: '14px', opacity: 0.85, fontWeight: 500 }}>Explora todas nuestras categorías de productos para mascotas</p>
         </div>
+        {/* Barra de ordenamiento */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          <label style={{ fontSize: '12px', fontWeight: 700, color: '#6b7280' }}>Ordenar:</label>
+          <select value={catSort} onChange={(e) => setCatSort(e.target.value)} style={{
+            padding: '10px 14px', borderRadius: '10px', border: '2px solid #e5e7eb',
+            fontSize: '13px', fontWeight: 600, fontFamily: 'Poppins, sans-serif',
+            outline: 'none', cursor: 'pointer', background: '#fff', color: '#374151',
+          }}>
+            <option value="default">Por defecto</option>
+            <option value="az">Nombre A-Z</option>
+            <option value="za">Nombre Z-A</option>
+          </select>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
-          {allCats.filter(([k]) => k !== 'Todos').map(([key, val]) => (
+          {sortedCats.map(([key, val]) => (
             <Link key={key} to={`/categoria/${key}`} style={{
               background: '#fff', borderRadius: '18px', padding: '28px 20px', textAlign: 'center',
               textDecoration: 'none', color: '#1f2937', border: '1px solid #f3f4f6',
