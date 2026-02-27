@@ -3564,7 +3564,8 @@ class PetsGo_Core {
                 }
                 PG.post('petsgo_review_rider_doc',{doc_id:pdrModalDocId,status:action,notes:notes,expiry_date:expiry},function(r){
                     if(r.success){
-                        if(action==='update_expiry') PG.toast('✅ Fecha de vencimiento actualizada correctamente','success');
+                        var msgs={approved:'✅ Documento aprobado correctamente',rejected:'❌ Documento rechazado',pending:'↩️ Documento revertido a pendiente',update_expiry:'📅 Fecha de vencimiento actualizada correctamente'};
+                        PG.toast(msgs[action]||'Acción realizada',action==='rejected'?'warning':'success');
                         closePdrModal();if(pdrCurrentRider)openRiderDetail(pdrCurrentRider,$('#pdr-detail-title').text().replace('📋 Documentos de ',''));
                     }
                     else alert(r.data);
