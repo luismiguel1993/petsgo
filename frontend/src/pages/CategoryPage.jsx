@@ -147,16 +147,19 @@ const CategoryPage = () => {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
   const queryFromUrl = searchParams.get('q') || '';
-  const categoryName = decodeURIComponent(slug);
+  const categoryName = slug ? decodeURIComponent(slug) : null;
 
   const [categoryMeta, setCategoryMeta] = useState(FALLBACK_CATEGORY_META);
-  const meta = categoryMeta[categoryName] || { emoji: '📦', label: categoryName, desc: '' };
+  const meta = categoryName ? (categoryMeta[categoryName] || { emoji: '📦', label: categoryName, desc: '' }) : null;
 
   const [products, setProducts] = useState([]);
   const [allVendors, setAllVendors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(queryFromUrl);
   const [activeTab, setActiveTab] = useState('productos'); // 'productos' | 'tiendas'
+  const [priceRange, setPriceRange] = useState([0, 200000]);
+  const [priceMax, setPriceMax] = useState(200000);
+  const [sortBy, setSortBy] = useState('default');
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   /* Cargar categorías desde la API */
@@ -179,7 +182,8 @@ const CategoryPage = () => {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    loadData();
+    if (categoryName) loadData();
+    else setLoading(false);
   }, [categoryName, queryFromUrl]);
 
   const loadData = async () => {
@@ -213,15 +217,36 @@ const CategoryPage = () => {
     }
   };
 
-  /* Filtrar productos por búsqueda */
+  /* Calcular rango de precios disponible cuando cambian los productos */
+  useEffect(() => {
+    if (products.length > 0) {
+      const prices = products.map(p => Number(p.final_price || p.price) || 0);
+      const max = Math.ceil(Math.max(...prices) / 1000) * 1000;
+      setPriceMax(max || 200000);
+      setPriceRange([0, max || 200000]);
+    }
+  }, [products]);
+
+  /* Filtrar productos por búsqueda + rango de precio */
   const filteredProducts = useMemo(() => {
-    if (!searchTerm.trim()) return products;
-    const term = searchTerm.toLowerCase();
-    return products.filter(p =>
-      p.product_name.toLowerCase().includes(term) ||
-      p.store_name?.toLowerCase().includes(term)
-    );
-  }, [products, searchTerm]);
+    let result = products;
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(p =>
+        p.product_name.toLowerCase().includes(term) ||
+        p.store_name?.toLowerCase().includes(term)
+      );
+    }
+    result = result.filter(p => {
+      const price = Number(p.final_price || p.price) || 0;
+      return price >= priceRange[0] && price <= priceRange[1];
+    });
+    if (sortBy === 'price_asc') result = [...result].sort((a, b) => (Number(a.final_price || a.price) || 0) - (Number(b.final_price || b.price) || 0));
+    else if (sortBy === 'price_desc') result = [...result].sort((a, b) => (Number(b.final_price || b.price) || 0) - (Number(a.final_price || a.price) || 0));
+    else if (sortBy === 'name_asc') result = [...result].sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+    else if (sortBy === 'discount') result = [...result].sort((a, b) => (Number(b.discount_percent) || 0) - (Number(a.discount_percent) || 0));
+    return result;
+  }, [products, searchTerm, priceRange, sortBy]);
 
   /* Obtener vendors únicos que venden en esta categoría */
   const categoryVendors = useMemo(() => {
@@ -230,6 +255,39 @@ const CategoryPage = () => {
   }, [products, allVendors]);
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
+
+  /* ── Vista de lista de categorías (sin slug) ──────── */
+  if (!categoryName) {
+    const allCats = Object.entries(categoryMeta);
+    return (
+      <div style={{ fontFamily: 'Poppins, sans-serif', maxWidth: '1280px', margin: '0 auto', padding: '32px 20px' }}>
+        <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: '#9ca3af', fontWeight: 700, fontSize: '13px', textDecoration: 'none', marginBottom: '24px' }}>
+          <ArrowLeft size={16} /> Volver al Inicio
+        </Link>
+        <div style={{ background: 'linear-gradient(135deg, #00A8E8 0%, #0077B6 100%)', borderRadius: '20px', padding: '32px', marginBottom: '32px', color: '#fff', textAlign: 'center' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: 900, marginBottom: '8px' }}>🐾 Categorías</h1>
+          <p style={{ fontSize: '14px', opacity: 0.85, fontWeight: 500 }}>Explora todas nuestras categorías de productos para mascotas</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '20px' }}>
+          {allCats.filter(([k]) => k !== 'Todos').map(([key, val]) => (
+            <Link key={key} to={`/categoria/${key}`} style={{
+              background: '#fff', borderRadius: '18px', padding: '28px 20px', textAlign: 'center',
+              textDecoration: 'none', color: '#1f2937', border: '1px solid #f3f4f6',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.04)', transition: 'all 0.3s',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 40px rgba(0,0,0,0.08)'; e.currentTarget.style.borderColor = '#00A8E8'; }}
+            onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)'; e.currentTarget.style.borderColor = '#f3f4f6'; }}
+            >
+              <span style={{ fontSize: '40px' }}>{val.emoji}</span>
+              <strong style={{ fontSize: '15px', fontWeight: 800 }}>{val.label}</strong>
+              <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600 }}>{val.desc}</span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   /* ── Skeleton loading ──────────────────────────────── */
   if (loading) {
@@ -374,6 +432,67 @@ const CategoryPage = () => {
             </div>
           )}
         </div>
+
+        {/* ── Filtros: Precio + Ordenar ── */}
+        {activeTab === 'productos' && products.length > 0 && (
+          <div style={{
+            display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap',
+            alignItems: 'flex-end', background: '#fff', borderRadius: '14px', padding: '16px 20px',
+            border: '1px solid #f3f4f6', boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
+          }}>
+            <div style={{ flex: '1 1 320px', minWidth: '220px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#6b7280', marginBottom: '8px' }}>
+                <Filter size={14} /> Rango de precio: {formatPrice(priceRange[0])} — {formatPrice(priceRange[1])}
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>{formatPrice(0)}</span>
+                <div style={{ flex: 1, position: 'relative', height: '36px', display: 'flex', alignItems: 'center' }}>
+                  <div style={{ position: 'absolute', width: '100%', height: '6px', background: '#e5e7eb', borderRadius: '3px' }} />
+                  <div style={{
+                    position: 'absolute', height: '6px', borderRadius: '3px', background: 'linear-gradient(90deg, #00A8E8, #0077B6)',
+                    left: `${(priceRange[0] / priceMax) * 100}%`,
+                    width: `${((priceRange[1] - priceRange[0]) / priceMax) * 100}%`,
+                  }} />
+                  <input type="range" min={0} max={priceMax} step={1000} value={priceRange[0]}
+                    onChange={(e) => { const v = Number(e.target.value); if (v <= priceRange[1] - 1000) setPriceRange([v, priceRange[1]]); }}
+                    style={{ position: 'absolute', width: '100%', height: '36px', opacity: 0, cursor: 'pointer', zIndex: 2 }}
+                  />
+                  <input type="range" min={0} max={priceMax} step={1000} value={priceRange[1]}
+                    onChange={(e) => { const v = Number(e.target.value); if (v >= priceRange[0] + 1000) setPriceRange([priceRange[0], v]); }}
+                    style={{ position: 'absolute', width: '100%', height: '36px', opacity: 0, cursor: 'pointer', zIndex: 3 }}
+                  />
+                  {/* Thumb indicators */}
+                  <div style={{ position: 'absolute', left: `calc(${(priceRange[0] / priceMax) * 100}% - 8px)`, width: '16px', height: '16px', borderRadius: '50%', background: '#00A8E8', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.15)', zIndex: 1 }} />
+                  <div style={{ position: 'absolute', left: `calc(${(priceRange[1] / priceMax) * 100}% - 8px)`, width: '16px', height: '16px', borderRadius: '50%', background: '#0077B6', border: '2px solid #fff', boxShadow: '0 2px 6px rgba(0,0,0,0.15)', zIndex: 1 }} />
+                </div>
+                <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, whiteSpace: 'nowrap' }}>{formatPrice(priceMax)}</span>
+              </div>
+            </div>
+            <div style={{ flex: '0 0 auto' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: '#6b7280', marginBottom: '8px' }}>Ordenar por</label>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} style={{
+                padding: '10px 14px', borderRadius: '10px', border: '2px solid #e5e7eb',
+                fontSize: '13px', fontWeight: 600, fontFamily: 'Poppins, sans-serif',
+                outline: 'none', cursor: 'pointer', background: '#fff', color: '#374151',
+              }}>
+                <option value="default">Relevancia</option>
+                <option value="price_asc">Precio: menor a mayor</option>
+                <option value="price_desc">Precio: mayor a menor</option>
+                <option value="name_asc">Nombre A-Z</option>
+                <option value="discount">Mayor descuento</option>
+              </select>
+            </div>
+            {(priceRange[0] > 0 || priceRange[1] < priceMax || sortBy !== 'default') && (
+              <button onClick={() => { setPriceRange([0, priceMax]); setSortBy('default'); }} style={{
+                padding: '10px 16px', borderRadius: '10px', border: '1px solid #e5e7eb',
+                background: '#fff', color: '#6b7280', fontWeight: 700, fontSize: '12px',
+                cursor: 'pointer', fontFamily: 'Poppins, sans-serif', whiteSpace: 'nowrap',
+              }}>
+                ✕ Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ═══════ TAB: PRODUCTOS ═══════ */}
         {activeTab === 'productos' && (

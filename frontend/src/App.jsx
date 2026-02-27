@@ -137,8 +137,8 @@ function App() {
           <Route path="/cambiar-contrasena" element={<ForceChangePasswordPage />} />
           <Route path="/tiendas" element={activeRider ? <Navigate to="/rider" /> : <VendorsPage />} />
           <Route path="/tienda/:id" element={activeRider ? <Navigate to="/rider" /> : <VendorDetailPage />} />
-          <Route path="/categoria" element={<Navigate to="/" replace />} />
-          <Route path="/categorias" element={<Navigate to="/" replace />} />
+          <Route path="/categoria" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
+          <Route path="/categorias" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
           <Route path="/categoria/:slug" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
           <Route path="/producto/:id" element={activeRider ? <Navigate to="/rider" /> : <ProductDetailPage />} />
           <Route path="/carrito" element={activeRider ? <Navigate to="/rider" /> : <CartPage />} />
