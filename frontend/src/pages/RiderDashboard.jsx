@@ -438,11 +438,11 @@ const RiderDashboard = () => {
         {isApproved && tabBtn('stats', '📊', 'Estadísticas')}
         {tabBtn('documents', '📋', 'Documentos')}
         {isApproved && tabBtn('ratings', '⭐', 'Valoraciones')}
-        {riderStatus !== 'pending_docs' && tabBtn('profile', '👤', 'Perfil')}
+        {tabBtn('profile', '👤', 'Perfil')}
       </div>
 
       {/* Aviso bloqueante para riders con documentación pendiente */}
-      {riderStatus === 'pending_docs' && tab !== 'documents' && (
+      {riderStatus === 'pending_docs' && tab !== 'documents' && tab !== 'profile' && (
         <Card style={{ textAlign: 'center', padding: 32, borderLeft: '4px solid #F97316', marginBottom: 20 }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
           <h3 style={{ fontWeight: 800, color: '#9A3412', margin: '0 0 8px' }}>Completa tu registro primero</h3>
