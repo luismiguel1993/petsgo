@@ -177,9 +177,26 @@ class PetsGo_Core {
             return;
         }
 
-        // Rider / Cliente (subscriber) / cualquier otro rol → redirigir al frontend
-        wp_safe_redirect(home_url('/'));
-        exit;
+        // Rider / Cliente (subscriber) / cualquier otro rol → mostrar página de acceso denegado
+        $role_label = 'Usuario';
+        if (in_array('petsgo_rider', $roles)) $role_label = 'Rider';
+        elseif (in_array('subscriber', $roles)) $role_label = 'Cliente';
+
+        wp_die(
+            '<div style="text-align:center;font-family:Poppins,Segoe UI,sans-serif;padding:40px 20px;">
+                <div style="font-size:80px;margin-bottom:16px;">🔒</div>
+                <h1 style="color:#2F3A40;font-size:28px;font-weight:800;margin-bottom:12px;">Acceso Denegado</h1>
+                <p style="color:#6b7280;font-size:16px;max-width:480px;margin:0 auto 24px;line-height:1.6;">
+                    Tu perfil de <strong style="color:#00A8E8;">' . esc_html($role_label) . '</strong> no tiene acceso al panel de administración.<br>
+                    Todas las funciones de tu cuenta están disponibles en la aplicación.
+                </p>
+                <a href="' . esc_url(home_url('/')) . '" style="display:inline-block;background:#00A8E8;color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;box-shadow:0 4px 16px rgba(0,168,232,0.3);transition:all 0.2s;">
+                    ← Volver a PetsGo
+                </a>
+            </div>',
+            'Acceso Denegado — PetsGo',
+            ['response' => 403, 'back_link' => false]
+        );
     }
 
     /**
