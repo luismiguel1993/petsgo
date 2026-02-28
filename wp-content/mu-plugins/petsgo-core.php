@@ -133,6 +133,104 @@ class PetsGo_Core {
 
         // ── Bloquear login WP (wp-login.php) para usuarios inactivos ──
         add_filter('wp_authenticate_user', [$this, 'block_inactive_wp_login'], 30, 2);
+
+        // ── Seguridad: bloquear acceso al backend para riders y clientes ──
+        add_action('admin_init', [$this, 'restrict_backend_access']);
+
+        // ── Ocultar menús nativos de WP para roles no-admin ──
+        add_action('admin_menu', [$this, 'hide_wp_menus_for_non_admins'], 999);
+
+        // ── Ocultar barra de admin para riders y clientes ──
+        add_action('after_setup_theme', function() {
+            if (!is_user_logged_in()) return;
+            $user = wp_get_current_user();
+            $roles = (array) $user->roles;
+            if (in_array('petsgo_rider', $roles) || in_array('subscriber', $roles)) {
+                show_admin_bar(false);
+            }
+        });
+    }
+
+    /**
+     * SEGURIDAD: Bloquear acceso al backend (wp-admin) para riders y clientes.
+     * Solo admin, vendor y soporte pueden entrar.
+     */
+    public function restrict_backend_access() {
+        // Permitir peticiones AJAX (los endpoints ya tienen sus propios guards)
+        if (defined('DOING_AJAX') && DOING_AJAX) return;
+
+        $user = wp_get_current_user();
+        if (!$user || !$user->ID) return;
+
+        $roles = (array) $user->roles;
+
+        // Administradores siempre pasan
+        if (in_array('administrator', $roles)) return;
+
+        // Vendor y Soporte pueden acceder (con restricciones de menú)
+        if (in_array('petsgo_vendor', $roles) || in_array('petsgo_support', $roles)) {
+            // Verificar que no intenten acceder a páginas prohibidas por URL
+            $page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+            if ($page && strpos($page, 'petsgo-') === 0) {
+                $this->enforce_page_access($page, $roles);
+            }
+            return;
+        }
+
+        // Rider / Cliente (subscriber) / cualquier otro rol → redirigir al frontend
+        wp_safe_redirect(home_url('/'));
+        exit;
+    }
+
+    /**
+     * Enforce que vendor/soporte no accedan a páginas PetsGo que no les corresponden.
+     */
+    private function enforce_page_access($page, $roles) {
+        $is_vendor  = in_array('petsgo_vendor', $roles);
+        $is_support = in_array('petsgo_support', $roles);
+
+        // Páginas permitidas para Vendor
+        $vendor_pages = [
+            'petsgo-dashboard', 'petsgo-products', 'petsgo-product-form',
+            'petsgo-orders', 'petsgo-delivery', 'petsgo-invoices',
+            'petsgo-invoice-config', 'petsgo-coupons',
+        ];
+
+        // Páginas permitidas para Soporte
+        $support_pages = [
+            'petsgo-dashboard', 'petsgo-tickets',
+        ];
+
+        if ($is_vendor && !in_array($page, $vendor_pages)) {
+            wp_safe_redirect(admin_url('admin.php?page=petsgo-dashboard'));
+            exit;
+        }
+
+        if ($is_support && !in_array($page, $support_pages)) {
+            wp_safe_redirect(admin_url('admin.php?page=petsgo-tickets'));
+            exit;
+        }
+    }
+
+    /**
+     * Ocultar menús nativos de WP (Posts, Páginas, Comentarios, Tools, etc.)
+     * para roles que no sean administrador.
+     */
+    public function hide_wp_menus_for_non_admins() {
+        if ($this->is_admin()) return;
+
+        // Remover todos los menús nativos de WP
+        remove_menu_page('index.php');              // Dashboard WP
+        remove_menu_page('edit.php');                // Entradas
+        remove_menu_page('upload.php');              // Medios
+        remove_menu_page('edit.php?post_type=page'); // Páginas
+        remove_menu_page('edit-comments.php');       // Comentarios
+        remove_menu_page('themes.php');              // Apariencia
+        remove_menu_page('plugins.php');             // Plugins
+        remove_menu_page('users.php');               // Usuarios
+        remove_menu_page('tools.php');               // Herramientas
+        remove_menu_page('options-general.php');     // Ajustes
+        remove_menu_page('profile.php');             // Perfil
     }
 
     /**
@@ -1284,45 +1382,49 @@ class PetsGo_Core {
         ));
     }
     private function can_access_admin() {
-        return $this->is_admin() || $this->is_vendor() || $this->is_rider();
+        return $this->is_admin() || $this->is_vendor() || $this->is_support();
     }
 
     // ============================================================
     // MENÚS — visibles según rol
     // ============================================================
     public function register_admin_menus() {
-        $cap_all   = 'read'; // Admin, vendor, rider pueden ver el menú base
-        $cap_admin = 'manage_options';
+        $cap_admin   = 'manage_options';
+        $cap_vendor  = 'manage_inventory';    // Solo vendor + admin
+        $cap_support = 'manage_support_tickets'; // Solo soporte + admin
 
-        add_menu_page('PetsGo', 'PetsGo', $cap_all, 'petsgo-dashboard', [$this, 'page_dashboard'], 'dashicons-store', 3);
+        // ── Menú principal PetsGo ──
+        add_menu_page('PetsGo', 'PetsGo', 'read', 'petsgo-dashboard', [$this, 'page_dashboard'], 'dashicons-store', 3);
 
-        // Submenús
-        add_submenu_page('petsgo-dashboard', 'Dashboard', 'Dashboard', $cap_all, 'petsgo-dashboard', [$this, 'page_dashboard']);
-        add_submenu_page('petsgo-dashboard', 'Productos', 'Productos', $cap_all, 'petsgo-products', [$this, 'page_products']);
-        add_submenu_page(null, 'Producto', 'Producto', $cap_all, 'petsgo-product-form', [$this, 'page_product_form']);
+        // Dashboard — admin y vendor
+        add_submenu_page('petsgo-dashboard', 'Dashboard', 'Dashboard', 'read', 'petsgo-dashboard', [$this, 'page_dashboard']);
+
+        // Productos — admin y vendor
+        add_submenu_page('petsgo-dashboard', 'Productos', 'Productos', $cap_vendor, 'petsgo-products', [$this, 'page_products']);
+        add_submenu_page(null, 'Producto', 'Producto', $cap_vendor, 'petsgo-product-form', [$this, 'page_product_form']);
 
         // Solo admin
         add_submenu_page('petsgo-dashboard', 'Tiendas', 'Tiendas', $cap_admin, 'petsgo-vendors', [$this, 'page_vendors']);
         add_submenu_page(null, 'Tienda', 'Tienda', $cap_admin, 'petsgo-vendor-form', [$this, 'page_vendor_form']);
 
-        // Pedidos — vendor ve solo los suyos
-        add_submenu_page('petsgo-dashboard', 'Pedidos', 'Pedidos', $cap_all, 'petsgo-orders', [$this, 'page_orders']);
+        // Pedidos — admin y vendor (vendor ve solo los suyos)
+        add_submenu_page('petsgo-dashboard', 'Pedidos', 'Pedidos', $cap_vendor, 'petsgo-orders', [$this, 'page_orders']);
 
         // Solo admin
         add_submenu_page('petsgo-dashboard', 'Usuarios', 'Usuarios', $cap_admin, 'petsgo-users', [$this, 'page_users']);
         add_submenu_page(null, 'Usuario', 'Usuario', $cap_admin, 'petsgo-user-form', [$this, 'page_user_form']);
 
-        // Delivery — admin y riders
-        add_submenu_page('petsgo-dashboard', 'Delivery', 'Delivery', $cap_all, 'petsgo-delivery', [$this, 'page_delivery']);
+        // Delivery — admin y vendor (vendor ve solo sus entregas)
+        add_submenu_page('petsgo-dashboard', 'Delivery', 'Delivery', $cap_vendor, 'petsgo-delivery', [$this, 'page_delivery']);
 
         // Planes — solo admin
         add_submenu_page('petsgo-dashboard', 'Planes', 'Planes', $cap_admin, 'petsgo-plans', [$this, 'page_plans']);
 
-        // Boletas — admin + vendor (los suyos)
-        add_submenu_page('petsgo-dashboard', 'Boletas', 'Boletas', $cap_all, 'petsgo-invoices', [$this, 'page_invoices']);
+        // Boletas — admin + vendor (vendor ve solo las suyas)
+        add_submenu_page('petsgo-dashboard', 'Boletas', 'Boletas', $cap_vendor, 'petsgo-invoices', [$this, 'page_invoices']);
 
-        // Config Boleta Tienda (hidden page)
-        add_submenu_page('petsgo-dashboard', 'Config Boleta', '🧾 Config Boleta', $cap_all, 'petsgo-invoice-config', [$this, 'page_invoice_config']);
+        // Config Boleta Tienda — admin + vendor
+        add_submenu_page('petsgo-dashboard', 'Config Boleta', '🧾 Config Boleta', $cap_vendor, 'petsgo-invoice-config', [$this, 'page_invoice_config']);
 
         // Auditoría — solo admin
         add_submenu_page('petsgo-dashboard', 'Auditoría', 'Auditoría', $cap_admin, 'petsgo-audit', [$this, 'page_audit_log']);
@@ -1333,11 +1435,11 @@ class PetsGo_Core {
         // Categorías — solo admin
         add_submenu_page('petsgo-dashboard', 'Categorías', '📂 Categorías', $cap_admin, 'petsgo-categories', [$this, 'page_categories']);
 
-        // Cupones — admin y vendors
-        add_submenu_page('petsgo-dashboard', 'Cupones', '🎟️ Cupones', $cap_all, 'petsgo-coupons', [$this, 'page_coupons']);
+        // Cupones — admin y vendor
+        add_submenu_page('petsgo-dashboard', 'Cupones', '🎟️ Cupones', $cap_vendor, 'petsgo-coupons', [$this, 'page_coupons']);
 
         // Tickets / Soporte — admin y soporte
-        add_submenu_page('petsgo-dashboard', 'Tickets', '🎫 Tickets', $cap_all, 'petsgo-tickets', [$this, 'page_tickets']);
+        add_submenu_page('petsgo-dashboard', 'Tickets', '🎫 Tickets', $cap_support, 'petsgo-tickets', [$this, 'page_tickets']);
 
         // Leads — solo admin
         add_submenu_page('petsgo-dashboard', 'Leads', '📩 Leads', $cap_admin, 'petsgo-leads', [$this, 'page_leads']);
@@ -1718,6 +1820,12 @@ class PetsGo_Core {
     // 1. DASHBOARD ANALÍTICO — AJAX-driven, filtros dinámicos
     // ============================================================
     public function page_dashboard() {
+        // Soporte va directo a tickets
+        if ($this->is_support() && !$this->is_admin()) {
+            echo '<div class="wrap"><p>Redirigiendo a Tickets...</p></div>';
+            echo '<script>window.location.href="' . admin_url('admin.php?page=petsgo-tickets') . '";</script>';
+            return;
+        }
         global $wpdb;
         $is_admin  = $this->is_admin();
         $is_vendor = $this->is_vendor();
@@ -2252,6 +2360,7 @@ class PetsGo_Core {
     // 2. PRODUCTOS — lista AJAX + filtro por vendor
     // ============================================================
     public function page_products() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
         $vid = $this->get_my_vendor_id();
@@ -2339,6 +2448,7 @@ class PetsGo_Core {
     // 2b. PRODUCTO FORM (crear/editar) — vendor field locked
     // ============================================================
     public function page_product_form() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
         $vid = $this->get_my_vendor_id();
@@ -2803,6 +2913,7 @@ class PetsGo_Core {
     // 4. PEDIDOS — vendor ve solo los suyos, admin ve todo
     // ============================================================
     public function page_orders() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
         $vid = $this->get_my_vendor_id();
@@ -3192,6 +3303,7 @@ class PetsGo_Core {
     // 6. DELIVERY — admin ve todo, rider ve los suyos
     // ============================================================
     public function page_delivery() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
         $riders = $is_admin ? $wpdb->get_results("SELECT u.ID, u.display_name FROM {$wpdb->users} u INNER JOIN {$wpdb->usermeta} m ON u.ID=m.user_id WHERE m.meta_key='{$wpdb->prefix}capabilities' AND m.meta_value LIKE '%petsgo_rider%'") : [];
@@ -4778,6 +4890,7 @@ Dashboard con analíticas"></textarea>
     // 8. BOLETAS / INVOICES
     // ============================================================
     public function page_invoices() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
         $vid = $this->get_my_vendor_id();
@@ -4840,6 +4953,7 @@ Dashboard con analíticas"></textarea>
     // 9. CONFIG BOLETA (per vendor)
     // ============================================================
     public function page_invoice_config() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         // If preview mode, show invoice preview
         $preview_id = intval($_GET['preview'] ?? 0);
@@ -6891,6 +7005,14 @@ Dashboard con analíticas"></textarea>
         add_role('petsgo_vendor', 'Tienda (Vendor)', ['read'=>true,'upload_files'=>true,'manage_inventory'=>true]);
         add_role('petsgo_rider', 'Delivery (Rider)', ['read'=>true,'upload_files'=>true,'manage_deliveries'=>true]);
         add_role('petsgo_support', 'Soporte', ['read'=>true,'moderate_comments'=>true,'manage_support_tickets'=>true]);
+
+        // Asegurar que admin tenga las capabilities custom para ver todos los menús
+        $admin_role = get_role('administrator');
+        if ($admin_role) {
+            $admin_role->add_cap('manage_inventory');
+            $admin_role->add_cap('manage_support_tickets');
+            $admin_role->add_cap('manage_deliveries');
+        }
     }
 
     /**
@@ -11661,7 +11783,7 @@ Dashboard con analíticas"></textarea>
     // ============================================================
     public function petsgo_search_tickets() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $status   = sanitize_text_field($_POST['status'] ?? '');
         $search   = sanitize_text_field($_POST['search'] ?? '');
@@ -11717,7 +11839,7 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_update_ticket() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id     = intval($_POST['id'] ?? 0);
         $status = sanitize_text_field($_POST['status'] ?? '');
@@ -11736,7 +11858,7 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_assign_ticket() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id = intval($_POST['id'] ?? 0);
         $assigned_to = intval($_POST['assigned_to'] ?? 0);
@@ -11758,7 +11880,7 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_add_ticket_reply() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id = intval($_POST['ticket_id'] ?? 0);
         $message = sanitize_textarea_field($_POST['message'] ?? '');
@@ -12125,7 +12247,7 @@ Dashboard con analíticas"></textarea>
     // ADMIN PAGE — Tickets
     // ============================================================
     public function page_tickets() {
-        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        if (!$this->is_admin() && !$this->is_support()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         global $wpdb;
         $admins = get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]);
         ?>
