@@ -11351,19 +11351,31 @@ Dashboard con analíticas"></textarea>
                 $('#cat-modal').css('display','flex');
             };
             window.pgCatSave = function(){
+                var isNew = !$('#cat-id').val();
+                var catName = $('#cat-name').val();
                 PG.post('petsgo_save_category',{
-                    id:$('#cat-id').val(),name:$('#cat-name').val(),slug:$('#cat-slug').val(),
+                    id:$('#cat-id').val(),name:catName,slug:$('#cat-slug').val(),
                     emoji:$('#cat-emoji').val(),sort_order:$('#cat-order').val(),
                     description:$('#cat-desc').val(),image_url:$('#cat-img').val(),
                     is_active:$('#cat-active').is(':checked')?1:0
                 },function(r){
-                    if(r.success){$('#cat-modal').hide();loadCats();}else{alert(r.data);}
+                    if(r.success){
+                        $('#cat-modal').hide();loadCats();
+                        PG.toast(isNew ? '✅ Categoría "'+catName+'" creada correctamente' : '✅ Categoría "'+catName+'" actualizada correctamente', 'success');
+                    } else {
+                        PG.toast('❌ ' + (r.data || 'Error al guardar la categoría'), 'error');
+                    }
                 });
             };
             window.pgCatDel = function(id,name){
                 if(!confirm('¿Eliminar categoría "'+name+'"?')) return;
                 PG.post('petsgo_delete_category',{id:id},function(r){
-                    if(r.success) loadCats(); else alert(r.data);
+                    if(r.success){
+                        loadCats();
+                        PG.toast('🗑️ Categoría "'+name+'" eliminada', 'success');
+                    } else {
+                        PG.toast('❌ ' + (r.data || 'Error al eliminar la categoría'), 'error');
+                    }
                 });
             };
         });
