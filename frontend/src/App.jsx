@@ -140,6 +140,7 @@ function App() {
           <Route path="/categoria" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
           <Route path="/categorias" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
           <Route path="/categoria/:slug" element={activeRider ? <Navigate to="/rider" /> : <CategoryPage />} />
+          <Route path="/productos" element={activeRider ? <Navigate to="/rider" /> : <Navigate to="/categoria/Todos" replace />} />
           <Route path="/producto/:id" element={activeRider ? <Navigate to="/rider" /> : <ProductDetailPage />} />
           <Route path="/carrito" element={activeRider ? <Navigate to="/rider" /> : <CartPage />} />
           <Route path="/planes" element={activeRider ? <Navigate to="/rider" /> : <PlansPage />} />
