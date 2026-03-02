@@ -115,6 +115,7 @@ class PetsGo_Core {
             'petsgo_save_coupon',
             'petsgo_delete_coupon',
             'petsgo_toggle_user_status',
+            'petsgo_verify_admin_password',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -1702,6 +1703,66 @@ class PetsGo_Core {
                 el.innerHTML=(icons[type]||'')+' '+msg+'<button onclick="this.parentNode.remove()" style="position:absolute;top:8px;right:10px;background:none;border:none;font-size:18px;cursor:pointer;color:#999;padding:0;line-height:1">&times;</button>';
                 wrap.appendChild(el);
                 setTimeout(function(){if(el.parentNode)el.remove();},4000);
+            },
+            /**
+             * Modal de confirmación con contraseña para acciones destructivas.
+             * @param {string} title - Título del modal
+             * @param {string} warning - Mensaje de advertencia (HTML)
+             * @param {function} onConfirm - Callback cuando confirma con password correcto
+             */
+            confirmDelete: function(title, warning, onConfirm){
+                // Remover modal previo si existe
+                $('#pg-confirm-del-modal').remove();
+                var html = '<div id="pg-confirm-del-modal" style="position:fixed;inset:0;z-index:170000;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-family:Poppins,Segoe UI,sans-serif;animation:pgToastIn .3s ease;">'
+                    +'<div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">'
+                    +'<div style="text-align:center;margin-bottom:20px;">'
+                    +'<div style="font-size:48px;margin-bottom:8px;">⚠️</div>'
+                    +'<h3 style="font-size:20px;font-weight:800;color:#2F3A40;margin:0 0 8px;">'+title+'</h3>'
+                    +'<div style="font-size:13px;color:#6b7280;line-height:1.6;">'+warning+'</div>'
+                    +'</div>'
+                    +'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px;margin-bottom:16px;">'
+                    +'<p style="font-size:12px;font-weight:700;color:#DC2626;margin:0 0 4px;">🔒 Ingresa tu contraseña para confirmar</p>'
+                    +'<p style="font-size:11px;color:#9ca3af;margin:0 0 10px;">Esta acción no se puede deshacer.</p>'
+                    +'<input type="password" id="pg-confirm-del-pwd" placeholder="Tu contraseña" autocomplete="current-password" '
+                    +'style="width:100%;padding:10px 14px;border:2px solid #e5e7eb;border-radius:8px;font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;" '
+                    +'onfocus="this.style.borderColor=\'#DC2626\'" onblur="this.style.borderColor=\'#e5e7eb\'">'
+                    +'<div id="pg-confirm-del-err" style="display:none;font-size:12px;color:#DC2626;font-weight:600;margin-top:8px;"></div>'
+                    +'</div>'
+                    +'<div style="display:flex;gap:10px;">'
+                    +'<button id="pg-confirm-del-cancel" style="flex:1;padding:12px;border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#6b7280;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;">Cancelar</button>'
+                    +'<button id="pg-confirm-del-ok" style="flex:1;padding:12px;border-radius:10px;border:none;background:#DC2626;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(220,38,38,0.3);">Eliminar</button>'
+                    +'</div>'
+                    +'</div>'
+                    +'</div>';
+                $('body').append(html);
+                $('#pg-confirm-del-pwd').focus();
+                // Enter key triggers confirm
+                $('#pg-confirm-del-pwd').on('keydown',function(e){ if(e.key==='Enter') $('#pg-confirm-del-ok').click(); });
+                // Escape key cancels
+                $(document).on('keydown.pgConfirmDel',function(e){ if(e.key==='Escape') $('#pg-confirm-del-cancel').click(); });
+                // Cancel
+                $('#pg-confirm-del-cancel').on('click',function(){ $('#pg-confirm-del-modal').remove(); $(document).off('keydown.pgConfirmDel'); });
+                // Backdrop click cancels
+                $('#pg-confirm-del-modal').on('click',function(e){ if(e.target===this){ $('#pg-confirm-del-cancel').click(); }});
+                // Confirm
+                $('#pg-confirm-del-ok').on('click',function(){
+                    var pwd = $('#pg-confirm-del-pwd').val();
+                    if(!pwd){ $('#pg-confirm-del-err').text('Debes ingresar tu contraseña.').show(); return; }
+                    var btn = $(this);
+                    btn.prop('disabled',true).text('Verificando...');
+                    // Verificar password via AJAX
+                    PG.post('petsgo_verify_admin_password',{password:pwd},function(r){
+                        if(r.success){
+                            $('#pg-confirm-del-modal').remove();
+                            $(document).off('keydown.pgConfirmDel');
+                            onConfirm();
+                        } else {
+                            btn.prop('disabled',false).text('Eliminar');
+                            $('#pg-confirm-del-err').text(r.data||'Contraseña incorrecta.').show();
+                            $('#pg-confirm-del-pwd').val('').focus();
+                        }
+                    });
+                });
             }
         };
         /* ── Sortable Table + Pagination Engine ── */
@@ -2452,8 +2513,10 @@ class PetsGo_Core {
             $('#pg-filter-cat<?php if($is_admin): ?>, #pg-filter-vendor<?php endif; ?>').on('change',load);
             $('#pg-btn-search').on('click',load);
             $(document).on('click','.pg-del',function(){
-                if(!confirm('¿Eliminar este producto?')) return;
-                PG.post('petsgo_delete_product',{id:$(this).data('id')},function(r){if(r.success)load();else alert(r.data);});
+                var id=$(this).data('id');
+                PG.confirmDelete('Eliminar Producto','Se eliminará permanentemente este producto y sus imágenes asociadas.',function(){
+                    PG.post('petsgo_delete_product',{id:id},function(r){if(r.success){load();PG.toast('🗑️ Producto eliminado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});
+                });
             });
             load();
         });
@@ -2649,9 +2712,9 @@ class PetsGo_Core {
                 var frame=wp.media({title:'Seleccionar imagen',button:{text:'Usar imagen'},multiple:false,library:{type:['image/jpeg','image/png','image/webp']}});
                 frame.on('select',function(){
                     var a=frame.state().get('selection').first().toJSON();
-                    if(a.width<400||a.height<400){alert('⚠️ Imagen muy pequeña. Mín 400×400px. Actual: '+a.width+'×'+a.height);return;}
-                    if(a.width>2000||a.height>2000){alert('⚠️ Imagen muy grande. Máx 2000×2000px.');return;}
-                    if(a.filesizeInBytes>2*1024*1024){alert('⚠️ Peso > 2MB');return;}
+                    if(a.width<400||a.height<400){PG.toast('⚠️ Imagen muy pequeña. Mín 400×400px. Actual: '+a.width+'×'+a.height,'warning');return;}
+                    if(a.width>2000||a.height>2000){PG.toast('⚠️ Imagen muy grande. Máx 2000×2000px.','warning');return;}
+                    if(a.filesizeInBytes>2*1024*1024){PG.toast('⚠️ Peso de imagen superior a 2MB','warning');return;}
                     var url=a.sizes&&a.sizes.medium?a.sizes.medium.url:a.url;
                     slot.find('img').remove();slot.prepend('<img src="'+url+'">');
                     slot.addClass('has-image');slot.find('.img-id-input').val(a.id);upd();
@@ -2720,9 +2783,11 @@ class PetsGo_Core {
                     $('#pf-loader').removeClass('active');
                     if(r.success){
                         $('#pf-message').html('<div class="notice notice-success" style="padding:10px"><p>✅ '+r.data.message+'</p></div>').show();
+                        PG.toast('✅ '+r.data.message, 'success');
                         if(!$('#pf-id').val()&&r.data.id){$('#pf-id').val(r.data.id);history.replaceState(null,'',PG.adminUrl+'?page=petsgo-product-form&id='+r.data.id);}
                     }else{
                         $('#pf-message').html('<div class="notice notice-error" style="padding:10px"><p>❌ '+(r.data||'Error')+'</p></div>').show();
+                        PG.toast('❌ '+(r.data||'Error al guardar producto'), 'error');
                     }
                 });
             });
@@ -2792,7 +2857,7 @@ class PetsGo_Core {
             $('#pv-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
             $('#pv-filter-status').on('change',load);
             $('#pv-btn-search').on('click',load);
-            $(document).on('click','.pv-del',function(){if(!confirm('¿Eliminar tienda?'))return;PG.post('petsgo_delete_vendor',{id:$(this).data('id')},function(r){if(r.success)load();else alert(r.data);});});
+            $(document).on('click','.pv-del',function(){var id=$(this).data('id');PG.confirmDelete('Eliminar Tienda','Se eliminará esta tienda, su información y los productos asociados.',function(){PG.post('petsgo_delete_vendor',{id:id},function(r){if(r.success){load();PG.toast('🗑️ Tienda eliminada correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});});});
             load();
         });
         </script>
@@ -2917,7 +2982,12 @@ class PetsGo_Core {
                     $('#vf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
                     $('#vf-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
-                    if(r.success&&!$('#vf-id').val()&&r.data.id){$('#vf-id').val(r.data.id);history.replaceState(null,'',PG.adminUrl+'?page=petsgo-vendor-form&id='+r.data.id);}
+                    if(r.success){
+                        PG.toast('✅ '+r.data.message, 'success');
+                        if(!$('#vf-id').val()&&r.data.id){$('#vf-id').val(r.data.id);history.replaceState(null,'',PG.adminUrl+'?page=petsgo-vendor-form&id='+r.data.id);}
+                    } else {
+                        PG.toast('❌ '+(r.data||'Error al guardar tienda'), 'error');
+                    }
                 });
             });
             $('.petsgo-field input,.petsgo-field select').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
@@ -3001,12 +3071,12 @@ class PetsGo_Core {
             $('#po-btn-search').on('click',load);
             $(document).on('click','.po-status-btn',function(){
                 var id=$(this).data('id');var ns=$('.po-status-sel[data-id="'+id+'"]').val();
-                PG.post('petsgo_update_order_status',{id:id,status:ns},function(r){if(r.success)load();else alert(r.data);});
+                PG.post('petsgo_update_order_status',{id:id,status:ns},function(r){if(r.success){load();PG.toast('✅ Estado del pedido actualizado','success');}else PG.toast('❌ '+(r.data||'Error al actualizar estado'),'error');});
             });
             $(document).on('click','.po-gen-invoice',function(){
                 var btn=$(this);var id=btn.data('id');btn.prop('disabled',true).text('⏳');
                 PG.post('petsgo_generate_invoice',{order_id:id},function(r){
-                    if(r.success){alert('✅ '+r.data.message);load();}else{alert('❌ '+r.data);btn.prop('disabled',false).text('🧾');}
+                    if(r.success){PG.toast('✅ '+r.data.message,'success');load();}else{PG.toast('❌ '+(r.data||'Error al generar boleta'),'error');btn.prop('disabled',false).text('🧾');}
                 });
             });
             load();
@@ -3079,7 +3149,7 @@ class PetsGo_Core {
             $('#pu-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
             $('#pu-filter-role').on('change',load);
             $('#pu-btn-search').on('click',load);
-            $(document).on('click','.pu-del',function(){if(!confirm('¿Eliminar usuario?'))return;PG.post('petsgo_delete_user',{id:$(this).data('id')},function(r){if(r.success)load();else alert(r.data);});});
+            $(document).on('click','.pu-del',function(){var id=$(this).data('id');PG.confirmDelete('Eliminar Usuario','Se eliminará permanentemente este usuario y toda su información asociada (perfil, mascotas, pedidos).',function(){PG.post('petsgo_delete_user',{id:id},function(r){if(r.success){load();PG.toast('🗑️ Usuario eliminado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});});});
             $(document).on('click','.pu-toggle',function(){
                 var btn=$(this),uid=btn.data('id'),newSt=btn.data('status');
                 var msg=newSt==='inactive'?'¿Desactivar este usuario? Se le notificará por correo.':'¿Activar este usuario? Se le notificará por correo.';
@@ -3087,7 +3157,7 @@ class PetsGo_Core {
                 btn.prop('disabled',true);
                 PG.post('petsgo_toggle_user_status',{id:uid,status:newSt},function(r){
                     btn.prop('disabled',false);
-                    if(r.success){load();alert(r.data.message);}else{alert(r.data);}
+                    if(r.success){load();PG.toast('✅ '+r.data.message,'success');}else{PG.toast('❌ '+(r.data||'Error al cambiar estado'),'error');}
                 });
             });
             load();
@@ -3228,7 +3298,12 @@ class PetsGo_Core {
                     $('#uf-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
                     $('#uf-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
-                    if(r.success&&!$('#uf-id').val()&&r.data.id){$('#uf-id').val(r.data.id);location.href=PG.adminUrl+'?page=petsgo-user-form&id='+r.data.id;}
+                    if(r.success){
+                        PG.toast('✅ '+r.data.message, 'success');
+                        if(!$('#uf-id').val()&&r.data.id){$('#uf-id').val(r.data.id);location.href=PG.adminUrl+'?page=petsgo-user-form&id='+r.data.id;}
+                    } else {
+                        PG.toast('❌ '+(r.data||'Error al guardar usuario'), 'error');
+                    }
                 });
             });
             // Show/hide vendor dropdown based on role
@@ -3296,17 +3371,21 @@ class PetsGo_Core {
                 $('#pet-modal').slideDown(200);
             });
             $(document).on('click','.pet-del',function(){
-                if(!confirm('¿Eliminar esta mascota?'))return;
-                PG.post('petsgo_delete_pet',{id:$(this).data('id')},function(r){if(r.success)loadPets();else alert(r.data);});
+                var id=$(this).data('id');
+                PG.confirmDelete('Eliminar Mascota','Se eliminará permanentemente esta mascota y su información.',function(){
+                    PG.post('petsgo_delete_pet',{id:id},function(r){if(r.success){loadPets();PG.toast('🗑️ Mascota eliminada correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});
+                });
             });
             $('#pm-save').on('click',function(){
-                if(!$.trim($('#pm-name').val())){alert('Nombre de mascota obligatorio');return;}
+                if(!$.trim($('#pm-name').val())){PG.toast('⚠️ Nombre de mascota obligatorio','warning');return;}
+                var isNewPet=!$('#pm-id').val();
+                var petName=$('#pm-name').val();
                 PG.post('petsgo_save_pet',{
                     id:$('#pm-id').val(),user_id:<?php echo $uid; ?>,
                     pet_type:$('#pm-type').val(),name:$('#pm-name').val(),breed:$('#pm-breed').val(),
                     birth_date:$('#pm-birth').val(),photo_url:$('#pm-photo').val(),notes:$('#pm-notes').val()
                 },function(r){
-                    if(r.success){$('#pet-modal').slideUp(200);loadPets();}else{alert(r.data);}
+                    if(r.success){$('#pet-modal').slideUp(200);loadPets();PG.toast('✅ Mascota "'+petName+'" '+(isNewPet?'registrada':'actualizada')+' correctamente','success');}else{PG.toast('❌ '+(r.data||'Error al guardar mascota'),'error');}
                 });
             });
             loadPets();
@@ -3531,7 +3610,7 @@ class PetsGo_Core {
             $('#pd-btn-search').on('click',load);
             $(document).on('click','.pd-assign',function(){
                 var id=$(this).data('id');var rid=$('.pd-rider-sel[data-id="'+id+'"]').val();
-                PG.post('petsgo_save_rider_assignment',{order_id:id,rider_id:rid},function(r){if(r.success)load();else alert(r.data);});
+                PG.post('petsgo_save_rider_assignment',{order_id:id,rider_id:rid},function(r){if(r.success){load();PG.toast('\u2705 Rider asignado correctamente','success');}else PG.toast('\u274c '+(r.data||'Error al asignar rider'),'error');});
             });
             load();
             <?php if($is_admin): ?>
@@ -3688,8 +3767,8 @@ class PetsGo_Core {
                 var expiryTypes=['id_card','license','vehicle_registration'];
                 // Validar fecha de vencimiento al aprobar o actualizar docs que lo requieren
                 if((action==='approved'||action==='update_expiry') && expiryTypes.indexOf(window._pdrModalDocType)!==-1){
-                    if(!expiry){alert('⚠️ Debe ingresar la fecha de vencimiento para este documento.');return;}
-                    if(new Date(expiry+'T12:00:00')<new Date()){alert('⚠️ La fecha de vencimiento no puede ser pasada.');return;}
+                    if(!expiry){PG.toast('⚠️ Debe ingresar la fecha de vencimiento para este documento.','warning');return;}
+                    if(new Date(expiry+'T12:00:00')<new Date()){PG.toast('⚠️ La fecha de vencimiento no puede ser pasada.','warning');return;}
                 }
                 PG.post('petsgo_review_rider_doc',{doc_id:pdrModalDocId,status:action,notes:notes,expiry_date:expiry},function(r){
                     if(r.success){
@@ -3697,7 +3776,7 @@ class PetsGo_Core {
                         PG.toast(msgs[action]||'Acción realizada',action==='rejected'?'warning':'success');
                         closePdrModal();if(pdrCurrentRider)openRiderDetail(pdrCurrentRider,$('#pdr-detail-title').text().replace('📋 Documentos de ',''));
                     }
-                    else alert(r.data);
+                    else PG.toast('\u274c '+(r.data||'Error al revisar documento'),'error');
                 });
             };
             // === Ratings tab (PG.table) ===
@@ -3784,14 +3863,14 @@ class PetsGo_Core {
                 // Failed action
                 var notes=prompt('Motivo del fallo:');if(notes===null)return;
                 PG.post('petsgo_process_payout',{payout_id:id,payout_action:'failed',notes:notes},function(r){
-                    if(r.success)loadPayouts();else alert(r.data);
+                    if(r.success){loadPayouts();PG.toast('\u2705 Pago marcado como fallido','warning');}else PG.toast('\u274c '+(r.data||'Error al procesar'),'error');
                 });
             });
             // File preview in payment modal
             $('#pdp-pay-file').on('change',function(){
                 var file=this.files[0];
                 if(!file){$('#pdp-pay-preview').hide();$('#pdp-pay-placeholder').show();return;}
-                if(file.size>5*1024*1024){alert('El archivo no debe superar 5MB');this.value='';return;}
+                if(file.size>5*1024*1024){PG.toast('⚠️ El archivo no debe superar 5MB','warning');this.value='';return;}
                 $('#pdp-pay-placeholder').hide();
                 var $prev=$('#pdp-pay-preview').show().html('');
                 if(file.type.startsWith('image/')){
@@ -3823,17 +3902,17 @@ class PetsGo_Core {
                     url:ajaxurl,type:'POST',data:fd,processData:false,contentType:false,
                     success:function(r){
                         $btn.prop('disabled',false).text('✅ Confirmar Pago');
-                        if(r.success){closePdpPayModal();loadPayouts();}
-                        else alert(r.data||'Error al procesar');
+                        if(r.success){closePdpPayModal();loadPayouts();PG.toast('✅ Pago procesado correctamente','success');}
+                        else PG.toast('❌ '+(r.data||'Error al procesar'),'error');
                     },
-                    error:function(){$btn.prop('disabled',false).text('✅ Confirmar Pago');alert('Error de conexión');}
+                    error:function(){$btn.prop('disabled',false).text('✅ Confirmar Pago');PG.toast('❌ Error de conexión','error');}
                 });
             };
             window.generateWeeklyPayouts=function(){
                 if(!confirm('¿Generar liquidación semanal (lunes a domingo pasado)? Esto creará pagos pendientes para todos los riders con entregas.'))return;
                 PG.post('petsgo_generate_weekly_payouts',{},function(r){
-                    alert(r.data||r.message||'Procesado');
-                    if(r.success)loadPayouts();
+                    if(r.success){PG.toast('✅ '+(r.data||'Liquidación generada correctamente'),'success');loadPayouts();}
+                    else PG.toast('❌ '+(r.data||r.message||'Error al generar liquidación'),'error');
                 });
             };
             <?php endif; ?>
@@ -3996,12 +4075,14 @@ Dashboard con analíticas"></textarea>
                 $('#pp-form-title').text('Editar Plan #'+pid);$('#pp-form-wrap').slideDown();$('#pp-msg').hide();updateLiveCard();
             });
             $('#pp-save').on('click',function(){
-                if(!$.trim($('#pp-name').val())||!$('#pp-price').val()){alert('Nombre y precio obligatorios');return;}
+                if(!$.trim($('#pp-name').val())||!$('#pp-price').val()){PG.toast('⚠️ Nombre y precio obligatorios','warning');return;}
+                var isNew=!parseInt($('#pp-id').val());
+                var planName=$('#pp-name').val();
                 PG.post('petsgo_save_plan',{id:$('#pp-id').val(),plan_name:$('#pp-name').val(),monthly_price:$('#pp-price').val(),features:$('#pp-features').val(),is_featured:$('#pp-featured').is(':checked')?1:0},function(r){
-                    if(r.success){$('#pp-form-wrap').slideUp();load();}else{$('#pp-msg').html('<span style="color:red;">'+r.data+'</span>').show();}
+                    if(r.success){$('#pp-form-wrap').slideUp();load();PG.toast('✅ Plan "'+planName+'" '+(isNew?'creado':'actualizado')+' correctamente','success');}else{$('#pp-msg').html('<span style="color:red;">'+r.data+'</span>').show();PG.toast('❌ '+(r.data||'Error al guardar plan'),'error');}
                 });
             });
-            $(document).on('click','.pp-del',function(){if(!confirm('¿Eliminar plan?'))return;PG.post('petsgo_delete_plan',{id:$(this).data('id')},function(r){if(r.success)load();else alert(r.data);});});
+            $(document).on('click','.pp-del',function(){var id=$(this).data('id');PG.confirmDelete('Eliminar Plan','Se eliminará este plan. Las tiendas suscritas perderán su suscripción activa.',function(){PG.post('petsgo_delete_plan',{id:id},function(r){if(r.success){load();PG.toast('🗑️ Plan eliminado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});});});
             load();
         });
         </script>
@@ -4363,6 +4444,21 @@ Dashboard con analíticas"></textarea>
         $action_label = $new_status === 'active' ? 'activado' : 'desactivado';
         $this->audit('user_' . $new_status, 'user', $id, $user->display_name . ' — ' . $action_label);
         wp_send_json_success(['message' => 'Usuario ' . $action_label . '. Se envió notificación por correo.']);
+    }
+
+    /**
+     * Verificar contraseña del admin antes de operaciones críticas (eliminar).
+     */
+    public function petsgo_verify_admin_password() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Sin permisos');
+        $password = $_POST['password'] ?? '';
+        if (empty($password)) wp_send_json_error('Debes ingresar tu contraseña.');
+        $user = wp_get_current_user();
+        if (!wp_check_password($password, $user->user_pass, $user->ID)) {
+            wp_send_json_error('Contraseña incorrecta. Intenta nuevamente.');
+        }
+        wp_send_json_success(['verified' => true]);
     }
 
     /**
@@ -5103,6 +5199,7 @@ Dashboard con analíticas"></textarea>
                     $('#ic-loader').removeClass('active');
                     var cls=r.success?'notice-success':'notice-error';
                     $('#ic-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
+                    if(r.success) PG.toast('✅ '+r.data.message,'success'); else PG.toast('❌ '+(r.data||'Error al guardar configuración'),'error');
                 });
             });
         });
@@ -6327,7 +6424,8 @@ Dashboard con analíticas"></textarea>
                     $('#ps-loader').removeClass('active');
                     var c=r.success?'#d4edda':'#f8d7da',t=r.success?'#155724':'#721c24';
                     $('#ps-msg').html(r.data||'Error').css({display:'inline-block',background:c,color:t,padding:'8px 16px',borderRadius:'6px',fontSize:'13px',fontWeight:'600'});
-                    if(r.success) setTimeout(function(){$('#ps-msg').fadeOut();},3000);
+                    if(r.success){PG.toast('✅ Configuración guardada correctamente','success');setTimeout(function(){$('#ps-msg').fadeOut();},3000);}
+                    else PG.toast('❌ '+(r.data||'Error al guardar configuración'),'error');
                 });
             });
 
@@ -11368,14 +11466,15 @@ Dashboard con analíticas"></textarea>
                 });
             };
             window.pgCatDel = function(id,name){
-                if(!confirm('¿Eliminar categoría "'+name+'"?')) return;
-                PG.post('petsgo_delete_category',{id:id},function(r){
-                    if(r.success){
-                        loadCats();
-                        PG.toast('🗑️ Categoría "'+name+'" eliminada', 'success');
-                    } else {
-                        PG.toast('❌ ' + (r.data || 'Error al eliminar la categoría'), 'error');
-                    }
+                PG.confirmDelete('Eliminar Categoría','Se eliminará la categoría <strong>"'+PG.esc(name)+'"</strong> y todos los productos asociados a ella.',function(){
+                    PG.post('petsgo_delete_category',{id:id},function(r){
+                        if(r.success){
+                            loadCats();
+                            PG.toast('🗑️ Categoría "'+name+'" eliminada', 'success');
+                        } else {
+                            PG.toast('❌ ' + (r.data || 'Error al eliminar la categoría'), 'error');
+                        }
+                    });
                 });
             };
         });
@@ -11614,13 +11713,14 @@ Dashboard con analíticas"></textarea>
                 };
                 if(isAdmin) data.vendor_ids = pgVendorMsGet();
                 PG.post('petsgo_save_coupon',data,function(r){
-                    if(r.success){$('#cpn-modal').hide();loadCoupons();}else{alert(r.data);}
+                    if(r.success){$('#cpn-modal').hide();loadCoupons();PG.toast('✅ Cupón guardado correctamente','success');}else{PG.toast('❌ '+(r.data||'Error al guardar cupón'),'error');}
                 });
             };
             window.pgCouponDel = function(id,code){
-                if(!confirm('¿Eliminar cupón "'+code+'"?')) return;
-                PG.post('petsgo_delete_coupon',{id:id},function(r){
-                    if(r.success) loadCoupons(); else alert(r.data);
+                PG.confirmDelete('Eliminar Cupón','Se eliminará permanentemente el cupón <strong>"'+PG.esc(code)+'"</strong>. Los usuarios ya no podrán usarlo.',function(){
+                    PG.post('petsgo_delete_coupon',{id:id},function(r){
+                        if(r.success){loadCoupons();PG.toast('🗑️ Cupón "'+code+'" eliminado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar cupón'),'error');
+                    });
                 });
             };
 
@@ -12433,13 +12533,14 @@ Dashboard con analíticas"></textarea>
             $('#tk-search').on('keydown',function(e){ if(e.key==='Enter') loadTickets(1); });
 
             window.pgTicketStatus = function(id,status){
+                var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                 PG.post('petsgo_update_ticket',{id:id,status:status},function(r){
-                    if(r.success) loadTickets(); else alert(r.data);
+                    if(r.success){loadTickets();PG.toast('✅ Ticket actualizado a "'+(stLabel[status]||status)+'"','success');}else PG.toast('❌ '+(r.data||'Error al actualizar ticket'),'error');
                 });
             };
             window.pgTicketAssign = function(id,userId){
                 PG.post('petsgo_assign_ticket',{id:id,assigned_to:userId},function(r){
-                    if(r.success) loadTickets();
+                    if(r.success){loadTickets();PG.toast('✅ Ticket asignado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al asignar ticket'),'error');
                 });
             };
             window.pgTicketDetail = function(id){
@@ -12484,7 +12585,7 @@ Dashboard con analíticas"></textarea>
             };
             window.pgTicketReply = function(){
                 var msg=$('#tk-reply-msg').val().trim();
-                if(!msg){alert('Escribe un mensaje');return;}
+                if(!msg){PG.toast('⚠️ Escribe un mensaje','warning');return;}
                 var fd = new FormData();
                 fd.append('action','petsgo_add_ticket_reply');
                 fd.append('_ajax_nonce', PG.nonce);
@@ -12493,7 +12594,7 @@ Dashboard con analíticas"></textarea>
                 var fileInput = document.getElementById('tk-reply-file');
                 if(fileInput && fileInput.files[0]) fd.append('image', fileInput.files[0]);
                 $.ajax({url:PG.ajaxUrl, type:'POST', data:fd, processData:false, contentType:false, success:function(r){
-                    if(r.success){$('#tk-reply-msg').val('');if(fileInput)fileInput.value='';pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();}else{alert(r.data);}
+                    if(r.success){$('#tk-reply-msg').val('');if(fileInput)fileInput.value='';pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();PG.toast('✅ Respuesta enviada correctamente','success');}else{PG.toast('❌ '+(r.data||'Error al enviar respuesta'),'error');}
                 }});
             };
 
@@ -12514,7 +12615,7 @@ Dashboard con analíticas"></textarea>
 
             window.pgExportTicketsPDF = function(){
                 var tickets = window._pgTickets || [];
-                if(!tickets.length){ alert('No hay tickets para exportar'); return; }
+                if(!tickets.length){ PG.toast('⚠️ No hay tickets para exportar','warning'); return; }
                 var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                 var meta = window._pgTicketsMeta || {};
                 var doc = new jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
@@ -12777,12 +12878,15 @@ Dashboard con analíticas"></textarea>
                 }, function(r){
                     if (r.success) {
                         $msg.text('✅ Guardado').css('color','#28a745');
+                        PG.toast('✅ Documento legal guardado correctamente','success');
                     } else {
                         $msg.text('❌ Error').css('color','#dc3545');
+                        PG.toast('❌ Error al guardar documento legal','error');
                     }
                     setTimeout(function(){ $msg.text(''); }, 3000);
                 }).fail(function(){
                     $msg.text('❌ Error de red').css('color','#dc3545');
+                    PG.toast('❌ Error de red al guardar','error');
                 });
             });
 
@@ -12826,9 +12930,11 @@ Dashboard con analíticas"></textarea>
                     faqs: JSON.stringify(faqs),
                 }, function(r){
                     $msg.text(r.success ? '✅ FAQs guardadas' : '❌ Error').css('color', r.success ? '#28a745' : '#dc3545');
+                    if(r.success) PG.toast('✅ FAQs guardadas correctamente','success'); else PG.toast('❌ Error al guardar FAQs','error');
                     setTimeout(function(){ $msg.text(''); }, 3000);
                 }).fail(function(){
                     $msg.text('❌ Error de red').css('color','#dc3545');
+                    PG.toast('❌ Error de red al guardar FAQs','error');
                 });
             });
         });
@@ -13101,6 +13207,7 @@ Dashboard con analíticas"></textarea>
                 if (!confirm('¿Restaurar todas las secciones a sus valores por defecto? Los cambios no guardados se perderán.')) return;
                 Object.keys(secDefaults).forEach(function(k){ $('#cb-sec-'+k).val(secDefaults[k]); });
                 updateCount();
+                PG.toast('↩️ Secciones restauradas a valores por defecto (guardar para aplicar)','info');
             };
 
             // Save
@@ -13120,7 +13227,8 @@ Dashboard con analíticas"></textarea>
                     $('#cb-loader').removeClass('active');
                     var c=r.success?'#d4edda':'#f8d7da', t=r.success?'#155724':'#721c24';
                     $('#cb-msg').html(r.data||'Error').css({display:'inline-block',background:c,color:t,padding:'8px 16px',borderRadius:'6px',fontSize:'13px',fontWeight:'600'});
-                    if(r.success) setTimeout(function(){ $('#cb-msg').fadeOut(); },3000);
+                    if(r.success){PG.toast('✅ Configuración del chatbot guardada','success');setTimeout(function(){ $('#cb-msg').fadeOut(); },3000);}
+                    else PG.toast('❌ '+(r.data||'Error al guardar configuración del chatbot'),'error');
                 });
             });
         });
