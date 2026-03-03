@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare, Store } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare, Store, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCart } from '../context/CartContext';
-import { getProductReviews, getProductDetail } from '../services/api';
+import { getProductReviews, getProductDetail, getProducts } from '../services/api';
 import { getProductImage } from '../utils/productImages';
 
 const ProductDetailPage = () => {
@@ -17,6 +17,8 @@ const ProductDetailPage = () => {
   const [reviews, setReviews] = useState([]);
   const [reviewAvg, setReviewAvg] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [relatedProducts, setRelatedProducts] = useState([]);
+  const navigate = useNavigate();
 
   // Si no hay product en el state (acceso directo por URL), intentar cargar desde API
   useEffect(() => {
@@ -53,6 +55,29 @@ const ProductDetailPage = () => {
     }
   }, [product?.id]);
 
+  // CA-046: Load related products (same category, excluding current)
+  useEffect(() => {
+    if (!product) return;
+    const cat = product.category;
+    if (!cat) return;
+    getProducts({ category: cat, perPage: 12 }).then(res => {
+      const all = res.data?.data || [];
+      const filtered = all.filter(p => p.id !== product.id).slice(0, 6);
+      setRelatedProducts(filtered);
+    }).catch(() => {});
+  }, [product?.id, product?.category]);
+
+  // CA-041: Keyboard navigation for image gallery
+  const IMAGE_TRANSFORMS = ['none', 'scaleX(-1)', 'rotate(15deg)'];
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'ArrowRight') setSelectedImage(prev => (prev + 1) % 3);
+    if (e.key === 'ArrowLeft') setSelectedImage(prev => (prev - 1 + 3) % 3);
+  }, []);
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
+
   const formatPrice = (price) =>
     new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(price);
 
@@ -87,6 +112,14 @@ const ProductDetailPage = () => {
   const discount = product.originalPrice ? Math.round((1 - product.price / product.originalPrice) * 100) : null;
   const displayRating = reviewAvg || product.rating || null;
   const displayReviewCount = reviewCount;
+
+  // CA-042: Extract size/weight from product name
+  const extractVariant = (name) => {
+    if (!name) return null;
+    const match = name.match(/(\d+(?:[.,]\d+)?\s*(?:kg|g|lb|lbs|ml|lt|l|oz|un|unid|unidades|piezas|pzs|pack|sobres|latas))/i);
+    return match ? match[1].trim() : null;
+  };
+  const productVariant = extractVariant(product.name || product.product_name);
 
   const handleAddToCart = () => {
     addItem({ ...product, quantity: 1 });
@@ -154,9 +187,31 @@ const ProductDetailPage = () => {
               style={{
                 maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
                 transition: 'transform 0.4s ease',
+                transform: IMAGE_TRANSFORMS[selectedImage],
               }}
               onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
             />
+            {/* Navigation arrows */}
+            <button onClick={() => setSelectedImage(prev => (prev - 1 + 3) % 3)} style={{
+              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
+              width: '36px', height: '36px', borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              transition: 'background 0.2s',
+            }} onMouseEnter={e => e.currentTarget.style.background = '#fff'}
+               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.85)'}>
+              <ChevronLeft size={18} color="#374151" />
+            </button>
+            <button onClick={() => setSelectedImage(prev => (prev + 1) % 3)} style={{
+              position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+              width: '36px', height: '36px', borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              transition: 'background 0.2s',
+            }} onMouseEnter={e => e.currentTarget.style.background = '#fff'}
+               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.85)'}>
+              <ChevronRight size={18} color="#374151" />
+            </button>
           </div>
           {/* Thumbnail strip */}
           <div className="pd-thumbs" style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
@@ -169,15 +224,26 @@ const ProductDetailPage = () => {
                   border: selectedImage === i ? '2px solid #00A8E8' : '2px solid #f0f0f0',
                   cursor: 'pointer', background: '#fff', display: 'flex',
                   alignItems: 'center', justifyContent: 'center', padding: '8px',
-                  transition: 'border-color 0.2s',
+                  transition: 'border-color 0.2s, transform 0.2s',
+                  transform: selectedImage === i ? 'scale(1.05)' : 'scale(1)',
                 }}
               >
                 <img
                   src={productImage}
                   alt={`Vista ${i + 1}`}
-                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform: i === 1 ? 'scaleX(-1)' : i === 2 ? 'rotate(15deg)' : 'none', opacity: selectedImage === i ? 1 : 0.6 }}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform: IMAGE_TRANSFORMS[i], opacity: selectedImage === i ? 1 : 0.5 }}
                 />
               </div>
+            ))}
+          </div>
+          {/* Image indicator dots */}
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '8px' }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} onClick={() => setSelectedImage(i)} style={{
+                width: selectedImage === i ? '20px' : '8px', height: '8px',
+                borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s',
+                background: selectedImage === i ? '#00A8E8' : '#d1d5db',
+              }} />
             ))}
           </div>
         </div>
@@ -226,6 +292,18 @@ const ProductDetailPage = () => {
               {displayReviewCount > 0 ? `(${displayReviewCount} reseña${displayReviewCount !== 1 ? 's' : ''})` : 'Sin reseñas aún'}
             </span>
           </div>
+
+          {/* CA-042: Size/variant badge */}
+          {productVariant && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              background: '#fef3c7', color: '#92400e', fontSize: '12px', fontWeight: 700,
+              padding: '6px 14px', borderRadius: '10px', marginBottom: '16px',
+              border: '1px solid #fde68a',
+            }}>
+              📦 Presentación: {productVariant}
+            </div>
+          )}
 
           {/* Price */}
           <div className="pd-price-box" style={{
@@ -395,6 +473,64 @@ const ProductDetailPage = () => {
           </div>
         </div>
       </div>
+
+      {/* CA-046: Related Products Section */}
+      {relatedProducts.length > 0 && (
+        <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px 40px' }}>
+          <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#1f2937', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            🐾 También te puede gustar
+          </h3>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px',
+          }}>
+            {relatedProducts.map((rp) => {
+              const rpImage = getProductImage(rp);
+              const rpPrice = Number(rp.final_price || rp.price);
+              const rpOriginal = rp.discount_active ? Number(rp.price) : null;
+              const rpDiscount = rpOriginal ? Math.round((1 - rpPrice / rpOriginal) * 100) : null;
+              return (
+                <Link
+                  key={rp.id}
+                  to={`/producto/${rp.id}`}
+                  state={{ product: { ...rp, name: rp.product_name, image: rp.image_url, brand: rp.store_name, price: rpPrice, originalPrice: rpOriginal } }}
+                  style={{
+                    background: '#fff', borderRadius: '16px', overflow: 'hidden',
+                    border: '1px solid #f0f0f0', textDecoration: 'none', color: 'inherit',
+                    transition: 'transform 0.2s, box-shadow 0.2s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                >
+                  <div style={{ aspectRatio: '1', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative' }}>
+                    {rpDiscount && (
+                      <span style={{ position: 'absolute', top: '8px', left: '8px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>-{rpDiscount}%</span>
+                    )}
+                    <img src={rpImage} alt={rp.product_name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                      onError={e => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=300&auto=format&fit=crop&q=80'; }} />
+                  </div>
+                  <div style={{ padding: '12px 14px' }}>
+                    <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, marginBottom: '4px' }}>{rp.store_name}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937', lineHeight: 1.3, marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {rp.product_name}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>{formatPrice(rpPrice)}</span>
+                      {rpOriginal && <span style={{ fontSize: '11px', color: '#9ca3af', textDecoration: 'line-through' }}>{formatPrice(rpOriginal)}</span>}
+                    </div>
+                    {rp.rating && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
+                        <Star size={12} fill="#FFC400" color="#FFC400" />
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: '#374151' }}>{rp.rating}</span>
+                        {rp.review_count > 0 && <span style={{ fontSize: '10px', color: '#9ca3af' }}>({rp.review_count})</span>}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Reviews Section */}
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '0 32px 64px' }}>
