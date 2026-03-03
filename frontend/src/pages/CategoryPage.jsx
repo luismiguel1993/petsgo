@@ -210,8 +210,11 @@ const CategoryPage = () => {
     setLoading(true);
     try {
       const apiParams = {};
-      // Si es "Todos" con búsqueda, usar el parámetro search de la API
-      if (categoryName === 'Todos' && queryFromUrl) {
+      const isOfertas = categoryName === 'Ofertas';
+      // Ofertas: traer todos los productos y filtrar por descuento activo
+      if (isOfertas) {
+        // No pasar category para traer todos
+      } else if (categoryName === 'Todos' && queryFromUrl) {
         apiParams.search = queryFromUrl;
       } else if (categoryName !== 'Todos') {
         apiParams.category = categoryName;
@@ -220,8 +223,13 @@ const CategoryPage = () => {
         getProducts(apiParams),
         getVendors(),
       ]);
-      const realProducts = productsRes.data.data || [];
+      let realProducts = productsRes.data.data || [];
       const realVendors = vendorsRes.data.data || [];
+
+      // Para Ofertas, filtrar solo productos con descuento activo
+      if (isOfertas && realProducts.length > 0) {
+        realProducts = realProducts.filter(p => p.discount_active);
+      }
 
       // Si no hay productos reales, usar datos demo
       const demoProducts = DEMO_PRODUCTS[categoryName] || [];
@@ -668,7 +676,7 @@ const CategoryPage = () => {
                                   {qty}
                                 </span>
                                 <button
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), quantity: 1 }); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), price: product.discount_active ? Number(product.final_price || product.price) : Number(product.price), quantity: 1 }); }}
                                   style={{
                                     width: '30px', height: '30px', borderRadius: '8px',
                                     border: 'none', background: '#00A8E8', cursor: 'pointer',
@@ -681,7 +689,7 @@ const CategoryPage = () => {
                               </div>
                             ) : (
                               <button
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), quantity: 1 }); }}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), price: product.discount_active ? Number(product.final_price || product.price) : Number(product.price), quantity: 1 }); }}
                                 style={{
                                   width: '36px', height: '36px', borderRadius: '50%',
                                   border: 'none', background: '#fff', cursor: 'pointer',

@@ -5,12 +5,46 @@ import { useCart } from '../context/CartContext';
 import { getProductReviews, getProductDetail, getProducts } from '../services/api';
 import { getProductImage } from '../utils/productImages';
 
+// Normalizar datos de producto (desde state o API) a un formato consistente
+const normalizeProduct = (p) => {
+  if (!p) return null;
+  const hasDiscount = p.discount_active && Number(p.discount_percent) > 0;
+  return {
+    ...p,
+    name: p.product_name || p.name,
+    image: p.image_url || p.image,
+    brand: p.store_name || p.brand || '',
+    vendor_id: p.vendor_id,
+    store_name: p.store_name || '',
+    logo_url: p.logo_url || '',
+    price: Number(hasDiscount ? (p.final_price || p.price) : p.price),
+    originalPrice: hasDiscount ? Number(p.price) : null,
+    discount_active: hasDiscount,
+    discount_percent: Number(p.discount_percent || 0),
+    rating: p.rating || null,
+  };
+};
+
+// Descripciones variadas por categoría cuando el producto no tiene descripción propia
+const CATEGORY_DESCRIPTIONS = {
+  Perros: 'Producto especialmente diseñado para perros. Seleccionado por expertos para brindar la mejor calidad de vida a tu compañero canino. Formulado con ingredientes de primera calidad y avalado por veterinarios en Chile.',
+  Gatos: 'Producto premium pensado para gatos. Desarrollado para satisfacer las necesidades únicas de los felinos, con ingredientes cuidadosamente seleccionados que contribuyen a su bienestar y vitalidad.',
+  Alimento: 'Alimento completo y balanceado para mascotas. Formulado con proteínas de alta calidad, vitaminas y minerales esenciales que aseguran una nutrición óptima y una vida saludable.',
+  Snacks: 'Snack delicioso y nutritivo para consentir a tu mascota. Ideal como premio durante el entrenamiento o como complemento a su dieta diaria. Elaborado con ingredientes naturales.',
+  Farmacia: 'Producto veterinario de confianza para el cuidado de la salud de tu mascota. Recomendado por profesionales para prevenir y tratar afecciones comunes de forma segura y eficaz.',
+  Higiene: 'Producto de higiene y cuidado para mascotas. Formulado con ingredientes suaves y efectivos que mantienen a tu mascota limpia, saludable y con un pelaje brillante.',
+  Accesorios: 'Accesorio de calidad diseñado para mejorar la comodidad y diversión de tu mascota. Fabricado con materiales resistentes y seguros para el uso diario.',
+  Paseo: 'Artículo esencial para paseos seguros y cómodos con tu mascota. Diseñado con materiales resistentes y ergonómicos para una experiencia agradable.',
+  Ropa: 'Prenda especialmente diseñada para mascotas. Confeccionada con telas cómodas y resistentes que protegen a tu mascota del frío y la lluvia sin perder estilo.',
+  Camas: 'Cama confortable diseñada para el descanso óptimo de tu mascota. Fabricada con materiales de alta calidad que brindan soporte y calidez durante las horas de sueño.',
+};
+
 const ProductDetailPage = () => {
   const { id } = useParams();
   const location = useLocation();
   const stateProduct = location.state?.product;
   const { addItem, getItemQuantity, updateQuantity } = useCart();
-  const [product, setProduct] = useState(stateProduct || null);
+  const [product, setProduct] = useState(() => normalizeProduct(stateProduct));
   const [loading, setLoading] = useState(!stateProduct);
   const [selectedImage, setSelectedImage] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -18,31 +52,18 @@ const ProductDetailPage = () => {
   const [reviewAvg, setReviewAvg] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [relatedProducts, setRelatedProducts] = useState([]);
+  const [showFullDesc, setShowFullDesc] = useState(false);
   const navigate = useNavigate();
 
-  // Si no hay product en el state (acceso directo por URL), intentar cargar desde API
+  // Siempre cargar datos frescos desde la API (incluso con stateProduct como preview)
   useEffect(() => {
-    if (!stateProduct && id) {
-      setLoading(true);
-      getProductDetail(id).then(res => {
-        const p = res.data?.data || res.data;
-        if (p) {
-          setProduct({
-            ...p,
-            name: p.product_name || p.name,
-            image: p.image_url || p.image,
-            brand: p.store_name || p.brand || '',
-            vendor_id: p.vendor_id,
-            store_name: p.store_name || '',
-            logo_url: p.logo_url || '',
-            price: Number(p.final_price || p.price),
-            originalPrice: p.discount_active ? Number(p.price) : null,
-            rating: p.rating || null,
-          });
-        }
-      }).catch(() => {}).finally(() => setLoading(false));
-    }
-  }, [id, stateProduct]);
+    if (!id) return;
+    if (!stateProduct) setLoading(true);
+    getProductDetail(id).then(res => {
+      const p = res.data?.data || res.data;
+      if (p) setProduct(normalizeProduct(p));
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [id]);
 
   useEffect(() => {
     const productId = product?.id;
@@ -366,12 +387,33 @@ const ProductDetailPage = () => {
           )}
 
           {/* Description */}
-          <div style={{ marginBottom: '28px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>Descripción</h3>
-            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.7 }}>
-              {product.description || `${product.name || product.product_name} — Producto premium seleccionado para tu mascota. Formulado con ingredientes de primera calidad que aseguran una nutrición completa y balanceada. Contribuye a mantener la salud, energía y vitalidad de tu compañero. Recomendado por veterinarios y avalado por miles de dueños satisfechos en Chile.`}
-            </p>
-          </div>
+          {(() => {
+            const fullDesc = product.description
+              || CATEGORY_DESCRIPTIONS[product.category]
+              || `${product.name || product.product_name} — Producto premium seleccionado para tu mascota. Formulado con ingredientes de primera calidad que aseguran una nutrición completa y balanceada. Contribuye a mantener la salud, energía y vitalidad de tu compañero.`;
+            const isLong = fullDesc.length > 180;
+            const displayText = (!showFullDesc && isLong) ? fullDesc.slice(0, 180) + '...' : fullDesc;
+            return (
+              <div style={{ marginBottom: '28px' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>Descripción</h3>
+                <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: 1.7, margin: 0 }}>
+                  {displayText}
+                </p>
+                {isLong && (
+                  <button
+                    onClick={() => setShowFullDesc(!showFullDesc)}
+                    style={{
+                      background: 'none', border: 'none', padding: '4px 0', marginTop: '6px',
+                      color: '#00A8E8', fontSize: '13px', fontWeight: 700, cursor: 'pointer',
+                      fontFamily: 'Poppins, sans-serif',
+                    }}
+                  >
+                    {showFullDesc ? '▲ Ver menos' : '▼ Ver más'}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Stock info */}
           {product.stock !== undefined && (
