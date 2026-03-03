@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare, Store } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getProductReviews, getProductDetail } from '../services/api';
 import { getProductImage } from '../utils/productImages';
@@ -30,6 +30,9 @@ const ProductDetailPage = () => {
             name: p.product_name || p.name,
             image: p.image_url || p.image,
             brand: p.store_name || p.brand || '',
+            vendor_id: p.vendor_id,
+            store_name: p.store_name || '',
+            logo_url: p.logo_url || '',
             price: Number(p.final_price || p.price),
             originalPrice: p.discount_active ? Number(p.price) : null,
             rating: p.rating || null,
@@ -112,7 +115,7 @@ const ProductDetailPage = () => {
       `}</style>
       {/* Breadcrumb */}
       <div className="pd-breadcrumb" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px 32px 0' }}>
-        <Link to="/" style={{
+        <Link to="/productos" style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px',
           color: '#9ca3af', fontSize: '13px', fontWeight: 600, textDecoration: 'none',
           transition: 'color 0.2s',
@@ -249,6 +252,40 @@ const ProductDetailPage = () => {
               </>
             )}
           </div>
+
+          {/* Vendor / Tienda */}
+          {(product.store_name || product.brand) && (
+            <Link
+              to={product.vendor_id ? `/tienda/${product.vendor_id}` : '#'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '12px',
+                background: '#f8fafc', borderRadius: '14px', padding: '14px 18px',
+                marginBottom: '24px', textDecoration: 'none',
+                border: '1px solid #e2e8f0', transition: 'border-color 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00A8E8'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,168,232,0.12)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+            >
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
+                background: product.logo_url ? '#fff' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                overflow: 'hidden', border: '1px solid #e2e8f0',
+              }}>
+                {product.logo_url ? (
+                  <img src={product.logo_url} alt={product.store_name || product.brand} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <Store size={20} color="#fff" />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937' }}>
+                  {product.store_name || product.brand}
+                </div>
+                <div style={{ fontSize: '11px', color: '#00A8E8', fontWeight: 600 }}>Ver tienda →</div>
+              </div>
+            </Link>
+          )}
 
           {/* Description */}
           <div style={{ marginBottom: '28px' }}>
