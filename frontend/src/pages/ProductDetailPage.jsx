@@ -353,38 +353,49 @@ const ProductDetailPage = () => {
           </div>
 
           {/* Vendor / Tienda */}
-          {(product.store_name || product.brand) && (
-            <Link
-              to={product.vendor_id ? `/tienda/${product.vendor_id}` : '#'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '12px',
-                background: '#f8fafc', borderRadius: '14px', padding: '14px 18px',
-                marginBottom: '24px', textDecoration: 'none',
-                border: '1px solid #e2e8f0', transition: 'border-color 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00A8E8'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,168,232,0.12)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
-            >
-              <div style={{
-                width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
-                background: product.logo_url ? '#fff' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                overflow: 'hidden', border: '1px solid #e2e8f0',
-              }}>
-                {product.logo_url ? (
-                  <img src={product.logo_url} alt={product.store_name || product.brand} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <Store size={20} color="#fff" />
-                )}
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937' }}>
-                  {product.store_name || product.brand}
+          {(product.store_name || product.brand) && (() => {
+            const vendorLink = product.vendor_id ? `/tienda/${product.vendor_id}` : null;
+            const vendorContent = (
+              <>
+                <div style={{
+                  width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
+                  background: product.logo_url ? '#fff' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  overflow: 'hidden', border: '1px solid #e2e8f0',
+                }}>
+                  {product.logo_url ? (
+                    <img src={product.logo_url} alt={product.store_name || product.brand} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <Store size={20} color="#fff" />
+                  )}
                 </div>
-                <div style={{ fontSize: '11px', color: '#00A8E8', fontWeight: 600 }}>Ver tienda →</div>
-              </div>
-            </Link>
-          )}
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937' }}>
+                    {product.store_name || product.brand}
+                  </div>
+                  {vendorLink && <div style={{ fontSize: '11px', color: '#00A8E8', fontWeight: 600 }}>Ver tienda →</div>}
+                </div>
+              </>
+            );
+            const boxStyle = {
+              display: 'flex', alignItems: 'center', gap: '12px',
+              background: '#f8fafc', borderRadius: '14px', padding: '14px 18px',
+              marginBottom: '24px', textDecoration: 'none',
+              border: '1px solid #e2e8f0', transition: 'border-color 0.2s, box-shadow 0.2s',
+            };
+            return vendorLink ? (
+              <Link
+                to={vendorLink}
+                style={boxStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00A8E8'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,168,232,0.12)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
+              >
+                {vendorContent}
+              </Link>
+            ) : (
+              <div style={boxStyle}>{vendorContent}</div>
+            );
+          })()}
 
           {/* Description */}
           {(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Search, Store, Star, Clock, MapPin, Plus, Minus, PawPrint, Package, Filter } from 'lucide-react';
 import { getProducts, getVendors, getCategories } from '../services/api';
@@ -286,10 +286,18 @@ const CategoryPage = () => {
     currentPage * PRODUCTS_PER_PAGE,
   );
 
-  /* Obtener vendors únicos que venden en esta categoría */
+  /* Helper: resolver link de tienda por vendor_id o store_name */
+  const resolveVendor = useCallback((product) => {
+    if (!product) return null;
+    let v = allVendors.find(av => av.id === product.vendor_id);
+    if (!v && product.store_name) v = allVendors.find(av => av.store_name === product.store_name);
+    return v || null;
+  }, [allVendors]);
+
+  /* Obtener vendors únicos que venden en esta categoría (por store_name) */
   const categoryVendors = useMemo(() => {
-    const vendorIds = [...new Set(products.map(p => p.vendor_id))];
-    return allVendors.filter(v => vendorIds.includes(v.id));
+    const storeNames = [...new Set(products.map(p => p.store_name).filter(Boolean))];
+    return allVendors.filter(v => storeNames.includes(v.store_name));
   }, [products, allVendors]);
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
@@ -581,7 +589,7 @@ const CategoryPage = () => {
                   return (
                     <Link
                       to={`/producto/${product.id}`}
-                      state={{ product }}
+                      state={{ product: { ...product, vendor_id: resolveVendor(product)?.id || product.vendor_id } }}
                       key={product.id}
                       className="cp-product-card"
                       style={{
@@ -626,17 +634,26 @@ const CategoryPage = () => {
                         </h4>
 
                         {/* Tienda del producto */}
-                        <Link
-                          to={`/tienda/${product.vendor_id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '4px',
-                            fontSize: '11px', fontWeight: 600, color: '#00A8E8',
-                            textDecoration: 'none', marginBottom: '8px',
-                          }}
-                        >
-                          <Store size={11} /> {product.store_name}
-                        </Link>
+                        {(() => {
+                          const rv = resolveVendor(product);
+                          return rv ? (
+                            <Link
+                              to={`/tienda/${rv.id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '4px',
+                                fontSize: '11px', fontWeight: 600, color: '#00A8E8',
+                                textDecoration: 'none', marginBottom: '8px',
+                              }}
+                            >
+                              <Store size={11} /> {product.store_name}
+                            </Link>
+                          ) : product.store_name ? (
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 600, color: '#9ca3af', marginBottom: '8px' }}>
+                              <Store size={11} /> {product.store_name}
+                            </span>
+                          ) : null;
+                        })()}
 
                         <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
