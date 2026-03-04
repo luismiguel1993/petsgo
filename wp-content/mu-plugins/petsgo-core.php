@@ -2692,7 +2692,15 @@ class PetsGo_Core {
                             </div>
                             <div class="field-error" id="img-error" style="display:none;">La foto principal es obligatoria.</div>
                         </div>
-                        <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
+                        <div style="margin-top:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+                            <?php if ($pid && $is_admin): ?>
+                            <button type="button" id="pf-toggle-active" class="petsgo-btn petsgo-btn-sm" style="padding:8px 18px;font-size:13px;border-radius:20px;font-weight:700;cursor:pointer;border:none;<?php
+                                $is_act = intval($product->is_active ?? 1);
+                                echo $is_act ? 'background:#e8f5e9;color:#2e7d32;' : 'background:#fce4ec;color:#c62828;';
+                            ?>" data-active="<?php echo $is_act; ?>">
+                                <?php echo $is_act ? '✅ Activo — Click para desactivar' : '❌ Inactivo — Click para activar'; ?>
+                            </button>
+                            <?php endif; ?>
                             <button type="submit" class="petsgo-btn petsgo-btn-primary" style="font-size:15px;padding:10px 30px;"><?php echo $pid ? '💾 Guardar Cambios' : '✅ Crear Producto'; ?></button>
                             <a href="<?php echo admin_url('admin.php?page=petsgo-products'); ?>" class="petsgo-btn" style="background:#e2e3e5;color:#333;">Cancelar</a>
                             <span class="petsgo-loader" id="pf-loader"><span class="spinner is-active" style="float:none;margin:0;"></span> Guardando...</span>
@@ -2768,6 +2776,20 @@ class PetsGo_Core {
                 $('#preview-imgs').html(imgs||'<div class="no-img">📷</div>');
             }
             $('#pf-name,#pf-price,#pf-stock,#pf-category,#pf-desc,#pf-discount,#pf-discount-type').on('input change',upd);
+            // Toggle active/inactive from product form
+            $('#pf-toggle-active').on('click',function(){
+                var btn=$(this),id=$('#pf-id').val();
+                if(!id)return;
+                PG.post('petsgo_toggle_product',{id:id},function(r){
+                    if(r.success){
+                        var isAct=parseInt(r.data.is_active);
+                        btn.attr('data-active',isAct);
+                        btn.css({background:isAct?'#e8f5e9':'#fce4ec',color:isAct?'#2e7d32':'#c62828'});
+                        btn.text(isAct?'✅ Activo — Click para desactivar':'❌ Inactivo — Click para activar');
+                        PG.toast(r.data.message,'success');
+                    }else{PG.toast(r.data||'Error','error');}
+                });
+            });
             // Toggle discount dates visibility
             $('#pf-discount-type').on('change',function(){
                 if($(this).val()==='scheduled'){$('#pf-discount-dates').css('display','grid');}
@@ -7281,7 +7303,7 @@ Dashboard con analíticas"></textarea>
             }
         }
 
-        if (get_option('petsgo_rider_tables_v5', false)) return;
+        if (get_option('petsgo_rider_tables_v6', false)) return;
         $charset = $wpdb->get_charset_collate();
 
         $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_rider_documents (
@@ -7455,7 +7477,7 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_inventory ADD COLUMN is_active tinyint(1) DEFAULT 1 AFTER image_id");
         }
 
-        update_option('petsgo_rider_tables_v5', true);
+        update_option('petsgo_rider_tables_v6', true);
     }
 
     // ============================================================
