@@ -65,11 +65,12 @@ const AdminDashboard = () => {
         setStats(data || DEMO_ADMIN_STATS);
       } else if (tab === 'vendors') {
         const { data } = await getAdminVendors();
-        const v = Array.isArray(data) ? data : [];
+        const v = Array.isArray(data) ? data : (data?.data || []);
         setVendors(v.length > 0 ? v : DEMO_ADMIN_VENDORS);
-      }      if (tab === 'riders') {
+      }
+      if (tab === 'riders') {
         const { data } = await getAdminRiders();
-        setRiders(Array.isArray(data) ? data : []);
+        setRiders(Array.isArray(data) ? data : (data?.data || []));
       }
       if (tab === 'store') {
         const [invRes, catRes] = await Promise.all([getAdminInventory(), getCategories()]);
@@ -97,7 +98,8 @@ const AdminDashboard = () => {
       setImpersonateVendor(storeName);
       setImpersonateData(data);
     } catch (err) {
-      alert('Error al acceder al dashboard de la tienda');
+      if (window.PG?.toast) window.PG.toast('Error al acceder al dashboard de la tienda', 'error');
+      else alert('Error al acceder al dashboard de la tienda');
     }
   };
 
@@ -111,8 +113,10 @@ const AdminDashboard = () => {
       );
       setEditingCommission(null);
       loadData();
+      if (window.PG?.toast) window.PG.toast('Comisiones actualizadas', 'success');
     } catch (err) {
-      alert('Error actualizando comisiones');
+      if (window.PG?.toast) window.PG.toast('Error actualizando comisiones', 'error');
+      else alert('Error actualizando comisiones');
     }
   };
 
@@ -124,16 +128,17 @@ const AdminDashboard = () => {
   ];
 
   return (
-    <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-[#2F3A40] rounded-2xl flex items-center justify-center">
-          <Shield size={24} className="text-[#FFC400]" />
+    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 24px 60px' }}>
+        <div className="flex items-center gap-3 mb-8">
+          <div className="w-12 h-12 bg-[#2F3A40] rounded-2xl flex items-center justify-center">
+            <Shield size={24} className="text-[#FFC400]" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-[#2F3A40]">Panel Administrador</h2>
+            <p className="text-sm text-gray-400 font-medium">PetsGo Marketplace - Control Total</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-2xl font-black text-[#2F3A40]">Panel Administrador</h2>
-          <p className="text-sm text-gray-400 font-medium">PetsGo Marketplace - Control Total</p>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 mb-8">
@@ -462,7 +467,7 @@ const AdminDashboard = () => {
                           try {
                             const res = await uploadAdminProductImage(file);
                             setProductForm(prev => ({ ...prev, image_id: res.data.image_id, image_url: res.data.image_url }));
-                          } catch { alert('Error subiendo imagen'); }
+                          } catch { if (window.PG?.toast) window.PG.toast('Error subiendo imagen', 'error'); }
                           setUploadingImage(false);
                         }}
                       />
@@ -480,7 +485,8 @@ const AdminDashboard = () => {
                 <button
                   onClick={async () => {
                     if (!productForm.product_name || !productForm.price || !productForm.stock) {
-                      alert('Completa nombre, precio y stock'); return;
+                      if (window.PG?.toast) window.PG.toast('Completa nombre, precio y stock', 'warning');
+                      else alert('Completa nombre, precio y stock'); return;
                     }
                     setProductSaving(true);
                     try {
@@ -500,7 +506,9 @@ const AdminDashboard = () => {
                       setShowProductForm(false);
                       loadData();
                     } catch (err) {
-                      alert(err.response?.data?.message || 'Error guardando producto');
+                      const msg = err.response?.data?.message || 'Error guardando producto';
+                      if (window.PG?.toast) window.PG.toast(msg, 'error');
+                      else alert(msg);
                     }
                     setProductSaving(false);
                   }}
@@ -590,7 +598,7 @@ const AdminDashboard = () => {
                               try {
                                 await deleteAdminProduct(p.id);
                                 loadData();
-                              } catch { alert('Error eliminando producto'); }
+                              } catch { if (window.PG?.toast) window.PG.toast('Error eliminando producto', 'error'); }
                             }}
                             className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"
                           >
@@ -722,9 +730,10 @@ const AdminDashboard = () => {
                 </tbody>
               </table>
             </div>
-          )}
+          )}  
         </div>
       )}
+      </div>
     </div>
   );
 };

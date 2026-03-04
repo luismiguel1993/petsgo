@@ -7953,6 +7953,9 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/vendor/dashboard',['methods'=>'GET','callback'=>[$this,'api_vendor_dashboard'],'permission_callback'=>[$this,'check_vendor_role']]);
         // Admin
         register_rest_route('petsgo/v1','/admin/dashboard',['methods'=>'GET','callback'=>[$this,'api_admin_dashboard'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/vendors',['methods'=>'GET','callback'=>[$this,'api_admin_vendors'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/vendor/(?P<id>\d+)/dashboard',['methods'=>'GET','callback'=>[$this,'api_admin_vendor_dashboard'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/commissions/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_commissions'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         // Coupons
         register_rest_route('petsgo/v1','/coupons/validate',['methods'=>'POST','callback'=>[$this,'api_validate_coupon'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/vendor/coupons',['methods'=>'GET','callback'=>[$this,'api_vendor_coupons_list'],'permission_callback'=>[$this,'check_vendor_role']]);
@@ -10232,7 +10235,39 @@ Dashboard con analíticas"></textarea>
     }
     public function api_admin_dashboard() {
         global $wpdb;
-        return rest_ensure_response(['total_sales'=>(float)$wpdb->get_var("SELECT SUM(total_amount) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'total_commissions'=>(float)$wpdb->get_var("SELECT SUM(petsgo_commission) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'active_vendors'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors")]);
+        return rest_ensure_response(['total_sales'=>(float)$wpdb->get_var("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'total_commission'=>(float)$wpdb->get_var("SELECT COALESCE(SUM(petsgo_commission),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'total_orders'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders"),'total_vendors'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors")]);
+    }
+    public function api_admin_vendors() {
+        global $wpdb;
+        $vendors = $wpdb->get_results("SELECT v.*, u.user_email AS email FROM {$wpdb->prefix}petsgo_vendors v LEFT JOIN {$wpdb->users} u ON v.user_id = u.ID ORDER BY v.id DESC");
+        $result = [];
+        foreach ($vendors as $v) {
+            $total_sales = (float)$wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'",$v->id));
+            $total_orders = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d",$v->id));
+            $result[] = ['id'=>(int)$v->id,'store_name'=>$v->store_name,'email'=>$v->email ?: '','rut'=>$v->rut ?: '','status'=>$v->status,'sales_commission'=>floatval($v->sales_commission ?? 10),'delivery_fee_cut'=>floatval($v->delivery_fee_cut ?? 5),'total_sales'=>$total_sales,'total_orders'=>$total_orders];
+        }
+        return rest_ensure_response($result);
+    }
+    public function api_admin_vendor_dashboard($request) {
+        global $wpdb;
+        $vid = (int)$request->get_param('id');
+        $v = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$vid));
+        if (!$v) return new WP_Error('not_found','Tienda no encontrada',['status'=>404]);
+        $total_sales = (float)$wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'",$vid));
+        $total_orders = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d",$vid));
+        $total_products = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_inventory WHERE vendor_id=%d",$vid));
+        $commission_rate = floatval($v->sales_commission ?? 10);
+        $total_commission = round($total_sales * $commission_rate / 100, 0);
+        return rest_ensure_response(['store_name'=>$v->store_name,'status'=>$v->status,'total_sales'=>$total_sales,'total_orders'=>$total_orders,'total_products'=>$total_products,'total_commission'=>$total_commission]);
+    }
+    public function api_admin_update_commissions($request) {
+        global $wpdb;
+        $vid = (int)$request->get_param('id');
+        $p = $request->get_json_params();
+        $sales = floatval($p['sales_commission'] ?? 10);
+        $delivery = floatval($p['delivery_fee_cut'] ?? 5);
+        $wpdb->update("{$wpdb->prefix}petsgo_vendors",['sales_commission'=>$sales,'delivery_fee_cut'=>$delivery],['id'=>$vid]);
+        return rest_ensure_response(['success'=>true,'message'=>'Comisiones actualizadas']);
     }
 
     // --- API Invoice QR Validation ---
