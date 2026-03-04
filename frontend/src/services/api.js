@@ -360,6 +360,13 @@ export const updateCommissions = (vendorId, salesCommission, deliveryFeeCut) =>
 export const getAdminVendors = () =>
   api.get('/admin/vendors');
 
+/** Módulos activables */
+export const getModuleToggles = () =>
+  api.get('/admin/module-toggles');
+
+export const updateModuleToggles = (modules) =>
+  api.put('/admin/module-toggles', modules);
+
 // ==========================================
 // VENDOR LEADS
 // ==========================================

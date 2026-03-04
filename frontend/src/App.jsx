@@ -6,6 +6,7 @@ import BotChatOverlay from './components/BotChatOverlay'
 import FloatingCart from './components/FloatingCart'
 import { useCart } from './context/CartContext'
 import { useAuth } from './context/AuthContext'
+import { useSite } from './context/SiteContext'
 import HomePage from './pages/HomePage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -34,6 +35,7 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const { setOnCartOpen } = useCart()
   const { loggedOut, user, isRider } = useAuth()
+  const site = useSite()
   const autoCloseTimer = useRef(null)
 
   // Rider logueado: restringir navegación — solo puede ver su panel
@@ -104,7 +106,7 @@ function App() {
         </div>
       )}
       {/* Banner persistente para riders no aprobados */}
-      {isUnapprovedRider && (
+      {site.module_riders !== false && isUnapprovedRider && (
         <div style={{
           background: 'linear-gradient(135deg, #FEF3C7, #FFF7ED)',
           borderBottom: '2px solid #FCD34D',
@@ -130,7 +132,7 @@ function App() {
           <Route path="/" element={activeRider ? <Navigate to="/rider" /> : <HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/registro" element={<RegisterPage />} />
-          <Route path="/registro-rider" element={<RiderRegisterPage />} />
+          <Route path="/registro-rider" element={site.module_riders !== false ? <RiderRegisterPage /> : <Navigate to="/" />} />
           <Route path="/verificar-rider" element={<RiderVerifyEmailPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -162,7 +164,7 @@ function App() {
         </Routes>
       </main>
       <Footer />
-      <BotChatOverlay cartOpen={cartOpen} />
+      {site.module_chatbot !== false && <BotChatOverlay cartOpen={cartOpen} />}
     </div>
   )
 }

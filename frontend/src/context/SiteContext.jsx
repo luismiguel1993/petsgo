@@ -25,6 +25,14 @@ const DEFAULTS = {
   delivery_fee_min: 2000,
   delivery_fee_max: 5000,
   faqs: [],
+  // Module toggles (defaults: all enabled)
+  module_delivery: true,
+  module_riders: true,
+  module_vendor_plans: true,
+  module_promo_slider: true,
+  module_chatbot: true,
+  module_reviews: true,
+  module_coupons: true,
 };
 
 export const SiteProvider = ({ children }) => {

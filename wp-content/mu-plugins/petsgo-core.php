@@ -1374,6 +1374,14 @@ class PetsGo_Core {
             'chatbot_bot_name'      => 'PetBot',
             'chatbot_welcome_msg'   => '¡Hola! Soy PetBot, el asistente inteligente de PetsGo 🐾. ¿En qué puedo ayudarte hoy?',
             'chatbot_model'         => 'gpt-4o-mini',
+            // ── Módulos activables ──
+            'module_delivery'       => '1',  // Delivery / despacho habilitado
+            'module_riders'         => '1',  // Sección, registro y banners de riders
+            'module_vendor_plans'   => '1',  // Banners de registro de tiendas / planes
+            'module_promo_slider'   => '1',  // Slider de promos (rider + tienda)
+            'module_chatbot'        => '1',  // Chatbot IA
+            'module_reviews'        => '1',  // Reseñas de productos y tiendas
+            'module_coupons'        => '1',  // Cupones de descuento
         ];
     }
 
@@ -8023,6 +8031,9 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/inventory/upload-image',['methods'=>'POST','callback'=>[$this,'api_admin_upload_product_image'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        // Admin Module Toggles
+        register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'GET','callback'=>[$this,'api_admin_get_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'PUT','callback'=>[$this,'api_admin_update_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
     }
 
     // --- API Productos ---
@@ -8102,6 +8113,14 @@ Dashboard con analíticas"></textarea>
             'delivery_per_km'         => intval($this->pg_setting('delivery_per_km', 400)),
             'delivery_fee_min'        => intval($this->pg_setting('delivery_fee_min', 2000)),
             'delivery_fee_max'        => intval($this->pg_setting('delivery_fee_max', 5000)),
+            // Module toggles
+            'module_delivery'         => $this->pg_setting('module_delivery', '1') === '1',
+            'module_riders'           => $this->pg_setting('module_riders', '1') === '1',
+            'module_vendor_plans'     => $this->pg_setting('module_vendor_plans', '1') === '1',
+            'module_promo_slider'     => $this->pg_setting('module_promo_slider', '1') === '1',
+            'module_chatbot'          => $this->pg_setting('module_chatbot', '1') === '1',
+            'module_reviews'          => $this->pg_setting('module_reviews', '1') === '1',
+            'module_coupons'          => $this->pg_setting('module_coupons', '1') === '1',
         ]);
     }
 
@@ -10236,6 +10255,35 @@ Dashboard con analíticas"></textarea>
         if($vendor->status!=='active') return new WP_Error('vendor_inactive','Tu tienda está inactiva. Renueva tu suscripción para acceder.',['status'=>403]);
         return rest_ensure_response(['sales'=>(float)$wpdb->get_var($wpdb->prepare("SELECT SUM(total_amount) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='delivered'",$vid)),'pending_orders'=>(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders WHERE vendor_id=%d AND status='pending'",$vid)),'store_status'=>$vendor->status]);
     }
+
+    // ── Admin Module Toggles ──
+    public function api_admin_get_module_toggles() {
+        $module_keys = ['module_delivery','module_riders','module_vendor_plans','module_promo_slider','module_chatbot','module_reviews','module_coupons'];
+        $result = [];
+        foreach ($module_keys as $k) {
+            $result[$k] = $this->pg_setting($k, '1') === '1';
+        }
+        return rest_ensure_response($result);
+    }
+
+    public function api_admin_update_module_toggles($request) {
+        $p = $request->get_json_params();
+        $module_keys = ['module_delivery','module_riders','module_vendor_plans','module_promo_slider','module_chatbot','module_reviews','module_coupons'];
+        $settings = get_option('petsgo_settings', []);
+        if (!is_array($settings)) $settings = [];
+        $updated = [];
+        foreach ($module_keys as $k) {
+            if (isset($p[$k])) {
+                $settings[$k] = $p[$k] ? '1' : '0';
+                $updated[$k] = $p[$k] ? true : false;
+            }
+        }
+        update_option('petsgo_settings', $settings);
+        // Clear cached settings
+        $this->audit('update_module_toggles', 'settings', 0, json_encode($updated));
+        return rest_ensure_response(['message' => 'Módulos actualizados', 'modules' => $updated]);
+    }
+
     public function api_admin_dashboard() {
         global $wpdb;
         return rest_ensure_response(['total_sales'=>(float)$wpdb->get_var("SELECT COALESCE(SUM(total_amount),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'total_commission'=>(float)$wpdb->get_var("SELECT COALESCE(SUM(petsgo_commission),0) FROM {$wpdb->prefix}petsgo_orders WHERE status='delivered'"),'total_orders'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders"),'total_vendors'=>(int)$wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors")]);

@@ -4,6 +4,7 @@ import {
   BarChart3, DollarSign, Store, Users, Package, ShoppingBag, TrendingUp,
   Eye, Percent, Save, Search, Shield, PawPrint, Truck, Star, MapPin,
   Calendar, Download, ChevronLeft, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
+  Settings, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import huellaPng from '../assets/huella.png';
 import { useAuth } from '../context/AuthContext';
@@ -11,7 +12,7 @@ import {
   getAdminDashboard, getAdminVendors, getVendorDashboardAsAdmin,
   updateCommissions, getAdminRiders, getAdminRiderStats,
   getAdminInventory, addAdminProduct, updateAdminProduct, deleteAdminProduct, uploadAdminProductImage,
-  getCategories,
+  getCategories, getModuleToggles, updateModuleToggles,
 } from '../services/api';
 
 const DEMO_ADMIN_STATS = {
@@ -105,6 +106,9 @@ const AdminDashboard = () => {
   const [vendorPage, setVendorPage] = useState(1);
   const [riderPage, setRiderPage] = useState(1);
   const [storePage, setStorePage] = useState(1);
+  // Module toggles
+  const [modules, setModules] = useState(null);
+  const [modulesSaving, setModulesSaving] = useState(false);
 
   useEffect(() => {
     setVendorPage(1); setRiderPage(1); setStorePage(1);
@@ -131,6 +135,10 @@ const AdminDashboard = () => {
         setPetsgoProducts(invRes.data?.data || []);
         setPetsgoVendorId(invRes.data?.vendor_id || null);
         setCategories(catRes.data?.data || catRes.data || []);
+      }
+      if (tab === 'config') {
+        const { data } = await getModuleToggles();
+        setModules(data);
       }
     } catch (err) {
       console.error('Error cargando datos admin:', err);
@@ -182,6 +190,7 @@ const AdminDashboard = () => {
     { key: 'vendors', label: 'Tiendas', icon: Store },
     { key: 'store', label: 'Tienda PetsGo', icon: ShoppingBag },
     { key: 'riders', label: 'Riders', icon: Truck },
+    { key: 'config', label: 'Módulos', icon: Settings },
   ];
 
   return (
@@ -791,6 +800,75 @@ const AdminDashboard = () => {
               <PaginationControls currentPage={riderPage} totalItems={filteredRiders.length} onPageChange={setRiderPage} />
             </div>
           )}  
+        </div>
+      )}
+
+      {/* ==================== MÓDULOS / CONFIGURACIÓN ==================== */}
+      {tab === 'config' && (
+        <div>
+          <h3 className="text-lg font-black text-[#2F3A40] mb-2">
+            ⚙️ Módulos del Marketplace
+          </h3>
+          <p className="text-sm text-gray-400 mb-6">Activa o desactiva funcionalidades de la plataforma. Los cambios se reflejan inmediatamente en el sitio.</p>
+
+          {loading || !modules ? (
+            <div className="petsgo-card p-6 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-full mb-4" />
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-4" />
+              <div className="h-4 bg-gray-200 rounded w-full" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { key: 'module_delivery', label: 'Delivery / Despacho', desc: 'Permite envío a domicilio. Si se desactiva, solo queda disponible "Retiro en tienda" al pagar.', icon: Truck, color: '#00A8E8' },
+                { key: 'module_riders', label: 'Riders', desc: 'Habilita toda la sección de riders: registro, panel, banners y asignación de entregas.', icon: Truck, color: '#22C55E' },
+                { key: 'module_vendor_plans', label: 'Planes & Registro Tiendas', desc: 'Muestra la página de planes y banners para que nuevas tiendas se registren.', icon: Store, color: '#F59E0B' },
+                { key: 'module_promo_slider', label: 'Slider Promocional', desc: 'Activa los avisos flotantes rotativos de "Ser Rider" y "Registrar Tienda" en el sitio.', icon: Eye, color: '#8B5CF6' },
+                { key: 'module_chatbot', label: 'Chatbot IA', desc: 'Habilita el asistente inteligente PetBot para los usuarios del sitio.', icon: FileText, color: '#06B6D4' },
+                { key: 'module_reviews', label: 'Reseñas', desc: 'Permite que los clientes dejen valoraciones en productos y tiendas.', icon: Star, color: '#F97316' },
+                { key: 'module_coupons', label: 'Cupones', desc: 'Habilita el sistema de cupones de descuento para las tiendas.', icon: Percent, color: '#EC4899' },
+              ].map(({ key, label, desc, icon: Icon, color }) => {
+                const enabled = modules[key] !== false;
+                return (
+                  <div key={key} className="petsgo-card p-5 flex items-start gap-4 border border-gray-100 hover:shadow-md transition-shadow">
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: enabled ? color + '15' : '#f3f4f6' }}>
+                      <Icon size={22} style={{ color: enabled ? color : '#9ca3af' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="font-bold text-[#2F3A40] text-sm">{label}</span>
+                        <button
+                          onClick={async () => {
+                            const next = { ...modules, [key]: !enabled };
+                            setModules(next);
+                            setModulesSaving(true);
+                            try {
+                              await updateModuleToggles({ [key]: !enabled });
+                              if (window.PG?.toast) window.PG.toast(`${label} ${!enabled ? 'activado' : 'desactivado'}`, 'success');
+                            } catch {
+                              setModules(modules); // rollback
+                              if (window.PG?.toast) window.PG.toast('Error guardando módulo', 'error');
+                            }
+                            setModulesSaving(false);
+                          }}
+                          disabled={modulesSaving}
+                          className="shrink-0 transition-all"
+                          title={enabled ? 'Desactivar' : 'Activar'}
+                        >
+                          {enabled ? (
+                            <ToggleRight size={36} style={{ color }} />
+                          ) : (
+                            <ToggleLeft size={36} className="text-gray-300" />
+                          )}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 leading-relaxed">{desc}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       </div>

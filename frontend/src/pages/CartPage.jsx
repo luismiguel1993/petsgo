@@ -190,7 +190,8 @@ const CartPage = () => {
   const { isAuthenticated, user } = useAuth();
   const site = useSite();
   const navigate = useNavigate();
-  const [deliveryMethod, setDeliveryMethod] = useState('delivery');
+  const deliveryDisabled = site.module_delivery === false;
+  const [deliveryMethod, setDeliveryMethod] = useState(deliveryDisabled ? 'pickup' : 'delivery');
   const [ordering, setOrdering] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
@@ -494,32 +495,42 @@ const CartPage = () => {
             {/* Método de entrega */}
             <div style={{ marginBottom: '16px' }}>
               <p style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '8px' }}>Método de entrega</p>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => setDeliveryMethod('delivery')} style={{
-                  flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
-                  border: deliveryMethod === 'delivery' ? '2px solid #00A8E8' : '2px solid #e5e7eb',
-                  background: deliveryMethod === 'delivery' ? '#EBF8FF' : '#fff',
-                  color: deliveryMethod === 'delivery' ? '#00A8E8' : '#6b7280',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  transition: 'all 0.2s',
-                }}>
-                  <Truck size={16} /> Despacho
-                </button>
-                <button onClick={() => setDeliveryMethod('pickup')} style={{
-                  flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
-                  border: deliveryMethod === 'pickup' ? '2px solid #22C55E' : '2px solid #e5e7eb',
-                  background: deliveryMethod === 'pickup' ? '#F0FDF4' : '#fff',
-                  color: deliveryMethod === 'pickup' ? '#22C55E' : '#6b7280',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
-                  transition: 'all 0.2s',
-                }}>
-                  <Store size={16} /> Retiro en tienda
-                </button>
-              </div>
-              {isPickup && (
-                <div style={{ marginTop: '8px', padding: '8px 12px', background: '#F0FDF4', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: 600 }}>
-                  🎉 ¡Retiro gratis! Recoge tu pedido en la tienda.
+              {deliveryDisabled ? (
+                <div style={{ padding: '12px 16px', borderRadius: '10px', background: '#F0FDF4', border: '2px solid #22C55E', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Store size={18} style={{ color: '#22C55E' }} />
+                  <span style={{ fontWeight: 700, fontSize: '14px', color: '#16a34a' }}>Retiro en tienda</span>
+                  <span style={{ fontSize: '11px', color: '#6b7280', marginLeft: 'auto' }}>Delivery no disponible</span>
                 </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => setDeliveryMethod('delivery')} style={{
+                      flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
+                      border: deliveryMethod === 'delivery' ? '2px solid #00A8E8' : '2px solid #e5e7eb',
+                      background: deliveryMethod === 'delivery' ? '#EBF8FF' : '#fff',
+                      color: deliveryMethod === 'delivery' ? '#00A8E8' : '#6b7280',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      transition: 'all 0.2s',
+                    }}>
+                      <Truck size={16} /> Despacho
+                    </button>
+                    <button onClick={() => setDeliveryMethod('pickup')} style={{
+                      flex: 1, padding: '10px', borderRadius: '10px', fontWeight: 700, fontSize: '13px',
+                      border: deliveryMethod === 'pickup' ? '2px solid #22C55E' : '2px solid #e5e7eb',
+                      background: deliveryMethod === 'pickup' ? '#F0FDF4' : '#fff',
+                      color: deliveryMethod === 'pickup' ? '#22C55E' : '#6b7280',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      transition: 'all 0.2s',
+                    }}>
+                      <Store size={16} /> Retiro en tienda
+                    </button>
+                  </div>
+                  {isPickup && (
+                    <div style={{ marginTop: '8px', padding: '8px 12px', background: '#F0FDF4', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: 600 }}>
+                      🎉 ¡Retiro gratis! Recoge tu pedido en la tienda.
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

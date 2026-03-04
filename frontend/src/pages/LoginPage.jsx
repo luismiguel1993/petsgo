@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSite } from '../context/SiteContext';
 import huellaSvg from '../assets/Huella-1.svg';
 
 const LoginPage = () => {
@@ -12,6 +13,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null); // { name, role }
   const { login } = useAuth();
+  const site = useSite();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -252,10 +254,12 @@ const LoginPage = () => {
             ¿No tienes cuenta?{' '}
             <Link to="/registro" style={{ color: '#00A8E8', fontWeight: 700, textDecoration: 'none' }}>🐾 Regístrate</Link>
           </p>
-          <p style={{ marginTop: '8px', fontSize: '13px' }}>
-            ¿Quieres ser Rider?{' '}
-            <Link to="/registro-rider" style={{ color: '#f59e0b', fontWeight: 700, textDecoration: 'none' }}>🚴 Registro Rider</Link>
-          </p>
+          {site.module_riders !== false && (
+            <p style={{ marginTop: '8px', fontSize: '13px' }}>
+              ¿Quieres ser Rider?{' '}
+              <Link to="/registro-rider" style={{ color: '#f59e0b', fontWeight: 700, textDecoration: 'none' }}>🚴 Registro Rider</Link>
+            </p>
+          )}
         </div>
       </div>
     </div>

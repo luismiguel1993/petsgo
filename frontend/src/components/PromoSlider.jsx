@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Store, Bike, ArrowRight, X, PawPrint } from 'lucide-react';
+import { useSite } from '../context/SiteContext';
 
 const PROMOS = [
   {
@@ -31,9 +32,20 @@ const SHOW_DURATION = 15000;   // 15s visible
 const HIDE_DURATION = 15000;   // 15s hidden between promos
 
 const PromoSlider = () => {
+  const site = useSite();
   const [activeIndex, setActiveIndex] = useState(0);
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+
+  // Filter promos based on module toggles
+  const activePromos = PROMOS.filter(p => {
+    if (p.id === 'rider' && site.module_riders === false) return false;
+    if (p.id === 'tienda' && site.module_vendor_plans === false) return false;
+    return true;
+  });
+
+  // If promo slider module disabled or no active promos, render nothing
+  if (site.module_promo_slider === false || activePromos.length === 0) return null;
 
   useEffect(() => {
     if (dismissed) return;
@@ -69,7 +81,7 @@ const PromoSlider = () => {
 
   if (dismissed) return null;
 
-  const promo = PROMOS[activeIndex];
+  const promo = activePromos[activeIndex % activePromos.length];
   const Icon = promo.icon;
 
   return (
