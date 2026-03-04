@@ -119,6 +119,7 @@ class PetsGo_Core {
             'petsgo_delete_coupon',
             'petsgo_toggle_user_status',
             'petsgo_verify_admin_password',
+            'petsgo_toggle_module',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -1481,6 +1482,9 @@ class PetsGo_Core {
 
         // Chatbot IA — solo admin
         add_submenu_page('petsgo-dashboard', 'Chatbot IA', '🤖 Chatbot IA', $cap_admin, 'petsgo-chatbot', [$this, 'page_chatbot_config']);
+
+        // Módulos — solo admin
+        add_submenu_page('petsgo-dashboard', 'Módulos', '🧩 Módulos', $cap_admin, 'petsgo-modules', [$this, 'page_modules']);
     }
 
     // ============================================================
@@ -6623,6 +6627,93 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_settings', $settings);
         $this->audit('settings_update', 'settings', 0, 'Configuración actualizada');
         wp_send_json_success('✅ Configuración guardada correctamente.');
+    }
+
+    // ============================================================
+    // TOGGLE MODULE — AJAX handler
+    // ============================================================
+    public function petsgo_toggle_module() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin puede gestionar módulos.');
+        $key = sanitize_text_field($_POST['key'] ?? '');
+        $module_keys = ['module_delivery','module_riders','module_vendor_plans','module_promo_slider','module_chatbot','module_reviews','module_coupons'];
+        if (!in_array($key, $module_keys)) wp_send_json_error('Módulo inválido');
+        $settings = get_option('petsgo_settings', []);
+        if (!is_array($settings)) $settings = [];
+        $current = ($settings[$key] ?? '1') === '1';
+        $settings[$key] = $current ? '0' : '1';
+        update_option('petsgo_settings', $settings);
+        $this->audit('toggle_module', 'settings', 0, $key . ' → ' . ($current ? 'OFF' : 'ON'));
+        wp_send_json_success(['key' => $key, 'enabled' => !$current, 'message' => ($current ? 'Módulo desactivado' : 'Módulo activado')]);
+    }
+
+    // ============================================================
+    // MÓDULOS — Página WP-admin con toggle cards
+    // ============================================================
+    public function page_modules() {
+        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $s = get_option('petsgo_settings', []);
+        $modules = [
+            ['key'=>'module_delivery',     'label'=>'Delivery / Despacho',     'desc'=>'Permite envío a domicilio. Si se desactiva, solo queda disponible "Retiro en tienda" al pagar.','icon'=>'🚚','color'=>'#00A8E8'],
+            ['key'=>'module_riders',       'label'=>'Riders',                   'desc'=>'Habilita toda la sección de riders: registro, panel, banners y asignación de entregas.','icon'=>'🏍️','color'=>'#22C55E'],
+            ['key'=>'module_vendor_plans', 'label'=>'Planes & Registro Tiendas','desc'=>'Muestra la página de planes y banners para que nuevas tiendas se registren.','icon'=>'🏪','color'=>'#F59E0B'],
+            ['key'=>'module_promo_slider', 'label'=>'Slider Promocional',      'desc'=>'Activa los avisos flotantes rotativos de "Ser Rider" y "Registrar Tienda" en el sitio.','icon'=>'📢','color'=>'#8B5CF6'],
+            ['key'=>'module_chatbot',      'label'=>'Chatbot IA',              'desc'=>'Habilita el asistente inteligente PetBot para los usuarios del sitio.','icon'=>'🤖','color'=>'#06B6D4'],
+            ['key'=>'module_reviews',      'label'=>'Reseñas',                 'desc'=>'Permite que los clientes dejen valoraciones en productos y tiendas.','icon'=>'⭐','color'=>'#F97316'],
+            ['key'=>'module_coupons',      'label'=>'Cupones',                 'desc'=>'Habilita el sistema de cupones de descuento para las tiendas.','icon'=>'🎟️','color'=>'#EC4899'],
+        ];
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🧩 Módulos del Marketplace</h1>
+            <p class="petsgo-info-bar">Activa o desactiva funcionalidades de la plataforma. Los cambios se reflejan inmediatamente en el sitio.</p>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px;max-width:1100px;">
+            <?php foreach ($modules as $m):
+                $enabled = ($s[$m['key']] ?? '1') === '1';
+            ?>
+                <div class="petsgo-module-card" id="mod-<?php echo esc_attr($m['key']); ?>" style="background:#fff;border-radius:16px;padding:20px 24px;display:flex;align-items:flex-start;gap:16px;border:1px solid <?php echo $enabled ? '#e5e7eb' : '#fce4ec'; ?>;box-shadow:0 2px 8px rgba(0,0,0,0.04);transition:all 0.3s;">
+                    <div style="width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;background:<?php echo $enabled ? $m['color'].'15' : '#f3f4f6'; ?>;">
+                        <?php echo $m['icon']; ?>
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                            <strong style="font-size:15px;color:#2F3A40;"><?php echo esc_html($m['label']); ?></strong>
+                            <button class="pg-mod-toggle" data-key="<?php echo esc_attr($m['key']); ?>" data-enabled="<?php echo $enabled ? '1' : '0'; ?>" style="border:none;background:none;cursor:pointer;padding:0;font-size:0;line-height:0;" title="<?php echo $enabled ? 'Desactivar' : 'Activar'; ?>">
+                                <svg width="44" height="24" viewBox="0 0 44 24" style="transition:all 0.3s;">
+                                    <rect x="0" y="0" width="44" height="24" rx="12" fill="<?php echo $enabled ? $m['color'] : '#d1d5db'; ?>" style="transition:fill 0.3s;"/>
+                                    <circle cx="<?php echo $enabled ? '32' : '12'; ?>" cy="12" r="9" fill="#fff" style="transition:cx 0.3s;"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p style="font-size:12px;color:#9ca3af;line-height:1.5;margin:0;"><?php echo esc_html($m['desc']); ?></p>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+            </div>
+        </div>
+        <script>
+        jQuery(function($){
+            var moduleColors = <?php echo json_encode(array_column($modules, 'color', 'key')); ?>;
+            $(document).on('click','.pg-mod-toggle',function(){
+                var btn=$(this),key=btn.data('key'),cur=btn.data('enabled')==='1'||btn.data('enabled')===1;
+                btn.prop('disabled',true);
+                PG.post('petsgo_toggle_module',{key:key},function(r){
+                    btn.prop('disabled',false);
+                    if(r.success){
+                        var on=r.data.enabled;
+                        btn.data('enabled',on?1:0);
+                        var color=moduleColors[key]||'#00A8E8';
+                        var svg='<svg width="44" height="24" viewBox="0 0 44 24" style="transition:all 0.3s;"><rect x="0" y="0" width="44" height="24" rx="12" fill="'+(on?color:'#d1d5db')+'" style="transition:fill 0.3s;"/><circle cx="'+(on?'32':'12')+'" cy="12" r="9" fill="#fff" style="transition:cx 0.3s;"/></svg>';
+                        btn.html(svg).attr('title',on?'Desactivar':'Activar');
+                        var card=btn.closest('.petsgo-module-card');
+                        card.css('border-color',on?'#e5e7eb':'#fce4ec');
+                        card.find('div:first').css('background',on?color+'15':'#f3f4f6');
+                        PG.toast(r.data.message,'success');
+                    }else{PG.toast(r.data||'Error','error');}
+                });
+            });
+        });
+        </script>
+        <?php
     }
 
     // ============================================================
