@@ -586,19 +586,27 @@ const CategoryPage = () => {
               }}>
                 {paginatedProducts.map((product) => {
                   const qty = getItemQuantity(product.id);
+                  const inactive = Number(product.is_active) === 0;
                   return (
                     <Link
-                      to={`/producto/${product.id}`}
-                      state={{ product: { ...product, vendor_id: resolveVendor(product)?.id || product.vendor_id } }}
+                      to={inactive ? '#' : `/producto/${product.id}`}
+                      state={inactive ? undefined : { product: { ...product, vendor_id: resolveVendor(product)?.id || product.vendor_id } }}
                       key={product.id}
+                      onClick={inactive ? (e) => e.preventDefault() : undefined}
                       className="cp-product-card"
                       style={{
                         background: '#fff', borderRadius: '18px', overflow: 'hidden',
                         border: '1px solid #f3f4f6',
                         boxShadow: '0 2px 8px rgba(0,0,0,0.04)', textDecoration: 'none', color: 'inherit',
-                        display: 'flex', flexDirection: 'column',
+                        display: 'flex', flexDirection: 'column', position: 'relative',
+                        ...(inactive ? { filter: 'grayscale(100%)', opacity: 0.55, cursor: 'not-allowed' } : {}),
                       }}
                     >
+                      {inactive && (
+                        <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', borderRadius: '18px' }}>
+                          <span style={{ background: '#fff', color: '#ef4444', fontWeight: 800, fontSize: '13px', padding: '8px 16px', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>🚫 Producto inaccesible</span>
+                        </div>
+                      )}
                       <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: '#f9fafb' }}>
                         <img
                           src={getSmartProductImage(product)}
@@ -672,7 +680,7 @@ const CategoryPage = () => {
                               </span>
                             )}
                           </div>
-                          <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                          {!inactive && <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
                             {qty > 0 ? (
                               <div style={{
                                 display: 'flex', alignItems: 'center', gap: '4px',
@@ -717,7 +725,7 @@ const CategoryPage = () => {
                                 <Plus size={18} color="#00A8E8" />
                               </button>
                             )}
-                          </div>
+                          </div>}
                         </div>
                       </div>
                     </Link>

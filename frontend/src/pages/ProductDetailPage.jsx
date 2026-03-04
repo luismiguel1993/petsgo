@@ -52,6 +52,7 @@ const ProductDetailPage = () => {
   const [reviewAvg, setReviewAvg] = useState(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [relatedProducts, setRelatedProducts] = useState([]);
+  const [productInactive, setProductInactive] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
   const navigate = useNavigate();
 
@@ -62,7 +63,9 @@ const ProductDetailPage = () => {
     getProductDetail(id).then(res => {
       const p = res.data?.data || res.data;
       if (p) setProduct(normalizeProduct(p));
-    }).catch(() => {}).finally(() => setLoading(false));
+    }).catch((err) => {
+      if (err?.response?.status === 403) setProductInactive(true);
+    }).finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -107,6 +110,23 @@ const ProductDetailPage = () => {
       <div style={{ maxWidth: '960px', margin: '0 auto', padding: '80px 24px', textAlign: 'center', fontFamily: 'Poppins, sans-serif' }}>
         <div style={{ fontSize: '48px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }}>🐾</div>
         <p style={{ color: '#9ca3af', fontSize: '16px', fontWeight: 600 }}>Cargando producto...</p>
+      </div>
+    );
+  }
+
+  if (productInactive) {
+    return (
+      <div style={{ maxWidth: '960px', margin: '0 auto', padding: '80px 24px', textAlign: 'center', fontFamily: 'Poppins, sans-serif' }}>
+        <div style={{ fontSize: '64px', marginBottom: '16px' }}>🚫</div>
+        <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#2F3A40', marginBottom: '8px' }}>Producto no disponible</h2>
+        <p style={{ color: '#9ca3af', marginBottom: '24px' }}>Este producto no está disponible actualmente.</p>
+        <Link to="/" style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          background: '#00A8E8', color: '#fff', padding: '12px 28px',
+          borderRadius: '12px', fontWeight: 700, fontSize: '14px', textDecoration: 'none',
+        }}>
+          <ArrowLeft size={16} /> Volver al Inicio
+        </Link>
       </div>
     );
   }
@@ -541,19 +561,27 @@ const ProductDetailPage = () => {
               const rpPrice = Number(rp.final_price || rp.price);
               const rpOriginal = rp.discount_active ? Number(rp.price) : null;
               const rpDiscount = rpOriginal ? Math.round((1 - rpPrice / rpOriginal) * 100) : null;
+              const rpInactive = Number(rp.is_active) === 0;
               return (
                 <Link
                   key={rp.id}
-                  to={`/producto/${rp.id}`}
-                  state={{ product: { ...rp, name: rp.product_name, image: rp.image_url, brand: rp.store_name, price: rpPrice, originalPrice: rpOriginal } }}
+                  to={rpInactive ? '#' : `/producto/${rp.id}`}
+                  state={rpInactive ? undefined : { product: { ...rp, name: rp.product_name, image: rp.image_url, brand: rp.store_name, price: rpPrice, originalPrice: rpOriginal } }}
+                  onClick={rpInactive ? (e) => e.preventDefault() : undefined}
                   style={{
                     background: '#fff', borderRadius: '16px', overflow: 'hidden',
                     border: '1px solid #f0f0f0', textDecoration: 'none', color: 'inherit',
-                    transition: 'transform 0.2s, box-shadow 0.2s',
+                    transition: 'transform 0.2s, box-shadow 0.2s', position: 'relative',
+                    ...(rpInactive ? { filter: 'grayscale(100%)', opacity: 0.55, cursor: 'not-allowed' } : {}),
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  onMouseEnter={rpInactive ? undefined : e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; }}
+                  onMouseLeave={rpInactive ? undefined : e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
                 >
+                  {rpInactive && (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', borderRadius: '16px' }}>
+                      <span style={{ background: '#fff', color: '#ef4444', fontWeight: 800, fontSize: '11px', padding: '6px 12px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>🚫 Producto inaccesible</span>
+                    </div>
+                  )}
                   <div style={{ aspectRatio: '1', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative' }}>
                     {rpDiscount && (
                       <span style={{ position: 'absolute', top: '8px', left: '8px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>-{rpDiscount}%</span>

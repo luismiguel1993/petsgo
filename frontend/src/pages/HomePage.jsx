@@ -387,8 +387,14 @@ const HomePage = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
             {featuredProducts.map((product) => {
               const discount = calculateDiscount(product.price, product.originalPrice);
+              const inactive = Number(product.is_active) === 0;
               return (
-              <Link to={`/producto/${product.id}`} state={{ product }} key={product.id} className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-[0_20px_50px_rgba(0,0,0,0.08)] transition-all duration-500 flex flex-col border border-gray-100" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <Link to={inactive ? '#' : `/producto/${product.id}`} state={inactive ? undefined : { product }} key={product.id} onClick={inactive ? (e) => e.preventDefault() : undefined} className={`group bg-white rounded-2xl overflow-hidden shadow-sm ${inactive ? '' : 'hover:shadow-[0_20px_50px_rgba(0,0,0,0.08)]'} transition-all duration-500 flex flex-col border border-gray-100`} style={{ textDecoration: 'none', color: 'inherit', position: 'relative', ...(inactive ? { filter: 'grayscale(100%)', opacity: 0.55, cursor: 'not-allowed' } : {}) }}>
+                  {inactive && (
+                    <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', borderRadius: '16px' }}>
+                      <span style={{ background: '#fff', color: '#ef4444', fontWeight: 800, fontSize: '14px', padding: '10px 20px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>🚫 Producto inaccesible</span>
+                    </div>
+                  )}
                   <div className="relative h-72 overflow-hidden bg-gray-50 flex items-center justify-center p-8">
                     <img 
                       src={product.image} 
@@ -425,7 +431,7 @@ const HomePage = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex justify-end mt-2">
+                      {!inactive && (<div className="flex justify-end mt-2">
                         {getItemQuantity(product.id) > 0 ? (
                           <div style={{
                             display: 'flex', alignItems: 'center', gap: '8px',
@@ -470,7 +476,7 @@ const HomePage = () => {
                             <Plus size={24} />
                           </button>
                         )}
-                      </div>
+                      </div>)}
                     </div>
                   </div>
               </Link>
