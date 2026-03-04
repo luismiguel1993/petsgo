@@ -5033,8 +5033,8 @@ Dashboard con analíticas"></textarea>
                 <span class="petsgo-loader" id="bi-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
             <div class="petsgo-table-wrap">
-            <table class="petsgo-table"><thead id="bi-thead"><tr><th>#</th><th>Nº Boleta</th><th>Pedido</th><th>Tienda</th><th>Cliente</th><th>Total</th><th>Fecha</th><th>Acciones</th></tr></thead>
-            <tbody id="bi-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            <table class="petsgo-table"><thead id="bi-thead"><tr><th>#</th><th>Nº Boleta</th><th>Pedido</th><th>Tienda</th><th>Cliente</th><th>Total</th><th>Descargas</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <tbody id="bi-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
             </div>
         </div>
         <script>
@@ -5042,13 +5042,15 @@ Dashboard con analíticas"></textarea>
             <?php if($is_admin): ?>$('#bi-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
             var tbl=PG.table({
                 thead:'#bi-thead',body:'#bi-body',perPage:25,defaultSort:'id',defaultDir:'desc',
-                columns:['id','invoice_number','order_id','store_name','customer_name','total_amount','created_at','_actions'],
+                columns:['id','invoice_number','order_id','store_name','customer_name','total_amount','download_count','created_at','_actions'],
                 emptyMsg:'Sin boletas.',
                 onTotal:function(n){$('#bi-total').text(n);},
                 renderRow:function(b){
                     var r='<tr><td>'+b.id+'</td><td><strong>'+PG.esc(b.invoice_number)+'</strong></td>';
                     r+='<td>#'+b.order_id+'</td><td>'+PG.esc(b.store_name||'')+'</td>';
                     r+='<td>'+PG.esc(b.customer_name||'')+'</td><td>'+PG.money(b.total_amount)+'</td>';
+                    var dc=parseInt(b.download_count)||0;
+                    r+='<td style="text-align:center;"><span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:700;'+(dc>0?'background:#e8f5e9;color:#2e7d32':'background:#f3f4f6;color:#9ca3af')+'">'+dc+'</span></td>';
                     r+='<td>'+PG.fdate(b.created_at)+'</td>';
                     r+='<td>';
                     r+='<a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+b.id+'" class="petsgo-btn petsgo-btn-sm petsgo-btn-primary" target="_blank">👁️ Ver</a> ';
@@ -5110,8 +5112,9 @@ Dashboard con analíticas"></textarea>
                     </div>
                     <?php endif; ?>
                 </div>
-                <div style="margin-top:16px;">
+                <div style="margin-top:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
                     <a href="<?php echo admin_url('admin-ajax.php?action=petsgo_download_invoice&_wpnonce='.wp_create_nonce('petsgo_ajax').'&id='.$inv->id); ?>" class="petsgo-btn petsgo-btn-success" target="_blank">📥 Descargar PDF</a>
+                    <span style="font-size:13px;color:#6b7280;">📊 Descargada <strong style="color:#374151;"><?php echo intval($inv->download_count ?? 0); ?></strong> <?php echo intval($inv->download_count ?? 0) === 1 ? 'vez' : 'veces'; ?></span>
                 </div>
             </div>
             <?php
@@ -5437,7 +5440,76 @@ Dashboard con analíticas"></textarea>
 
         if (!file_exists($pdf_path)) wp_die('No se pudo generar el archivo PDF');
 
+        // Increment download counter
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}petsgo_invoices SET download_count = COALESCE(download_count,0) + 1 WHERE id = %d", $id
+        ));
+
         $this->audit('invoice_download', 'invoice', $id, $inv->invoice_number);
+
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: attachment; filename="' . $inv->invoice_number . '.pdf"');
+        header('Content-Length: ' . filesize($pdf_path));
+        readfile($pdf_path);
+        exit;
+    }
+
+    /**
+     * Public invoice download by QR token (no login required).
+     */
+    public function api_public_download_invoice($request) {
+        global $wpdb;
+        $token = sanitize_text_field($request->get_param('token'));
+        $inv = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_invoices WHERE qr_token = %s", $token
+        ));
+        if (!$inv) return new WP_Error('not_found', 'Boleta no encontrada', ['status' => 404]);
+
+        $upload_dir = wp_upload_dir();
+        $pdf_path = $upload_dir['basedir'] . '/' . $inv->pdf_path;
+
+        // Regenerate if missing
+        if (!file_exists($pdf_path)) {
+            $order = $wpdb->get_row($wpdb->prepare("SELECT o.*, v.store_name, v.rut AS vendor_rut, v.address AS vendor_address, v.phone AS vendor_phone, v.email AS vendor_email, v.contact_phone, v.social_facebook, v.social_instagram, v.social_whatsapp, v.social_website, v.invoice_logo_id FROM {$wpdb->prefix}petsgo_orders o JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id WHERE o.id=%d", $inv->order_id));
+            $customer = get_userdata($wpdb->get_var($wpdb->prepare("SELECT customer_id FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $inv->order_id)));
+            if ($order) {
+                $order_items = $this->get_order_items($inv->order_id);
+                $items = $this->build_items_array($order_items, $order);
+                $grand = $order->total_amount + ($order->delivery_fee ?? 0);
+                require_once __DIR__ . '/petsgo-lib/invoice-pdf.php';
+                $pdf_gen = new PetsGo_Invoice_PDF();
+                $vendor_data = [
+                    'store_name' => $order->store_name,
+                    'rut' => $order->vendor_rut,
+                    'address' => $order->vendor_address,
+                    'phone' => $order->vendor_phone,
+                    'email' => $order->vendor_email,
+                    'contact_phone' => $order->contact_phone,
+                    'social_facebook' => $order->social_facebook,
+                    'social_instagram' => $order->social_instagram,
+                    'social_whatsapp' => $order->social_whatsapp,
+                    'social_website' => $order->social_website,
+                    'logo_url' => $order->invoice_logo_id ? wp_get_attachment_url($order->invoice_logo_id) : '',
+                ];
+                $invoice_data = [
+                    'invoice_number' => $inv->invoice_number,
+                    'date' => date('d/m/Y H:i', strtotime($inv->created_at)),
+                    'customer_name' => $customer ? $customer->display_name : 'N/A',
+                    'customer_email' => $customer ? $customer->user_email : '',
+                ];
+                $qr_url = site_url('/verificar-boleta/' . $inv->qr_token);
+                $pdf_gen->generate($vendor_data, $invoice_data, $items, $grand, $qr_url, $inv->qr_token, $pdf_path);
+            }
+        }
+
+        if (!file_exists($pdf_path)) return new WP_Error('pdf_error', 'No se pudo generar el PDF', ['status' => 500]);
+
+        // Increment download counter
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}petsgo_invoices SET download_count = COALESCE(download_count,0) + 1 WHERE id = %d", $inv->id
+        ));
+
+        $this->audit('invoice_download_public', 'invoice', $inv->id, $inv->invoice_number . ' (token)');
 
         header('Content-Type: application/pdf');
         header('Content-Disposition: attachment; filename="' . $inv->invoice_number . '.pdf"');
@@ -7347,6 +7419,10 @@ Dashboard con analíticas"></textarea>
         if (is_array($inv_cols) && !in_array('pdf_path', $inv_cols)) {
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_invoices ADD COLUMN pdf_path varchar(500) DEFAULT NULL AFTER html_content");
         }
+        // ── Invoices table: ensure download_count column exists ──
+        if (is_array($inv_cols) && !in_array('download_count', $inv_cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_invoices ADD COLUMN download_count int(11) DEFAULT 0 AFTER pdf_path");
+        }
 
         update_option('petsgo_rider_tables_v5', true);
     }
@@ -7974,6 +8050,8 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/vendor/coupons/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_vendor_coupon_delete'],'permission_callback'=>[$this,'check_vendor_role']]);
         // Invoice QR Validation (public)
         register_rest_route('petsgo/v1','/invoice/validate/(?P<token>[a-f0-9\-]+)',['methods'=>'GET','callback'=>[$this,'api_validate_invoice'],'permission_callback'=>'__return_true']);
+        // Invoice public download by token
+        register_rest_route('petsgo/v1','/invoice/download/(?P<token>[a-f0-9\-]+)',['methods'=>'GET','callback'=>[$this,'api_public_download_invoice'],'permission_callback'=>'__return_true']);
         // Vendor Lead (public)
         register_rest_route('petsgo/v1','/vendor-lead',['methods'=>'POST','callback'=>[$this,'api_submit_vendor_lead'],'permission_callback'=>'__return_true']);
         // Rider
@@ -10342,6 +10420,7 @@ Dashboard con analíticas"></textarea>
             'total' => (float)$inv->total_amount,
             'order_status' => $inv->order_status,
             'issued_at' => $inv->created_at,
+            'download_count' => (int)($inv->download_count ?? 0),
             'message' => 'Boleta válida y verificada por PetsGo.'
         ]);
     }
@@ -10607,11 +10686,11 @@ Dashboard con analíticas"></textarea>
         if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         ?>
         <div class="wrap petsgo-wrap">
-            <h1>📩 Leads de Tiendas</h1>
+            <h1>📩 Leads de Tiendas (<span id="leads-total">...</span>)</h1>
             <p class="petsgo-info-bar">Tiendas interesadas que completaron el formulario de contacto en el frontend.</p>
 
-            <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
-                <input type="text" id="leads-search" placeholder="🔍 Buscar por tienda, contacto, email..." class="petsgo-search" style="flex:1;min-width:220px;">
+            <div class="petsgo-search-bar">
+                <input type="text" id="leads-search" placeholder="🔍 Buscar por tienda, contacto, email..." autocomplete="off">
                 <select id="leads-status-filter" class="petsgo-select" style="min-width:160px;">
                     <option value="">Todos los estados</option>
                     <option value="nuevo">🆕 Nuevo</option>
@@ -10619,11 +10698,14 @@ Dashboard con analíticas"></textarea>
                     <option value="contratado">✅ Contratado</option>
                     <option value="declinado">❌ Declinado</option>
                 </select>
-                <button type="button" class="petsgo-btn petsgo-btn-primary" onclick="searchLeads()">Buscar</button>
+                <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="leads-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="leads-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
 
-            <div id="leads-grid"></div>
+            <div class="petsgo-table-wrap">
+            <table class="petsgo-table"><thead id="leads-thead"><tr><th>Tienda</th><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
+            <tbody id="leads-body"><tr><td colspan="8" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
         </div>
 
         <!-- Modal notas -->
@@ -10641,6 +10723,30 @@ Dashboard con analíticas"></textarea>
         <script>
         jQuery(function($){
             var currentLead = null;
+            var statusBadge = function(s) {
+                var m = {nuevo:'background:#e3f2fd;color:#1976d2',contactado:'background:#fff3e0;color:#e65100',contratado:'background:#e8f5e9;color:#2e7d32',declinado:'background:#fce4ec;color:#c62828'};
+                var icons = {nuevo:'🆕',contactado:'📞',contratado:'✅',declinado:'❌'};
+                return '<span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;' + (m[s]||'') + '">' + (icons[s]||'') + ' ' + s.charAt(0).toUpperCase()+s.slice(1) + '</span>';
+            };
+            var tbl=PG.table({
+                thead:'#leads-thead',body:'#leads-body',perPage:25,defaultSort:'id',defaultDir:'desc',
+                columns:['store_name','contact_name','email','phone','plan_name','status','created_at','_actions'],
+                emptyMsg:'No se encontraron leads.',
+                onTotal:function(n){$('#leads-total').text(n);},
+                renderRow:function(l){
+                    var r='<tr>';
+                    r+='<td><strong>'+PG.esc(l.store_name)+'</strong>'+(l.comuna?'<br><small style="color:#888;">'+PG.esc(l.comuna)+'</small>':'')+'</td>';
+                    r+='<td>'+PG.esc(l.contact_name)+'</td>';
+                    r+='<td><a href="mailto:'+PG.esc(l.email)+'">'+PG.esc(l.email)+'</a></td>';
+                    r+='<td>'+PG.esc(l.phone)+'</td>';
+                    r+='<td>'+PG.esc(l.plan_name||'—')+'</td>';
+                    r+='<td>'+statusBadge(l.status)+'</td>';
+                    r+='<td style="font-size:12px;color:#888;white-space:nowrap;">'+(l.created_at||'').substring(0,10)+'</td>';
+                    r+='<td><button class="petsgo-btn petsgo-btn-sm" onclick=\'openLead('+JSON.stringify(l).replace(/\'/g,"&#39;")+')\'>✏️ Gestionar</button></td>';
+                    r+='</tr>';
+                    return r;
+                }
+            });
             window.searchLeads = function(){
                 $('#leads-loader').addClass('active');
                 PG.post('petsgo_search_leads', {
@@ -10648,33 +10754,8 @@ Dashboard con analíticas"></textarea>
                     status: $('#leads-status-filter').val()
                 }, function(r) {
                     $('#leads-loader').removeClass('active');
-                    if (!r.success) return;
-                    var rows = r.data.rows;
-                    if (!rows.length) {
-                        $('#leads-grid').html('<div class="petsgo-empty">No se encontraron leads.</div>');
-                        return;
-                    }
-                    var statusBadge = function(s) {
-                        var m = {nuevo:'background:#e3f2fd;color:#1976d2',contactado:'background:#fff3e0;color:#e65100',contratado:'background:#e8f5e9;color:#2e7d32',declinado:'background:#fce4ec;color:#c62828'};
-                        var icons = {nuevo:'🆕',contactado:'📞',contratado:'✅',declinado:'❌'};
-                        return '<span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;' + (m[s]||'') + '">' + (icons[s]||'') + ' ' + s.charAt(0).toUpperCase()+s.slice(1) + '</span>';
-                    };
-                    var html = '<div class="petsgo-table-wrap"><table class="petsgo-table"><thead><tr><th>Tienda</th><th>Contacto</th><th>Email</th><th>Teléfono</th><th>Plan</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead><tbody>';
-                    rows.forEach(function(l) {
-                        html += '<tr>';
-                        html += '<td><strong>' + PG.esc(l.store_name) + '</strong>' + (l.comuna ? '<br><small style="color:#888;">' + PG.esc(l.comuna) + '</small>' : '') + '</td>';
-                        html += '<td>' + PG.esc(l.contact_name) + '</td>';
-                        html += '<td><a href="mailto:' + PG.esc(l.email) + '">' + PG.esc(l.email) + '</a></td>';
-                        html += '<td>' + PG.esc(l.phone) + '</td>';
-                        html += '<td>' + PG.esc(l.plan_name||'—') + '</td>';
-                        html += '<td>' + statusBadge(l.status) + '</td>';
-                        html += '<td style="font-size:12px;color:#888;white-space:nowrap;">' + (l.created_at||'').substring(0,10) + '</td>';
-                        html += '<td><button class="petsgo-btn petsgo-btn-small" onclick=\'openLead(' + JSON.stringify(l).replace(/\'/g,"&#39;") + ')\'>✏️ Gestionar</button></td>';
-                        html += '</tr>';
-                    });
-                    html += '</tbody></table></div>';
-                    html += '<div class="petsgo-pagination-bar"><span>' + rows.length + ' lead(s) encontrado(s)</span></div>';
-                    $('#leads-grid').html(html);
+                    if(!r.success){tbl.setData([]);return;}
+                    tbl.setData(r.data.rows);
                 });
             };
 
@@ -10720,6 +10801,8 @@ Dashboard con analíticas"></textarea>
 
             // Initial load
             searchLeads();
+            var st;$('#leads-search,#leads-status-filter').on('input change',function(){clearTimeout(st);st=setTimeout(searchLeads,400);});
+            $('#leads-btn-search').on('click',searchLeads);
         });
         </script>
         <?php

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { CheckCircle, XCircle, Loader2, Store, User, Calendar, DollarSign, FileText, ShieldCheck } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Store, User, Calendar, DollarSign, FileText, ShieldCheck, Download } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/wp-json/petsgo/v1';
 
@@ -9,6 +9,8 @@ const InvoiceVerifyPage = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [downloadCount, setDownloadCount] = useState(0);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     const verify = async () => {
@@ -27,6 +29,32 @@ const InvoiceVerifyPage = () => {
     };
     verify();
   }, [token]);
+
+  useEffect(() => {
+    if (data?.download_count != null) setDownloadCount(data.download_count);
+  }, [data]);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await fetch(`${API_URL}/invoice/download/${token}`);
+      if (!res.ok) throw new Error('Error al descargar');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data?.invoice_number || 'boleta'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setDownloadCount(prev => prev + 1);
+    } catch {
+      alert('No se pudo descargar la boleta.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -141,7 +169,20 @@ const InvoiceVerifyPage = () => {
         </div>
 
         {/* Footer */}
-        <div className="px-6 pb-6">
+        <div className="px-6 pb-6 space-y-3">
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-emerald-500 text-white font-semibold rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-60"
+            style={{ border: 'none', cursor: downloading ? 'wait' : 'pointer' }}
+          >
+            {downloading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+            {downloading ? 'Descargando...' : 'Descargar Boleta PDF'}
+          </button>
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+            <Download className="w-3.5 h-3.5" />
+            <span>Esta boleta ha sido descargada <strong className="text-gray-600">{downloadCount}</strong> {downloadCount === 1 ? 'vez' : 'veces'}</span>
+          </div>
           <Link to="/" className="block w-full text-center px-6 py-3 bg-[#00B8D9] text-white font-semibold rounded-xl hover:bg-[#009bb5] transition-colors no-underline">
             Ir a PetsGo
           </Link>
