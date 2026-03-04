@@ -320,10 +320,14 @@ const HomePage = () => {
 
         {/* ========== CATEGORÍAS ========== */}
         <section style={{ marginTop: '60px' }}>
-          <h3 className="text-2xl font-black mb-6 flex items-center justify-center gap-3 text-gray-800">
+          <Link
+            to="/categoria"
+            className="text-2xl font-black mb-6 flex items-center justify-center gap-3 text-gray-800 no-underline hover:text-[#00A8E8] transition-colors cursor-pointer group"
+          >
             <Filter size={24} className="text-[#00A8E8]" />
             CATEGORÍAS
-          </h3>
+            <ChevronRight size={20} className="text-gray-300 group-hover:text-[#00A8E8] transition-colors" />
+          </Link>
           <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4">
             {categories.map((cat) => (
                 <Link 
