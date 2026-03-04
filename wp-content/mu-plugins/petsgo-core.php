@@ -6654,20 +6654,68 @@ Dashboard con analíticas"></textarea>
         if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         $s = get_option('petsgo_settings', []);
         $modules = [
-            ['key'=>'module_delivery',     'label'=>'Delivery / Despacho',     'desc'=>'Permite envío a domicilio. Si se desactiva, solo queda disponible "Retiro en tienda" al pagar.','icon'=>'🚚','color'=>'#00A8E8'],
-            ['key'=>'module_riders',       'label'=>'Riders',                   'desc'=>'Habilita toda la sección de riders: registro, panel, banners y asignación de entregas.','icon'=>'🏍️','color'=>'#22C55E'],
-            ['key'=>'module_vendor_plans', 'label'=>'Planes & Registro Tiendas','desc'=>'Muestra la página de planes y banners para que nuevas tiendas se registren.','icon'=>'🏪','color'=>'#F59E0B'],
-            ['key'=>'module_promo_slider', 'label'=>'Slider Promocional',      'desc'=>'Activa los avisos flotantes rotativos de "Ser Rider" y "Registrar Tienda" en el sitio.','icon'=>'📢','color'=>'#8B5CF6'],
-            ['key'=>'module_chatbot',      'label'=>'Chatbot IA',              'desc'=>'Habilita el asistente inteligente PetBot para los usuarios del sitio.','icon'=>'🤖','color'=>'#06B6D4'],
-            ['key'=>'module_reviews',      'label'=>'Reseñas',                 'desc'=>'Permite que los clientes dejen valoraciones en productos y tiendas.','icon'=>'⭐','color'=>'#F97316'],
-            ['key'=>'module_coupons',      'label'=>'Cupones',                 'desc'=>'Habilita el sistema de cupones de descuento para las tiendas.','icon'=>'🎟️','color'=>'#EC4899'],
+            ['key'=>'module_delivery','label'=>'Delivery / Despacho','desc'=>'Permite envío a domicilio. Si se desactiva, solo queda disponible "Retiro en tienda" al pagar.','icon'=>'🚚','color'=>'#00A8E8',
+             'guide'=>'<h4>📦 Módulo Delivery / Despacho</h4>
+<p><strong>¿Qué hace?</strong><br>Habilita la opción de envío a domicilio en el proceso de checkout. Los clientes pueden elegir entre retiro en tienda o despacho.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>Solo queda disponible "Retiro en tienda" como método de entrega.</li><li>Los costos de delivery dejan de calcularse.</li><li>Los riders no podrán recibir nuevas asignaciones de entrega.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Cuando la plataforma opere solo con retiro en tienda, o cuando no haya riders disponibles.</p>
+<p><strong>Afecta a:</strong> Checkout, cálculo de costos de envío, asignación de riders.</p>'],
+
+            ['key'=>'module_riders','label'=>'Riders','desc'=>'Habilita toda la sección de riders: registro, panel, banners y asignación de entregas.','icon'=>'🏍️','color'=>'#22C55E',
+             'guide'=>'<h4>🏍️ Módulo Riders</h4>
+<p><strong>¿Qué hace?</strong><br>Activa todo el ecosistema de riders: formulario de registro público, panel de rider, asignación automática de entregas y banners promocionales para reclutar riders.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>El formulario de registro de rider se oculta del sitio público.</li><li>Los banners "Sé un Rider" desaparecen.</li><li>Los riders existentes no podrán acceder a su panel.</li><li>La asignación automática de entregas se pausa.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Cuando no se necesite un sistema de riders propio y las entregas se gestionen externamente.</p>
+<p><strong>Afecta a:</strong> Registro de riders, Panel rider, Banners, Asignación de entregas.</p>'],
+
+            ['key'=>'module_vendor_plans','label'=>'Planes & Registro Tiendas','desc'=>'Muestra la página de planes y banners para que nuevas tiendas se registren.','icon'=>'🏪','color'=>'#F59E0B',
+             'guide'=>'<h4>🏪 Módulo Planes & Registro de Tiendas</h4>
+<p><strong>¿Qué hace?</strong><br>Habilita la página pública de planes de suscripción y el formulario de registro para nuevas tiendas. Muestra banners promocionales invitando a emprendedores a vender en la plataforma.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>La página de planes desaparece del sitio.</li><li>Los banners "Registra tu Tienda" se ocultan.</li><li>Nuevas tiendas no podrán registrarse por su cuenta.</li><li>Las tiendas ya registradas siguen operando con normalidad.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Si no se aceptan nuevas tiendas o el registro se hace solo por invitación del administrador.</p>
+<p><strong>Afecta a:</strong> Página de planes, Registro público de tiendas, Banners promocionales.</p>'],
+
+            ['key'=>'module_promo_slider','label'=>'Slider Promocional','desc'=>'Activa los avisos flotantes rotativos de "Ser Rider" y "Registrar Tienda" en el sitio.','icon'=>'📢','color'=>'#8B5CF6',
+             'guide'=>'<h4>📢 Módulo Slider Promocional</h4>
+<p><strong>¿Qué hace?</strong><br>Muestra avisos flotantes rotativos en la parte inferior del sitio. Estos avisos promocionan funciones como "Sé un Rider" y "Registra tu Tienda".</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>Los avisos flotantes desaparecen del sitio.</li><li>Se reduce la visibilidad de las opciones de registro de riders y tiendas.</li><li>El sitio queda más limpio visualmente.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Si los avisos son innecesarios o si ya no se busca captar riders o tiendas activamente.</p>
+<p><strong>Afecta a:</strong> Avisos flotantes en el sitio público.</p>'],
+
+            ['key'=>'module_chatbot','label'=>'Chatbot IA','desc'=>'Habilita el asistente inteligente PetBot para los usuarios del sitio.','icon'=>'🤖','color'=>'#06B6D4',
+             'guide'=>'<h4>🤖 Módulo Chatbot IA (PetBot)</h4>
+<p><strong>¿Qué hace?</strong><br>Activa el asistente inteligente PetBot, un chatbot con IA que ayuda a los usuarios a encontrar productos, resolver dudas sobre cuidado de mascotas y navegar la plataforma.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>El botón flotante del chatbot desaparece del sitio.</li><li>Los usuarios no tendrán asistencia automatizada.</li><li>Se reducen las llamadas a la API de IA (ahorro de costos).</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Si se quiere reducir costos de API, si el chatbot presenta problemas, o si se prefiere soporte humano exclusivamente.</p>
+<p><strong>Afecta a:</strong> Widget de chatbot en el sitio público, consumo de API de IA.</p>'],
+
+            ['key'=>'module_reviews','label'=>'Reseñas','desc'=>'Permite que los clientes dejen valoraciones en productos y tiendas.','icon'=>'⭐','color'=>'#F97316',
+             'guide'=>'<h4>⭐ Módulo Reseñas</h4>
+<p><strong>¿Qué hace?</strong><br>Permite que los clientes dejen valoraciones con estrellas y comentarios en productos y tiendas después de una compra.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>Se ocultan los formularios de reseña en productos y tiendas.</li><li>Las reseñas existentes dejan de mostrarse.</li><li>Las estrellas de valoración desaparecen de las tarjetas de productos.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Si se receiben reseñas inapropiadas y se necesita moderar, o si se prefiere no mostrar valoraciones públicas.</p>
+<p><strong>Afecta a:</strong> Detalle de producto, Detalle de tienda, Tarjetas de producto, Sistema de estrellas.</p>'],
+
+            ['key'=>'module_coupons','label'=>'Cupones','desc'=>'Habilita el sistema de cupones de descuento para las tiendas.','icon'=>'🎟️','color'=>'#EC4899',
+             'guide'=>'<h4>🎟️ Módulo Cupones</h4>
+<p><strong>¿Qué hace?</strong><br>Habilita el sistema completo de cupones de descuento. Las tiendas pueden crear cupones y los clientes pueden aplicarlos en el checkout.</p>
+<p><strong>¿Qué pasa al desactivarlo?</strong></p>
+<ul><li>Las tiendas no podrán crear nuevos cupones.</li><li>El campo de cupón desaparece del checkout.</li><li>Los cupones existentes quedan suspendidos hasta reactivar el módulo.</li></ul>
+<p><strong>¿Cuándo desactivarlo?</strong><br>Si no se desean descuentos promocionales o si se quiere controlar los márgenes de las ventas.</p>
+<p><strong>Afecta a:</strong> Panel de tienda, Checkout, Gestión de cupones admin.</p>'],
         ];
         ?>
         <div class="wrap petsgo-wrap">
             <h1>🧩 Módulos del Marketplace</h1>
             <p class="petsgo-info-bar">Activa o desactiva funcionalidades de la plataforma. Los cambios se reflejan inmediatamente en el sitio.</p>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px;max-width:1100px;">
-            <?php foreach ($modules as $m):
+            <?php foreach ($modules as $i => $m):
                 $enabled = ($s[$m['key']] ?? '1') === '1';
             ?>
                 <div class="petsgo-module-card" id="mod-<?php echo esc_attr($m['key']); ?>" style="background:#fff;border-radius:16px;padding:20px 24px;display:flex;align-items:flex-start;gap:16px;border:1px solid <?php echo $enabled ? '#e5e7eb' : '#fce4ec'; ?>;box-shadow:0 2px 8px rgba(0,0,0,0.04);transition:all 0.3s;">
@@ -6677,29 +6725,117 @@ Dashboard con analíticas"></textarea>
                     <div style="flex:1;min-width:0;">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
                             <strong style="font-size:15px;color:#2F3A40;"><?php echo esc_html($m['label']); ?></strong>
-                            <button class="pg-mod-toggle" data-key="<?php echo esc_attr($m['key']); ?>" data-enabled="<?php echo $enabled ? '1' : '0'; ?>" style="border:none;background:none;cursor:pointer;padding:0;font-size:0;line-height:0;" title="<?php echo $enabled ? 'Desactivar' : 'Activar'; ?>">
-                                <svg width="44" height="24" viewBox="0 0 44 24" style="transition:all 0.3s;">
-                                    <rect x="0" y="0" width="44" height="24" rx="12" fill="<?php echo $enabled ? $m['color'] : '#d1d5db'; ?>" style="transition:fill 0.3s;"/>
-                                    <circle cx="<?php echo $enabled ? '32' : '12'; ?>" cy="12" r="9" fill="#fff" style="transition:cx 0.3s;"/>
-                                </svg>
-                            </button>
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <button class="pg-mod-info" data-idx="<?php echo $i; ?>" style="border:none;background:none;cursor:pointer;padding:2px;font-size:0;line-height:0;opacity:0.5;transition:opacity 0.2s;" title="Ver guía del módulo" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="<?php echo esc_attr($m['color']); ?>" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                                </button>
+                                <button class="pg-mod-toggle" data-key="<?php echo esc_attr($m['key']); ?>" data-label="<?php echo esc_attr($m['label']); ?>" data-enabled="<?php echo $enabled ? '1' : '0'; ?>" style="border:none;background:none;cursor:pointer;padding:0;font-size:0;line-height:0;" title="<?php echo $enabled ? 'Desactivar' : 'Activar'; ?>">
+                                    <svg width="44" height="24" viewBox="0 0 44 24" style="transition:all 0.3s;">
+                                        <rect x="0" y="0" width="44" height="24" rx="12" fill="<?php echo $enabled ? $m['color'] : '#d1d5db'; ?>" style="transition:fill 0.3s;"/>
+                                        <circle cx="<?php echo $enabled ? '32' : '12'; ?>" cy="12" r="9" fill="#fff" style="transition:cx 0.3s;"/>
+                                    </svg>
+                                </button>
+                            </div>
                         </div>
                         <p style="font-size:12px;color:#9ca3af;line-height:1.5;margin:0;"><?php echo esc_html($m['desc']); ?></p>
+                        <div style="margin-top:8px;">
+                            <span class="pg-mod-badge" style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;<?php echo $enabled ? 'background:#ECFDF5;color:#059669;' : 'background:#FEF2F2;color:#DC2626;'; ?>">
+                                <?php echo $enabled ? '● Activo' : '○ Inactivo'; ?>
+                            </span>
+                        </div>
                     </div>
                 </div>
             <?php endforeach; ?>
             </div>
         </div>
+
+        <!-- Modal de confirmación de toggle -->
+        <div id="pg-mod-confirm" style="display:none;position:fixed;inset:0;z-index:170000;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;font-family:Poppins,Segoe UI,sans-serif;animation:pgToastIn .3s ease;">
+            <div style="background:#fff;border-radius:16px;padding:32px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <div id="pg-mod-confirm-icon" style="font-size:48px;margin-bottom:8px;">⚙️</div>
+                    <h3 id="pg-mod-confirm-title" style="font-size:20px;font-weight:800;color:#2F3A40;margin:0 0 8px;"></h3>
+                    <p id="pg-mod-confirm-msg" style="font-size:13px;color:#6b7280;line-height:1.6;margin:0;"></p>
+                </div>
+                <div id="pg-mod-confirm-warning" style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:14px;margin-bottom:16px;">
+                    <p style="font-size:12px;color:#EA580C;margin:0;line-height:1.6;">⚠️ <strong>Este cambio se aplica inmediatamente</strong> y afectará la experiencia de los usuarios en el sitio.</p>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="pg-mod-confirm-cancel" style="flex:1;padding:12px;border-radius:10px;border:2px solid #e5e7eb;background:#fff;color:#6b7280;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;">Cancelar</button>
+                    <button id="pg-mod-confirm-ok" style="flex:1;padding:12px;border-radius:10px;border:none;color:#fff;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;box-shadow:0 4px 12px rgba(0,0,0,0.15);">Confirmar</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de guía/info del módulo -->
+        <div id="pg-mod-guide" style="display:none;position:fixed;inset:0;z-index:170000;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;font-family:Poppins,Segoe UI,sans-serif;animation:pgToastIn .3s ease;">
+            <div style="background:#fff;border-radius:16px;padding:0;max-width:520px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;">
+                <div id="pg-mod-guide-header" style="padding:24px 28px 16px;border-bottom:1px solid #f0f0f0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span id="pg-mod-guide-icon" style="font-size:32px;"></span>
+                            <span id="pg-mod-guide-title" style="font-size:18px;font-weight:800;color:#2F3A40;"></span>
+                        </div>
+                        <button id="pg-mod-guide-close" style="border:none;background:none;cursor:pointer;padding:4px;font-size:22px;color:#9ca3af;line-height:1;" title="Cerrar">✕</button>
+                    </div>
+                </div>
+                <div id="pg-mod-guide-body" style="padding:20px 28px 28px;max-height:60vh;overflow-y:auto;font-size:13px;color:#4b5563;line-height:1.8;"></div>
+            </div>
+        </div>
+
+        <style>
+            #pg-mod-guide-body h4 { font-size:16px; color:#2F3A40; margin:0 0 12px; }
+            #pg-mod-guide-body p { margin:0 0 12px; }
+            #pg-mod-guide-body ul { margin:0 0 12px; padding-left:20px; }
+            #pg-mod-guide-body li { margin-bottom:4px; }
+            #pg-mod-guide-body strong { color:#2F3A40; }
+        </style>
+
         <script>
         jQuery(function($){
             var moduleColors = <?php echo json_encode(array_column($modules, 'color', 'key')); ?>;
+            var moduleLabels = <?php echo json_encode(array_column($modules, 'label', 'key')); ?>;
+            var moduleIcons  = <?php echo json_encode(array_column($modules, 'icon', 'key')); ?>;
+            var moduleGuides = <?php echo json_encode(array_column($modules, 'guide', 'key')); ?>;
+            var pendingKey = null;
+
+            /* ---- Confirmación antes de toggle ---- */
             $(document).on('click','.pg-mod-toggle',function(){
-                var btn=$(this),key=btn.data('key'),cur=btn.data('enabled')==='1'||btn.data('enabled')===1;
-                btn.prop('disabled',true);
+                var btn=$(this), key=btn.data('key'), cur=btn.data('enabled')==='1'||btn.data('enabled')===1;
+                pendingKey = key;
+                var action = cur ? 'DESACTIVAR' : 'ACTIVAR';
+                var color  = moduleColors[key]||'#00A8E8';
+                var icon   = moduleIcons[key]||'⚙️';
+                $('#pg-mod-confirm-icon').text(icon);
+                $('#pg-mod-confirm-title').text(action + ' módulo');
+                $('#pg-mod-confirm-msg').html('¿Estás seguro de que deseas <strong>' + action.toLowerCase() + '</strong> el módulo <strong>"' + (moduleLabels[key]||key) + '"</strong>?');
+                if(cur){
+                    $('#pg-mod-confirm-warning').show().find('p').html('⚠️ <strong>Al desactivar</strong> este módulo, la funcionalidad dejará de estar disponible para los usuarios inmediatamente.');
+                    $('#pg-mod-confirm-ok').css('background','#DC2626');
+                } else {
+                    $('#pg-mod-confirm-warning').show().find('p').html('✅ <strong>Al activar</strong> este módulo, la funcionalidad estará disponible para los usuarios inmediatamente.');
+                    $('#pg-mod-confirm-ok').css('background', color);
+                }
+                $('#pg-mod-confirm').css('display','flex');
+            });
+
+            /* Cancelar confirmación */
+            $('#pg-mod-confirm-cancel, #pg-mod-confirm').on('click',function(e){
+                if(e.target===this){ $('#pg-mod-confirm').hide(); pendingKey=null; }
+            });
+
+            /* Confirmar toggle */
+            $('#pg-mod-confirm-ok').on('click',function(){
+                if(!pendingKey) return;
+                var key=pendingKey, okBtn=$(this);
+                okBtn.prop('disabled',true).text('Aplicando...');
                 PG.post('petsgo_toggle_module',{key:key},function(r){
-                    btn.prop('disabled',false);
+                    okBtn.prop('disabled',false).text('Confirmar');
+                    $('#pg-mod-confirm').hide();
+                    pendingKey=null;
                     if(r.success){
                         var on=r.data.enabled;
+                        var btn=$('.pg-mod-toggle[data-key="'+key+'"]');
                         btn.data('enabled',on?1:0);
                         var color=moduleColors[key]||'#00A8E8';
                         var svg='<svg width="44" height="24" viewBox="0 0 44 24" style="transition:all 0.3s;"><rect x="0" y="0" width="44" height="24" rx="12" fill="'+(on?color:'#d1d5db')+'" style="transition:fill 0.3s;"/><circle cx="'+(on?'32':'12')+'" cy="12" r="9" fill="#fff" style="transition:cx 0.3s;"/></svg>';
@@ -6707,9 +6843,30 @@ Dashboard con analíticas"></textarea>
                         var card=btn.closest('.petsgo-module-card');
                         card.css('border-color',on?'#e5e7eb':'#fce4ec');
                         card.find('div:first').css('background',on?color+'15':'#f3f4f6');
-                        PG.toast(r.data.message,'success');
-                    }else{PG.toast(r.data||'Error','error');}
+                        card.find('.pg-mod-badge').attr('style','display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;'+(on?'background:#ECFDF5;color:#059669;':'background:#FEF2F2;color:#DC2626;')).text(on?'● Activo':'○ Inactivo');
+                        PG.toast((on?'✅':'🚫')+' '+r.data.message+': <strong>'+(moduleLabels[key]||key)+'</strong>', on?'success':'warning');
+                    }else{PG.toast('❌ '+(r.data||'Error al cambiar módulo'),'error');}
                 });
+            });
+
+            /* Escape cierra confirmación */
+            $(document).on('keydown',function(e){ if(e.key==='Escape'){ $('#pg-mod-confirm').hide(); $('#pg-mod-guide').hide(); pendingKey=null; }});
+
+            /* ---- Modal de guía/info ---- */
+            $(document).on('click','.pg-mod-info',function(){
+                var card=$(this).closest('.petsgo-module-card');
+                var key=card.find('.pg-mod-toggle').data('key');
+                var color=moduleColors[key]||'#00A8E8';
+                $('#pg-mod-guide-icon').text(moduleIcons[key]||'📖');
+                $('#pg-mod-guide-title').text(moduleLabels[key]||'Módulo');
+                $('#pg-mod-guide-header').css('background',color+'10');
+                $('#pg-mod-guide-body').html(moduleGuides[key]||'<p>Sin información disponible.</p>');
+                $('#pg-mod-guide').css('display','flex');
+            });
+
+            /* Cerrar guía */
+            $('#pg-mod-guide-close, #pg-mod-guide').on('click',function(e){
+                if(e.target===this) $('#pg-mod-guide').hide();
             });
         });
         </script>
