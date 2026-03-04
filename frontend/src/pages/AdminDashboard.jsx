@@ -26,7 +26,7 @@ const DEMO_ADMIN_VENDORS = [
   { id: 6, store_name: 'PetLand Chile', email: 'soporte@petland.cl', total_sales: 1520000, total_orders: 33, sales_commission: 8, delivery_fee_cut: 5 },
 ];
 
-const ITEMS_PER_PAGE = 8;
+const ITEMS_PER_PAGE = 5;
 
 const loadImageAsBase64 = (url) => new Promise((resolve) => {
   const img = new window.Image();
@@ -186,7 +186,7 @@ const AdminDashboard = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '32px 24px 60px' }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '48px 32px 60px' }}>
         <div className="flex items-center gap-3 mb-8">
           <div className="w-12 h-12 bg-[#2F3A40] rounded-2xl flex items-center justify-center">
             <Shield size={24} className="text-[#FFC400]" />
@@ -707,11 +707,11 @@ const AdminDashboard = () => {
             <h3 className="text-lg font-black text-[#2F3A40]">
               🏍️ Riders Registrados <span className="text-gray-400 font-medium">({filteredRiders.length})</span>
             </h3>
-            <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="relative" style={{ zIndex: 1 }}>
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style={{ pointerEvents: 'none' }} />
               <input
                 type="text" placeholder="Buscar rider..." value={riderSearch} onChange={e => { setRiderSearch(e.target.value); setRiderPage(1); }}
-                className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm w-64"
+                className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm w-64 focus:ring-2 focus:ring-[#00A8E8]/20 focus:border-[#00A8E8] outline-none transition-all"
               />
             </div>
           </div>
