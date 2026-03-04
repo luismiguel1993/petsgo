@@ -106,7 +106,7 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
         <div style={{ maxWidth: '1280px', margin: '0 auto', paddingLeft: '32px', paddingRight: '32px' }}>
           
           {/* Fila Principal */}
-          <div className="flex items-center justify-center gap-4 lg:gap-8" style={{ paddingTop: '16px', paddingBottom: '12px' }}>
+          <div className="flex items-center justify-center gap-4 lg:gap-8" style={{ paddingTop: '24px', paddingBottom: '14px' }}>
             
             {/* Logo - Más centrado */}
             <Link to="/" className="shrink-0" style={{ marginTop: '4px' }}>
