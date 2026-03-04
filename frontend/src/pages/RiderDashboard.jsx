@@ -13,6 +13,7 @@ import {
 } from '../services/api';
 import { Download, BarChart3 } from 'lucide-react';
 import huellaPng from '../assets/huella.png';
+import InfoGuideButton from '../components/InfoGuideButton';
 import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName, validateRut, formatRut } from '../utils/chile';
 
 /* ───── constants ───── */
@@ -459,6 +460,22 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'home' && isApproved && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>🏠 Inicio</h3>
+            <InfoGuideButton title="Inicio" icon="🏠" color="#F97316">
+              <h4>🏠 Panel de Inicio</h4>
+              <p><strong>¿Qué es?</strong><br/>Tu resumen principal como rider. Muestra de un vistazo tus ganancias, entregas activas y métricas clave.</p>
+              <p><strong>Información que verás:</strong></p>
+              <ul>
+                <li><strong>Ganancias de la semana:</strong> Cuánto has ganado esta semana y cuántas entregas realizaste.</li>
+                <li><strong>Saldo pendiente:</strong> Monto acumulado que se te pagará en el próximo ciclo de pago.</li>
+                <li><strong>Total ganado:</strong> Tus ganancias históricas totales.</li>
+                <li><strong>Tasa de aceptación:</strong> Porcentaje de ofertas de entrega que has aceptado.</li>
+                <li><strong>Rating:</strong> Tu calificación promedio basada en valoraciones de clientes.</li>
+              </ul>
+              <p><strong>Entregas activas:</strong><br/>Aquí verás los pedidos que estás entregando actualmente. Usa los botones de estado para avanzar cada entrega.</p>
+            </InfoGuideButton>
+          </div>
           {/* Quick stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
             <StatBox label="Esta semana" value={fmt(earnings?.currentWeek?.earned || profile?.weekEarned || 0)} sub={`${earnings?.currentWeek?.deliveries || profile?.weekDeliveries || 0} entregas`} color="#F97316" icon={TrendingUp} />
@@ -560,6 +577,21 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'deliveries' && isApproved && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>📦 Entregas</h3>
+            <InfoGuideButton title="Entregas" icon="📦" color="#00A8E8">
+              <h4>📦 Mis Entregas</h4>
+              <p><strong>¿Qué es?</strong><br/>Listado completo de todas tus entregas, activas y completadas. Gestiona el estado de cada entrega en tiempo real.</p>
+              <p><strong>Estados de entrega:</strong></p>
+              <ul>
+                <li><strong>🟠 Asignada:</strong> Se te asignó una entrega. Debes aceptarla o rechazarla.</li>
+                <li><strong>🟣 Recogiendo:</strong> Vas en camino a la tienda a recoger el pedido.</li>
+                <li><strong>🟢 En ruta:</strong> Tienes el pedido y vas hacia el cliente.</li>
+                <li><strong>✅ Entregada:</strong> La entrega fue completada exitosamente.</li>
+              </ul>
+              <p><strong>Cómo funciona:</strong><br/>Cada entrega muestra la dirección de recogida, dirección de destino y monto de la comisión. Usa los botones de acción para avanzar el estado.</p>
+            </InfoGuideButton>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
               { label: 'Pendientes', value: activeDeliveries.length, color: '#F97316' },
@@ -602,6 +634,22 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'earnings' && isApproved && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>💰 Ganancias</h3>
+            <InfoGuideButton title="Ganancias" icon="💰" color="#22C55E">
+              <h4>💰 Mis Ganancias</h4>
+              <p><strong>¿Qué es?</strong><br/>Detalle completo de tus ingresos como rider. Incluye ganancias por período, saldo pendiente de pago e historial.</p>
+              <p><strong>Información disponible:</strong></p>
+              <ul>
+                <li><strong>Total ganado:</strong> Todas tus ganancias históricas acumuladas.</li>
+                <li><strong>Total pagado:</strong> Monto ya transferido a tu cuenta bancaria.</li>
+                <li><strong>Saldo pendiente:</strong> Monto acumulado pendiente de pago.</li>
+                <li><strong>Semana actual:</strong> Ganancias y entregas de la semana en curso.</li>
+              </ul>
+              <p><strong>Ciclo de pagos:</strong><br/>Los pagos se procesan semanalmente. El monto pendiente se transfiere a la cuenta bancaria registrada en tu perfil. Asegúrate de tener tus datos bancarios actualizados.</p>
+              <p><strong>Historial:</strong><br/>Consulta el detalle de semanas anteriores con ganancias, cantidad de entregas y estado del pago.</p>
+            </InfoGuideButton>
+          </div>
           {/* Summary cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 24 }}>
             <StatBox label="Total ganado" value={fmt(earnings?.totalEarned || 0)} color="#2F3A40" icon={DollarSign} />
@@ -752,7 +800,24 @@ const RiderDashboard = () => {
          TAB: ESTADÍSTICAS / REPORTES
       ══════════════════════════════════════════════ */}
       {tab === 'stats' && isApproved && (
-        <RiderStatsTab
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>📊 Estadísticas</h3>
+            <InfoGuideButton title="Estadísticas" icon="📊" color="#8B5CF6">
+              <h4>📊 Estadísticas y Reportes</h4>
+              <p><strong>¿Qué es?</strong><br/>Panel avanzado de métricas con gráficos y reportes descargables. Te permite analizar tu rendimiento en detalle.</p>
+              <p><strong>Métricas disponibles:</strong></p>
+              <ul>
+                <li><strong>Entregas por período:</strong> Cuántas entregas realizaste por día/semana/mes.</li>
+                <li><strong>Ganancias detalladas:</strong> Ingresos desglosados por período.</li>
+                <li><strong>Rendimiento:</strong> Tasa de aceptación, tiempo promedio de entrega.</li>
+                <li><strong>Gráficos:</strong> Visualizaciones de tendencias a lo largo del tiempo.</li>
+              </ul>
+              <p><strong>Exportar reporte:</strong><br/>Puedes descargar un reporte PDF con todas tus estadísticas seleccionando el período deseado y haciendo clic en "Descargar PDF".</p>
+              <p><strong>Filtros:</strong> Usa los filtros de fecha para ver estadísticas de hoy, esta semana, este mes o un rango personalizado.</p>
+            </InfoGuideButton>
+          </div>
+          <RiderStatsTab
           stats={riderStats}
           loading={statsLoading}
           range={statsRange}
@@ -782,6 +847,7 @@ const RiderDashboard = () => {
             setStatsLoading(false);
           }}
         />
+        </>
       )}
 
       {/* ══════════════════════════════════════════════
@@ -789,6 +855,22 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'documents' && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>📋 Documentos</h3>
+            <InfoGuideButton title="Documentos" icon="📋" color="#2F3A40">
+              <h4>📋 Documentación del Rider</h4>
+              <p><strong>¿Qué es?</strong><br/>Sube y gestiona los documentos requeridos para operar como rider. La documentación es obligatoria y será revisada por el equipo de PetsGo.</p>
+              <p><strong>Documentos requeridos:</strong></p>
+              <ul>
+                <li><strong>Cédula de identidad:</strong> Foto clara por ambos lados de tu cédula vigente.</li>
+                <li><strong>Licencia de conducir:</strong> Si usas moto o auto, sube tu licencia vigente.</li>
+                <li><strong>Certificado de antecedentes:</strong> Documento emitido por Registro Civil (no mayor a 3 meses).</li>
+                <li><strong>Comprobante de domicilio:</strong> Boleta de servicio básico o certificado de residencia.</li>
+              </ul>
+              <p><strong>Proceso:</strong><br/>1. Sube todos los documentos → 2. El equipo los revisa (hasta 48 hrs) → 3. Si todo está correcto, tu cuenta se aprueba → 4. ¡Ya puedes recibir entregas!</p>
+              <p><strong>Formatos aceptados:</strong> JPG, PNG, PDF. Máximo 5MB por archivo.</p>
+            </InfoGuideButton>
+          </div>
           {riderStatus === 'pending_email' && (
             <Card style={{ textAlign: 'center', padding: 32 }}>
               <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
@@ -933,6 +1015,26 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'ratings' && isApproved && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>⭐ Valoraciones</h3>
+            <InfoGuideButton title="Valoraciones" icon="⭐" color="#F59E0B">
+              <h4>⭐ Mis Valoraciones</h4>
+              <p><strong>¿Qué es?</strong><br/>Las valoraciones que los clientes dejan después de cada entrega. Tu rating promedio afecta tu visibilidad y prioridad al recibir entregas.</p>
+              <p><strong>¿Cómo funciona?</strong></p>
+              <ul>
+                <li>Después de cada entrega, el cliente puede calificarte de 1 a 5 estrellas.</li>
+                <li>También pueden dejar un comentario opcional.</li>
+                <li>Tu rating promedio se calcula con todas tus valoraciones.</li>
+              </ul>
+              <p><strong>Importancia del rating:</strong></p>
+              <ul>
+                <li>Un rating alto (4.5+) te da prioridad para recibir más entregas.</li>
+                <li>Un rating bajo puede resultar en menos asignaciones.</li>
+                <li>Ratings menores a 3.0 pueden activar una revisión de tu cuenta.</li>
+              </ul>
+              <p><strong>Consejos:</strong> Sé amable, puntual y cuida los pedidos para mantener un rating alto.</p>
+            </InfoGuideButton>
+          </div>
           <Card style={{ marginBottom: 20, textAlign: 'center' }}>
             <div style={{ fontSize: 48, fontWeight: 900, color: '#F59E0B' }}>⭐ {avgRating || '—'}</div>
             <p style={{ fontSize: 14, color: '#6b7280', fontWeight: 600, margin: '4px 0 0' }}>
@@ -978,6 +1080,25 @@ const RiderDashboard = () => {
       ══════════════════════════════════════════════ */}
       {tab === 'profile' && (
         <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: 0 }}>👤 Mi Perfil</h3>
+            <InfoGuideButton title="Perfil" icon="👤" color="#6366F1">
+              <h4>👤 Mi Perfil de Rider</h4>
+              <p><strong>¿Qué es?</strong><br/>Tu información personal y datos bancarios. Mantén estos datos actualizados para recibir pagos y comunicaciones correctamente.</p>
+              <p><strong>Secciones:</strong></p>
+              <ul>
+                <li><strong>Información personal:</strong> Nombre, apellido, RUT, teléfono, región y comuna.</li>
+                <li><strong>Cuenta bancaria:</strong> Banco, tipo de cuenta y número. Necesario para recibir pagos semanales.</li>
+                <li><strong>Resumen:</strong> Vista rápida de tu estado, vehículo y datos clave.</li>
+              </ul>
+              <p><strong>Importante:</strong></p>
+              <ul>
+                <li>Los datos bancarios deben coincidir con tu RUT para que los pagos se procesen correctamente.</li>
+                <li>Si cambias de teléfono o dirección, actualízalo aquí para no perder comunicaciones.</li>
+                <li>Tu contraseña se puede cambiar desde un botón al final del formulario.</li>
+              </ul>
+            </InfoGuideButton>
+          </div>
           {/* Personal info */}
           <Card style={{ marginBottom: 16 }}>
             <h3 style={{ fontSize: 16, fontWeight: 800, color: '#2F3A40', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 8 }}>

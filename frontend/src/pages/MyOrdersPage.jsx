@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Package, Clock, CheckCircle2, Truck, MapPin, Store, PawPrint, FileText, ShoppingBag, ChevronDown, ChevronUp, Download, Star, X, MessageSquare } from 'lucide-react';
 import { getMyOrders, submitReview, getOrderReviewStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import InfoGuideButton from '../components/InfoGuideButton';
 
 const STATUS_CONFIG = {
   pending: { label: 'Pendiente', color: '#FFC400', bg: '#fff8e1', icon: Clock },
@@ -148,9 +149,31 @@ const MyOrdersPage = () => {
       background: 'linear-gradient(135deg, #f0f9ff 0%, #FDFCFB 50%, #fef9c3 100%)',
     }}>
       <div style={{ maxWidth: '900px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '28px', fontWeight: 900, color: '#2F3A40', marginBottom: '4px' }}>
-          🛍️ Mis Compras
-        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <h1 style={{ fontSize: '28px', fontWeight: 900, color: '#2F3A40' }}>
+            🛍️ Mis Compras
+          </h1>
+          <InfoGuideButton title="Mis Compras" icon="🛍️" color="#00A8E8" size={20}>
+            <h4>🛍️ Mis Compras</h4>
+            <p><strong>¿Qué es?</strong><br/>Historial completo de todas tus compras en PetsGo. Desde aquí puedes hacer seguimiento a tus pedidos, descargar boletas y dejar reseñas.</p>
+            <p><strong>Estados de pedido:</strong></p>
+            <ul>
+              <li><strong>🟡 Pago Pendiente:</strong> Tu pedido fue creado pero aún no se confirma el pago.</li>
+              <li><strong>🟠 Pendiente:</strong> Pago confirmado, la tienda está por prepararlo.</li>
+              <li><strong>🟣 Preparando:</strong> La tienda está preparando tu pedido.</li>
+              <li><strong>🟣 Listo para enviar:</strong> Tu pedido está empacado y espera al repartidor.</li>
+              <li><strong>🟠 En camino:</strong> Un rider está llevando tu pedido a tu dirección.</li>
+              <li><strong>✅ Entregado:</strong> ¡Tu pedido fue entregado exitosamente!</li>
+            </ul>
+            <p><strong>Acciones disponibles:</strong></p>
+            <ul>
+              <li><strong>Descargar boleta:</strong> Botón disponible en pedidos confirmados (PDF).</li>
+              <li><strong>Reseñar producto:</strong> Después de la entrega, puedes calificar los productos con estrellas.</li>
+              <li><strong>Reseñar tienda:</strong> También puedes valorar la experiencia con la tienda.</li>
+            </ul>
+            <p><strong>Filtros:</strong><br/>Usa los botones de estado en la parte superior para filtrar tus pedidos por estado específico.</p>
+          </InfoGuideButton>
+        </div>
         <p style={{ color: '#9ca3af', fontWeight: 500, fontSize: '14px', marginBottom: '24px' }}>
           Historial y seguimiento de tus compras
         </p>

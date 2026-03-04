@@ -6,6 +6,7 @@ import {
   Calendar, Download, ChevronLeft, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
 } from 'lucide-react';
 import huellaPng from '../assets/huella.png';
+import InfoGuideButton from '../components/InfoGuideButton';
 import { useAuth } from '../context/AuthContext';
 import {
   getAdminDashboard, getAdminVendors, getVendorDashboardAsAdmin,
@@ -220,6 +221,21 @@ const AdminDashboard = () => {
       {/* ==================== DASHBOARD GLOBAL ==================== */}
       {tab === 'dashboard' && (
         <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">📊 Dashboard Global</h3>
+            <InfoGuideButton title="Dashboard Global" icon="📊" color="#2F3A40">
+              <h4>📊 Dashboard Global</h4>
+              <p><strong>¿Qué es?</strong><br/>El panel central del administrador. Muestra un resumen en tiempo real de toda la actividad del marketplace.</p>
+              <p><strong>Métricas disponibles:</strong></p>
+              <ul>
+                <li><strong>Ventas Totales:</strong> Suma de todas las ventas realizadas en la plataforma.</li>
+                <li><strong>Comisiones PetsGo:</strong> Total de comisiones cobradas a las tiendas por cada venta.</li>
+                <li><strong>Total Pedidos:</strong> Cantidad total de pedidos procesados.</li>
+                <li><strong>Tiendas Activas:</strong> Número de tiendas operando actualmente.</li>
+              </ul>
+              <p><strong>¿Cómo usar?</strong><br/>Revisa este panel regularmente para monitorear el rendimiento general del marketplace. Si notas caídas en ventas o pedidos, investiga en las pestañas de Tiendas o Riders.</p>
+            </InfoGuideButton>
+          </div>
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
@@ -271,6 +287,20 @@ const AdminDashboard = () => {
       {/* ==================== TIENDAS ==================== */}
       {tab === 'vendors' && (
         <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">🏪 Tiendas</h3>
+            <InfoGuideButton title="Gestión de Tiendas" icon="🏪" color="#00A8E8">
+              <h4>🏪 Gestión de Tiendas</h4>
+              <p><strong>¿Qué es?</strong><br/>Panel de administración de todas las tiendas registradas en el marketplace. Permite supervisar, editar comisiones y ver los detalles de cada tienda.</p>
+              <p><strong>Acciones disponibles:</strong></p>
+              <ul>
+                <li><strong>Supervisar tienda (ojo 👁️):</strong> Permite entrar en "modo supervisar" para ver el dashboard, ventas y productos de una tienda específica como si fueras el vendedor.</li>
+                <li><strong>Editar comisiones:</strong> Ajusta el porcentaje de comisión por venta y el corte por fee de delivery para cada tienda.</li>
+                <li><strong>Ver estadísticas:</strong> Revisa ventas totales, pedidos y rendimiento de cada tienda.</li>
+              </ul>
+              <p><strong>Comisiones:</strong><br/>La comisión por venta se descuenta automáticamente al procesar cada pedido. El corte de delivery es el porcentaje del fee de envío que retiene PetsGo.</p>
+            </InfoGuideButton>
+          </div>
           {/* Impersonate Modal */}
           {impersonateVendor && impersonateData && (
             <div className="petsgo-card p-6 mb-6 border-2 border-[#FFC400] bg-yellow-50/30">
@@ -427,9 +457,24 @@ const AdminDashboard = () => {
         <div>
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <div>
-              <h3 className="text-lg font-black text-[#2F3A40]">
-                🛍️ Tienda PetsGo Oficial
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-black text-[#2F3A40]">
+                  🛍️ Tienda PetsGo Oficial
+                </h3>
+                <InfoGuideButton title="Tienda PetsGo Oficial" icon="🛍️" color="#8B5CF6">
+                  <h4>🛍️ Tienda PetsGo Oficial</h4>
+                  <p><strong>¿Qué es?</strong><br/>La tienda propia de PetsGo dentro del marketplace. Aquí puedes gestionar productos que PetsGo vende directamente, sin intermediarios.</p>
+                  <p><strong>Acciones disponibles:</strong></p>
+                  <ul>
+                    <li><strong>Agregar producto:</strong> Crea nuevos productos con nombre, descripción, precio, stock, categoría e imagen.</li>
+                    <li><strong>Editar producto:</strong> Modifica los datos de un producto existente.</li>
+                    <li><strong>Eliminar producto:</strong> Elimina un producto permanentemente del catálogo.</li>
+                    <li><strong>Activar/Desactivar:</strong> Controla si un producto está visible para los clientes.</li>
+                    <li><strong>Subir imagen:</strong> Sube una imagen del producto (mín 400×400px, máx 2000×2000px, máx 2MB).</li>
+                  </ul>
+                  <p><strong>Importante:</strong><br/>Los productos de esta tienda no generan comisión ya que son ventas directas de PetsGo.</p>
+                </InfoGuideButton>
+              </div>
               <p className="text-xs text-gray-400 mt-1">Gestiona los productos que PetsGo vende directamente</p>
             </div>
             <button
@@ -698,6 +743,21 @@ const AdminDashboard = () => {
       {/* ==================== RIDERS ==================== */}
       {tab === 'riders' && (
         <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">🏍️ Riders</h3>
+            <InfoGuideButton title="Gestión de Riders" icon="🏍️" color="#F97316">
+              <h4>🏍️ Gestión de Riders</h4>
+              <p><strong>¿Qué es?</strong><br/>Panel de gestión de todos los repartidores (riders) registrados en la plataforma. Permite ver su estado, estadísticas y rendimiento.</p>
+              <p><strong>Información disponible:</strong></p>
+              <ul>
+                <li><strong>Listado de riders:</strong> Todos los riders registrados con su nombre, vehículo, estado y calificación.</li>
+                <li><strong>Estadísticas detalladas:</strong> Al hacer clic en un rider, puedes ver sus entregas, ganancias y métricas por período.</li>
+                <li><strong>Búsqueda:</strong> Filtra riders por nombre, email o estado.</li>
+                <li><strong>Estados:</strong> Pendiente de documentos, en revisión, aprobado o suspendido.</li>
+              </ul>
+              <p><strong>Flujo del rider:</strong><br/>1. Se registra → 2. Sube documentos → 3. Admin revisa y aprueba → 4. Rider puede recibir entregas.</p>
+            </InfoGuideButton>
+          </div>
           {/* Rider detail modal */}
           {selectedRider && riderStats && (
             <RiderStatsModal

@@ -4,6 +4,7 @@ import { User, Edit2, Save, X, Plus, Trash2, Camera, Eye, EyeOff, Check, AlertCi
 import { useAuth } from '../context/AuthContext';
 import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet, uploadPetPhoto } from '../services/api';
 import { formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
+import InfoGuideButton from '../components/InfoGuideButton';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb', borderRadius: '12px',
@@ -212,6 +213,19 @@ const UserProfilePage = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <User size={20} /> Datos Personales
+                <InfoGuideButton title="Datos Personales" icon="👤" color="#2F3A40">
+                  <h4>👤 Datos Personales</h4>
+                  <p><strong>¿Qué es?</strong><br/>Tu información personal registrada en PetsGo. Mantén estos datos actualizados para una mejor experiencia de compra.</p>
+                  <p><strong>Datos que puedes editar:</strong></p>
+                  <ul>
+                    <li><strong>Nombre completo:</strong> Tu nombre y apellido como aparecerán en pedidos y boletas.</li>
+                    <li><strong>Teléfono:</strong> Número de contacto para que las tiendas y riders puedan comunicarse contigo.</li>
+                    <li><strong>Dirección:</strong> Tu dirección de entrega predeterminada para despacho a domicilio.</li>
+                    <li><strong>Región y Comuna:</strong> Ubicación para calcular costos de envío.</li>
+                  </ul>
+                  <p><strong>Cambiar contraseña:</strong><br/>Usa el botón "🔐 Cambiar contraseña" debajo del formulario. Necesitarás tu contraseña actual y la nueva (mínimo 6 caracteres).</p>
+                  <p><strong>Consejo:</strong> Mantén tu dirección actualizada para que los envíos lleguen correctamente.</p>
+                </InfoGuideButton>
               </h2>
               {!editing ? (
                 <button onClick={startEdit} style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px' }}>
@@ -335,7 +349,23 @@ const UserProfilePage = () => {
           {(!user?.role || user.role === 'customer') && (
           <div style={cardStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40' }}>🐾 Mis Mascotas</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                🐾 Mis Mascotas
+                <InfoGuideButton title="Mis Mascotas" icon="🐾" color="#F59E0B">
+                  <h4>🐾 Mis Mascotas</h4>
+                  <p><strong>¿Qué es?</strong><br/>Registro de tus mascotas en PetsGo. Esta información ayuda a personalizar las recomendaciones de productos y alimentos.</p>
+                  <p><strong>Datos de cada mascota:</strong></p>
+                  <ul>
+                    <li><strong>Nombre:</strong> El nombre de tu mascota.</li>
+                    <li><strong>Tipo:</strong> Perro, gato u otra especie.</li>
+                    <li><strong>Raza:</strong> Raza de tu mascota (opcional).</li>
+                    <li><strong>Fecha de nacimiento:</strong> Para calcular la edad y recomendar productos adecuados.</li>
+                    <li><strong>Foto:</strong> Sube una foto de tu mascota para personalizar su perfil.</li>
+                    <li><strong>Notas:</strong> Información adicional como alergias, preferencias alimentarias, etc.</li>
+                  </ul>
+                  <p><strong>Beneficios:</strong><br/>Al registrar tus mascotas, PetsGo puede sugerirte productos específicos para la especie, raza y edad de cada una.</p>
+                </InfoGuideButton>
+              </h2>
               <button onClick={() => setPetModal({ petType: 'perro', name: '', breed: '', birthDate: '', notes: '', photoUrl: '' })}
                 style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'linear-gradient(135deg, #FFC400, #e6b000)' }}>
                 <Plus size={14} /> Agregar

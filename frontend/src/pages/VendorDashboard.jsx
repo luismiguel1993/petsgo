@@ -10,6 +10,7 @@ import {
   deleteProduct, getVendorOrders, updateOrderStatus,
   getVendorCoupons, saveVendorCoupon, deleteVendorCoupon,
 } from '../services/api';
+import InfoGuideButton from '../components/InfoGuideButton';
 
 const STATUS_CONFIG = {
   payment_pending: { label: 'Pago Pendiente', color: '#FFC400', next: 'preparing' },
@@ -221,6 +222,21 @@ const VendorDashboard = () => {
       {/* ==================== DASHBOARD ==================== */}
       {tab === 'dashboard' && (
         <div>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">📊 Dashboard</h3>
+            <InfoGuideButton title="Dashboard de Tienda" icon="📊" color="#00A8E8">
+              <h4>📊 Dashboard de Tienda</h4>
+              <p><strong>¿Qué es?</strong><br/>Resumen general de tu tienda en PetsGo. Muestra las métricas clave de rendimiento en tiempo real.</p>
+              <p><strong>Métricas disponibles:</strong></p>
+              <ul>
+                <li><strong>Ventas Totales:</strong> Suma de todas tus ventas en la plataforma.</li>
+                <li><strong>Pedidos:</strong> Cantidad total de pedidos que has recibido.</li>
+                <li><strong>Productos:</strong> Número de productos activos en tu catálogo.</li>
+                <li><strong>Comisión PetsGo:</strong> Total de comisiones cobradas por la plataforma sobre tus ventas.</li>
+              </ul>
+              <p><strong>Consejo:</strong><br/>Revisa tu dashboard frecuentemente para identificar tendencias. Si tus ventas bajan, considera actualizar precios, agregar nuevos productos o crear cupones de descuento.</p>
+            </InfoGuideButton>
+          </div>
           {loading ? (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {[...Array(4)].map((_, i) => (
@@ -279,9 +295,28 @@ const VendorDashboard = () => {
       {tab === 'inventory' && (
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-black text-[#2F3A40]">
-              Mis Productos <span className="text-gray-400 font-medium">({inventory.length})</span>
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-black text-[#2F3A40]">
+                Mis Productos <span className="text-gray-400 font-medium">({inventory.length})</span>
+              </h3>
+              <InfoGuideButton title="Inventario" icon="📦" color="#8B5CF6">
+                <h4>📦 Inventario de Productos</h4>
+                <p><strong>¿Qué es?</strong><br/>Gestión completa de tu catálogo de productos. Desde aquí puedes crear, editar, eliminar y buscar todos tus productos.</p>
+                <p><strong>Acciones disponibles:</strong></p>
+                <ul>
+                  <li><strong>Agregar producto:</strong> Crea un nuevo producto con nombre, descripción, precio, stock y categoría.</li>
+                  <li><strong>Editar:</strong> Modifica cualquier dato de un producto existente.</li>
+                  <li><strong>Eliminar:</strong> Quita un producto del catálogo permanentemente.</li>
+                  <li><strong>Stock:</strong> Mantén actualizado el stock. Cuando llega a 0, el producto se muestra como "Agotado".</li>
+                </ul>
+                <p><strong>Consejos:</strong></p>
+                <ul>
+                  <li>Usa descripciones claras y atractivas para mejorar las ventas.</li>
+                  <li>Mantén los precios competitivos revisando productos similares.</li>
+                  <li>Sube imágenes de buena calidad (mín 400×400px).</li>
+                </ul>
+              </InfoGuideButton>
+            </div>
             <button
               onClick={() => { setShowForm(true); setEditingProduct(null); setFormData(emptyProduct); }}
               className="petsgo-btn text-sm flex items-center gap-2"
@@ -426,9 +461,25 @@ const VendorDashboard = () => {
       {/* ==================== PEDIDOS ==================== */}
       {tab === 'orders' && (
         <div>
-          <h3 className="text-lg font-black text-[#2F3A40] mb-6">
-            Pedidos Recibidos <span className="text-gray-400 font-medium">({orders.length})</span>
-          </h3>
+          <div className="flex items-center gap-2 mb-6">
+            <h3 className="text-lg font-black text-[#2F3A40]">
+              Pedidos Recibidos <span className="text-gray-400 font-medium">({orders.length})</span>
+            </h3>
+            <InfoGuideButton title="Pedidos" icon="📥" color="#22C55E">
+              <h4>📥 Pedidos Recibidos</h4>
+              <p><strong>¿Qué es?</strong><br/>Listado de todos los pedidos que han realizado los clientes en tu tienda. Desde aquí gestionas el flujo de cada pedido.</p>
+              <p><strong>Flujo de estados:</strong></p>
+              <ul>
+                <li><strong>🟡 Pago pendiente:</strong> El cliente inició la compra pero aún no paga.</li>
+                <li><strong>🟠 Pendiente:</strong> Pago confirmado, esperando que prepares el pedido.</li>
+                <li><strong>🟣 Preparando:</strong> Estás preparando el pedido para envío o retiro.</li>
+                <li><strong>🟢 Listo:</strong> Pedido preparado, esperando al rider o al cliente.</li>
+                <li><strong>🔵 En camino:</strong> El rider está en ruta con el pedido.</li>
+                <li><strong>✅ Entregado:</strong> Pedido entregado exitosamente.</li>
+              </ul>
+              <p><strong>Acción "Avanzar":</strong><br/>Usa el botón "Avanzar" para mover el pedido al siguiente estado. Esto notifica automáticamente al cliente y al rider.</p>
+            </InfoGuideButton>
+          </div>
 
           {loading ? (
             <div className="space-y-4">
@@ -489,9 +540,28 @@ const VendorDashboard = () => {
       {tab === 'coupons' && (
         <div>
           <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-black text-[#2F3A40]">
-              Mis Cupones <span className="text-gray-400 font-medium">({coupons.length})</span>
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-black text-[#2F3A40]">
+                Mis Cupones <span className="text-gray-400 font-medium">({coupons.length})</span>
+              </h3>
+              <InfoGuideButton title="Cupones" icon="🎫" color="#EC4899">
+                <h4>🎫 Sistema de Cupones</h4>
+                <p><strong>¿Qué es?</strong><br/>Herramienta para crear cupones de descuento que tus clientes pueden aplicar al momento del checkout.</p>
+                <p><strong>Tipos de descuento:</strong></p>
+                <ul>
+                  <li><strong>Porcentaje (%):</strong> Descuenta un porcentaje del monto total de los productos de tu tienda.</li>
+                  <li><strong>Monto fijo ($):</strong> Descuenta una cantidad fija en pesos del total.</li>
+                </ul>
+                <p><strong>Configuración de cupones:</strong></p>
+                <ul>
+                  <li><strong>Código:</strong> El texto que el cliente debe ingresar (ej: DESCUENTO20).</li>
+                  <li><strong>Mínimo de compra:</strong> Monto mínimo para poder aplicar el cupón.</li>
+                  <li><strong>Usos máximos:</strong> Cuántas veces se puede usar el cupón en total.</li>
+                  <li><strong>Fecha de expiración:</strong> Hasta cuándo es válido.</li>
+                </ul>
+                <p><strong>Consejo:</strong><br/>Los cupones son una excelente herramienta para atraer nuevos clientes o reactivar compradores inactivos. Comparte el código en redes sociales para mayor alcance.</p>
+              </InfoGuideButton>
+            </div>
             <button
               onClick={() => { setShowCouponForm(true); setEditingCoupon(null); setCouponForm(emptyCoupon); }}
               className="petsgo-btn text-sm flex items-center gap-2"
