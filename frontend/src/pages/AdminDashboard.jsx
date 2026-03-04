@@ -3,8 +3,9 @@ import { Navigate } from 'react-router-dom';
 import {
   BarChart3, DollarSign, Store, Users, Package, ShoppingBag, TrendingUp,
   Eye, Percent, Save, Search, Shield, PawPrint, Truck, Star, MapPin,
-  Calendar, Download, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
+  Calendar, Download, ChevronLeft, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
 } from 'lucide-react';
+import huellaPng from '../assets/huella.png';
 import { useAuth } from '../context/AuthContext';
 import {
   getAdminDashboard, getAdminVendors, getVendorDashboardAsAdmin,
@@ -24,6 +25,55 @@ const DEMO_ADMIN_VENDORS = [
   { id: 5, store_name: 'Happy Pets Providencia', email: 'hello@happypets.cl', total_sales: 980000, total_orders: 31, sales_commission: 10, delivery_fee_cut: 5 },
   { id: 6, store_name: 'PetLand Chile', email: 'soporte@petland.cl', total_sales: 1520000, total_orders: 33, sales_commission: 8, delivery_fee_cut: 5 },
 ];
+
+const ITEMS_PER_PAGE = 8;
+
+const loadImageAsBase64 = (url) => new Promise((resolve) => {
+  const img = new window.Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    resolve(c.toDataURL('image/png'));
+  };
+  img.onerror = () => resolve(null);
+  img.src = url;
+});
+
+const PaginationControls = ({ currentPage, totalItems, onPageChange }) => {
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  if (totalPages <= 1) return null;
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '...') {
+      pages.push('...');
+    }
+  }
+  return (
+    <div className="flex items-center justify-center gap-2 mt-6 pt-4 border-t border-gray-100">
+      <button onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}
+        className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+        <ChevronLeft size={18} />
+      </button>
+      {pages.map((p, i) => p === '...' ? (
+        <span key={`e${i}`} className="text-gray-300 px-1">…</span>
+      ) : (
+        <button key={p} onClick={() => onPageChange(p)}
+          className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${
+            p === currentPage ? 'bg-[#00A8E8] text-white shadow-lg' : 'text-gray-400 hover:bg-gray-100'
+          }`}>{p}</button>
+      ))}
+      <button onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages}
+        className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+        <ChevronRight size={18} />
+      </button>
+      <span className="text-xs text-gray-400 ml-2">{totalItems} total</span>
+    </div>
+  );
+};
 
 const AdminDashboard = () => {
   const { isAuthenticated, isAdmin } = useAuth();
@@ -52,8 +102,12 @@ const AdminDashboard = () => {
   const [productSaving, setProductSaving] = useState(false);
   const [categories, setCategories] = useState([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [vendorPage, setVendorPage] = useState(1);
+  const [riderPage, setRiderPage] = useState(1);
+  const [storePage, setStorePage] = useState(1);
 
   useEffect(() => {
+    setVendorPage(1); setRiderPage(1); setStorePage(1);
     loadData();
   }, [tab]);
 
@@ -90,6 +144,9 @@ const AdminDashboard = () => {
   if (!isAuthenticated || !isAdmin()) return <Navigate to="/login" />;
 
   const formatPrice = (price) => `$${parseInt(price || 0).toLocaleString('es-CL')}`;
+
+  // Filtered riders for search + pagination
+  const filteredRiders = riders.filter(r => !riderSearch || r.name?.toLowerCase().includes(riderSearch.toLowerCase()) || r.email?.toLowerCase().includes(riderSearch.toLowerCase()));
 
   // Impersonate Mode - Visualizar dashboard de tienda
   const handleImpersonate = async (vendorId, storeName) => {
@@ -281,7 +338,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {vendors.map((v) => (
+                  {vendors.slice((vendorPage - 1) * ITEMS_PER_PAGE, vendorPage * ITEMS_PER_PAGE).map((v) => (
                     <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4">
                         <p className="font-bold text-[#2F3A40]">{v.store_name}</p>
@@ -359,6 +416,7 @@ const AdminDashboard = () => {
                   ))}
                 </tbody>
               </table>
+              <PaginationControls currentPage={vendorPage} totalItems={vendors.length} onPageChange={setVendorPage} />
             </div>
           )}
         </div>
@@ -546,7 +604,7 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {petsgoProducts.map(p => (
+                  {petsgoProducts.slice((storePage - 1) * ITEMS_PER_PAGE, storePage * ITEMS_PER_PAGE).map(p => (
                     <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
@@ -610,6 +668,7 @@ const AdminDashboard = () => {
                   ))}
                 </tbody>
               </table>
+              <PaginationControls currentPage={storePage} totalItems={petsgoProducts.length} onPageChange={setStorePage} />
             </div>
           )}
         </div>
@@ -646,12 +705,12 @@ const AdminDashboard = () => {
 
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <h3 className="text-lg font-black text-[#2F3A40]">
-              🏍️ Riders Registrados <span className="text-gray-400 font-medium">({riders.length})</span>
+              🏍️ Riders Registrados <span className="text-gray-400 font-medium">({filteredRiders.length})</span>
             </h3>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
-                type="text" placeholder="Buscar rider..." value={riderSearch} onChange={e => setRiderSearch(e.target.value)}
+                type="text" placeholder="Buscar rider..." value={riderSearch} onChange={e => { setRiderSearch(e.target.value); setRiderPage(1); }}
                 className="pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm w-64"
               />
             </div>
@@ -683,8 +742,8 @@ const AdminDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {riders
-                    .filter(r => !riderSearch || r.name.toLowerCase().includes(riderSearch.toLowerCase()) || r.email.toLowerCase().includes(riderSearch.toLowerCase()))
+                  {filteredRiders
+                    .slice((riderPage - 1) * ITEMS_PER_PAGE, riderPage * ITEMS_PER_PAGE)
                     .map((r) => {
                     const VEHICLE_ICONS = { bicicleta: '🚲', scooter: '🛵', moto: '🏍️', auto: '🚗', a_pie: '🚶' };
                     const STATUS = { approved: { l: 'Activo', c: 'bg-green-100 text-green-600' }, pending: { l: 'Pendiente', c: 'bg-yellow-100 text-yellow-600' }, rejected: { l: 'Rechazado', c: 'bg-red-100 text-red-600' }, suspended: { l: 'Suspendido', c: 'bg-red-100 text-red-600' } };
@@ -729,6 +788,7 @@ const AdminDashboard = () => {
                   })}
                 </tbody>
               </table>
+              <PaginationControls currentPage={riderPage} totalItems={filteredRiders.length} onPageChange={setRiderPage} />
             </div>
           )}  
         </div>
@@ -766,14 +826,17 @@ const RiderStatsModal = ({ stats, loading, range, customFrom, customTo, onRangeC
     // Header
     doc.setFillColor(...green);
     doc.rect(0, 0, 210, 38, 'F');
+    const logoData = await loadImageAsBase64(huellaPng);
+    if (logoData) doc.addImage(logoData, 'PNG', 10, 5, 28, 28);
+    const textX = logoData ? 42 : 14;
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
-    doc.text('PetsGo - Reporte de Rider', 14, 18);
+    doc.text('PetsGo - Reporte de Rider', textX, 18);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${rider.name} · ${rider.email}`, 14, 26);
-    doc.text(`Período: ${fmtDate(dateFrom)} — ${fmtDate(dateTo)} (${RANGE_LABELS[range] || range})`, 14, 33);
+    doc.text(`${rider.name} · ${rider.email}`, textX, 26);
+    doc.text(`Período: ${fmtDate(dateFrom)} — ${fmtDate(dateTo)} (${RANGE_LABELS[range] || range})`, textX, 33);
     y = 46;
 
     // Summary KPIs

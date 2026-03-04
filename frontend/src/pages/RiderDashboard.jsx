@@ -12,6 +12,7 @@ import {
   getRiderStats,
 } from '../services/api';
 import { Download, BarChart3 } from 'lucide-react';
+import huellaPng from '../assets/huella.png';
 import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName, validateRut, formatRut } from '../utils/chile';
 
 /* ───── constants ───── */
@@ -1150,6 +1151,19 @@ const RiderDashboard = () => {
 const RANGE_LABELS = { week: 'Esta Semana', month: 'Este Mes', year: 'Este Año', custom: 'Personalizado' };
 const MONTH_NAMES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
+const loadImageAsBase64 = (url) => new Promise((resolve) => {
+  const img = new window.Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    resolve(c.toDataURL('image/png'));
+  };
+  img.onerror = () => resolve(null);
+  img.src = url;
+});
+
 const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName, onRangeChange, onLoad }) => {
   React.useEffect(() => { onLoad(); }, []);
 
@@ -1168,14 +1182,17 @@ const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName,
     // Header
     doc.setFillColor(...green);
     doc.rect(0, 0, 210, 38, 'F');
+    const logoData = await loadImageAsBase64(huellaPng);
+    if (logoData) doc.addImage(logoData, 'PNG', 10, 5, 28, 28);
+    const textX = logoData ? 42 : 14;
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont('helvetica', 'bold');
-    doc.text('PetsGo - Mi Reporte de Entregas', 14, 18);
+    doc.text('PetsGo - Mi Reporte de Entregas', textX, 18);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text(riderName, 14, 26);
-    doc.text(`Período: ${fmtDate(dateFrom)} — ${fmtDate(dateTo)} (${RANGE_LABELS[range] || range})`, 14, 33);
+    doc.text(riderName, textX, 26);
+    doc.text(`Período: ${fmtDate(dateFrom)} — ${fmtDate(dateTo)} (${RANGE_LABELS[range] || range})`, textX, 33);
     y = 46;
 
     // Summary

@@ -8447,8 +8447,8 @@ Dashboard con analíticas"></textarea>
             $resp['rider_status'] = get_user_meta($user->ID, 'petsgo_rider_status', true) ?: 'pending_email';
             $resp['vehicle_type'] = get_user_meta($user->ID, 'petsgo_vehicle', true) ?: '';
         }
-        // Flag: must change temporary password on first login
-        $resp['mustChangePassword'] = (bool) get_user_meta($user->ID, 'petsgo_must_change_password', true);
+        // Flag: must change temporary password on first login (admin never forced)
+        $resp['mustChangePassword'] = ($role !== 'admin') && (bool) get_user_meta($user->ID, 'petsgo_must_change_password', true);
         return rest_ensure_response(['token'=>$existing_token,'user'=>$resp]);
     }
 
