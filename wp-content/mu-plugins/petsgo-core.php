@@ -4,6 +4,9 @@
  * Description: Sistema central para PetsGo. API REST, Roles, Admin Panel con permisos por perfil.
  * Version: 2.0.0
  * Author: Alexiandra Andrade (Admin)
+ *
+ * Desarrollo y tecnología por AutomatizaTech — https://automatizatech.cl
+ * © 2025-2026 AutomatizaTech. Todos los derechos reservados.
  */
 
 if (!defined('ABSPATH')) exit;

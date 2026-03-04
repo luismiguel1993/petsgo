@@ -167,6 +167,19 @@ const Footer = () => {
               <ScrollLink to="/terminos-y-condiciones" className="text-gray-500 hover:text-white transition-colors no-underline">Términos de Servicio</ScrollLink>
             </div>
           </div>
+          <div className="text-center mt-4">
+            <p className="text-gray-600 text-xs">
+              Desarrollado por{' '}
+              <a
+                href="https://automatizatech.cl"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#00A8E8] hover:text-[#FFC400] transition-colors no-underline font-semibold"
+              >
+                AutomatizaTech.cl
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </footer>
