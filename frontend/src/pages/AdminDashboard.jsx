@@ -11,7 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   getAdminDashboard, getAdminVendors, getVendorDashboardAsAdmin,
   updateCommissions, getAdminRiders, getAdminRiderStats,
-  getAdminInventory, addAdminProduct, updateAdminProduct, deleteAdminProduct, uploadAdminProductImage,
+  getAdminInventory, addAdminProduct, updateAdminProduct, deleteAdminProduct, toggleAdminProduct, uploadAdminProductImage,
   getCategories, getModuleToggles, updateModuleToggles,
 } from '../services/api';
 
@@ -609,6 +609,7 @@ const AdminDashboard = () => {
                     <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Categoría</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Precio</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Stock</th>
+                    <th className="text-center py-3 px-4 font-bold text-gray-400 text-xs uppercase">Estado</th>
                     <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>
                   </tr>
                 </thead>
@@ -638,6 +639,26 @@ const AdminDashboard = () => {
                         <span className={`font-bold ${parseInt(p.stock) <= 5 ? 'text-red-500' : 'text-[#2F3A40]'}`}>
                           {p.stock}
                         </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await toggleAdminProduct(p.id);
+                              loadData();
+                              if (window.PG?.toast) window.PG.toast(parseInt(p.is_active) !== 0 ? 'Producto desactivado' : 'Producto activado', 'success');
+                            } catch { if (window.PG?.toast) window.PG.toast('Error al cambiar estado', 'error'); }
+                          }}
+                          style={{
+                            border: 'none', cursor: 'pointer', padding: '4px 12px', borderRadius: '20px',
+                            fontSize: '11px', fontWeight: 700,
+                            background: parseInt(p.is_active) !== 0 ? '#e8f5e9' : '#fce4ec',
+                            color: parseInt(p.is_active) !== 0 ? '#2e7d32' : '#c62828',
+                          }}
+                          title={parseInt(p.is_active) !== 0 ? 'Click para desactivar' : 'Click para activar'}
+                        >
+                          {parseInt(p.is_active) !== 0 ? '✅ Activo' : '❌ Inactivo'}
+                        </button>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1">

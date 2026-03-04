@@ -330,6 +330,10 @@ export const updateAdminProduct = (id, data) =>
 export const deleteAdminProduct = (id) =>
   api.delete(`/admin/inventory/${id}`);
 
+/** Toggle producto activo/inactivo */
+export const toggleAdminProduct = (id) =>
+  api.put(`/admin/inventory/${id}/toggle`);
+
 /** Subir imagen para producto PetsGo */
 export const uploadAdminProductImage = (file) => {
   const fd = new FormData();

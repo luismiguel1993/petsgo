@@ -77,7 +77,7 @@ class PetsGo_Core {
         add_action('admin_footer', [$this, 'admin_ticket_notifier']);
         // AJAX handlers
         $ajax_actions = [
-            'petsgo_search_products', 'petsgo_save_product', 'petsgo_delete_product',
+            'petsgo_search_products', 'petsgo_save_product', 'petsgo_delete_product', 'petsgo_toggle_product',
             'petsgo_search_vendors', 'petsgo_save_vendor', 'petsgo_delete_vendor',
             'petsgo_search_orders', 'petsgo_update_order_status',
             'petsgo_search_users', 'petsgo_save_user', 'petsgo_delete_user',
@@ -2479,8 +2479,8 @@ class PetsGo_Core {
 
             <div class="petsgo-table-wrap">
             <table class="petsgo-table">
-                <thead id="pg-thead"><tr><th style="width:50px">Foto</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th style="width:140px">Acciones</th></tr></thead>
-                <tbody id="pg-products-body"><tr><td colspan="7" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody>
+                <thead id="pg-thead"><tr><th style="width:50px">Foto</th><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th><?php if($is_admin): ?><th>Tienda</th><th>Estado</th><?php endif; ?><th style="width:140px">Acciones</th></tr></thead>
+                <tbody id="pg-products-body"><tr><td colspan="<?php echo $is_admin?'9':'7'; ?>" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody>
             </table>
             </div>
         </div>
@@ -2489,7 +2489,7 @@ class PetsGo_Core {
             var timer;
             $('#pg-filter-cat').pgChecklist({placeholder:'Todas las categorías'});
             <?php if($is_admin): ?>$('#pg-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
-            var cols=['_photo','product_name','price','stock','category'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'_actions'];
+            var cols=['_photo','product_name','price','stock','category'<?php if($is_admin): ?>,'store_name','is_active'<?php endif; ?>,'_actions'];
             var tbl=PG.table({
                 thead:'#pg-thead',body:'#pg-products-body',perPage:25,defaultSort:'product_name',defaultDir:'asc',
                 columns:cols,emptyMsg:'Sin resultados.',
@@ -2502,7 +2502,9 @@ class PetsGo_Core {
                     if(p.description) r+='<br><small style="color:#888;">'+PG.esc(p.description.substring(0,60))+(p.description.length>60?'...':'')+'</small>';
                     r+='</td><td>'+PG.money(p.price)+'</td><td class="'+sc+'">'+p.stock+'</td>';
                     r+='<td>'+PG.esc(p.category||'—')+'</td>';
-                    <?php if($is_admin): ?>r+='<td>'+PG.esc(p.store_name||'—')+'</td>';<?php endif; ?>
+                    <?php if($is_admin): ?>r+='<td>'+PG.esc(p.store_name||'—')+'</td>';
+                    var isAct=parseInt(p.is_active)!==0;
+                    r+='<td style="text-align:center;"><button class="pg-toggle-active" data-id="'+p.id+'" style="cursor:pointer;border:none;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;'+(isAct?'background:#e8f5e9;color:#2e7d32':'background:#fce4ec;color:#c62828')+'">'+(isAct?'✅ Activo':'❌ Inactivo')+'</button></td>';<?php endif; ?>
                     r+='<td><a href="'+PG.adminUrl+'?page=petsgo-product-form&id='+p.id+'" class="petsgo-btn petsgo-btn-warning petsgo-btn-sm">✏️</a> ';
                     <?php if($is_admin): ?>r+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm pg-del" data-id="'+p.id+'">🗑️</button>';<?php endif; ?>
                     r+='</td></tr>';
@@ -2527,6 +2529,13 @@ class PetsGo_Core {
                 var id=$(this).data('id');
                 PG.confirmDelete('Eliminar Producto','Se eliminará permanentemente este producto y sus imágenes asociadas.',function(){
                     PG.post('petsgo_delete_product',{id:id},function(r){if(r.success){load();PG.toast('🗑️ Producto eliminado correctamente','success');}else PG.toast('❌ '+(r.data||'Error al eliminar'),'error');});
+                });
+            });
+            $(document).on('click','.pg-toggle-active',function(){
+                var id=$(this).data('id');
+                PG.post('petsgo_toggle_product',{id:id},function(r){
+                    if(r.success){load();PG.toast(r.data.message,'success');}
+                    else PG.toast(r.data||'Error','error');
                 });
             });
             load();
@@ -4143,6 +4152,7 @@ Dashboard con analíticas"></textarea>
                 }
             }
             return ['id'=>(int)$p->id,'product_name'=>$p->product_name,'description'=>$p->description,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'image_url'=>$p->image_id?wp_get_attachment_image_url($p->image_id,'thumbnail'):null,
+                'is_active'=>intval($p->is_active ?? 1),
                 'discount_percent'=>$disc,'discount_start'=>$p->discount_start,'discount_end'=>$p->discount_end,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):$p->price];
         }, $wpdb->get_results($sql));
         wp_send_json_success($data);
@@ -4210,6 +4220,21 @@ Dashboard con analíticas"></textarea>
         global $wpdb;$did=intval($_POST['id']??0);$wpdb->delete("{$wpdb->prefix}petsgo_inventory",['id'=>$did]);
         $this->audit('product_delete','product',$did);
         wp_send_json_success(['message'=>'Eliminado']);
+    }
+
+    /** Toggle product active/inactive (admin only, via AJAX — WP admin) */
+    public function petsgo_toggle_product() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin()) wp_send_json_error('Solo admin puede activar/desactivar productos.');
+        global $wpdb;
+        $id = intval($_POST['id'] ?? 0);
+        if (!$id) wp_send_json_error('ID inválido');
+        $current = (int)$wpdb->get_var($wpdb->prepare("SELECT COALESCE(is_active,1) FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $id));
+        $new_val = $current ? 0 : 1;
+        $wpdb->update("{$wpdb->prefix}petsgo_inventory", ['is_active' => $new_val], ['id' => $id], ['%d'], ['%d']);
+        $name = $wpdb->get_var($wpdb->prepare("SELECT product_name FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $id));
+        $this->audit('product_toggle', 'product', $id, $name . ' → ' . ($new_val ? 'activo' : 'inactivo'));
+        wp_send_json_success(['is_active' => $new_val, 'message' => $new_val ? 'Producto activado' : 'Producto desactivado']);
     }
 
     // --- VENDORS ---
@@ -7424,6 +7449,12 @@ Dashboard con analíticas"></textarea>
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_invoices ADD COLUMN download_count int(11) DEFAULT 0 AFTER pdf_path");
         }
 
+        // ── Inventory table: ensure is_active column exists ──
+        $inv_inv_cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_inventory", 0);
+        if (is_array($inv_inv_cols) && !in_array('is_active', $inv_inv_cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_inventory ADD COLUMN is_active tinyint(1) DEFAULT 1 AFTER image_id");
+        }
+
         update_option('petsgo_rider_tables_v5', true);
     }
 
@@ -8109,6 +8140,7 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/inventory/upload-image',['methods'=>'POST','callback'=>[$this,'api_admin_upload_product_image'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+        register_rest_route('petsgo/v1','/admin/inventory/(?P<id>\d+)/toggle',['methods'=>'PUT','callback'=>[$this,'api_admin_toggle_product'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         // Admin Module Toggles
         register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'GET','callback'=>[$this,'api_admin_get_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'PUT','callback'=>[$this,'api_admin_update_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
@@ -8117,7 +8149,7 @@ Dashboard con analíticas"></textarea>
     // --- API Productos ---
     public function api_get_products($request) {
         global $wpdb;
-        $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active'";$args=[];
+        $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active' AND COALESCE(i.is_active,1)=1";$args=[];
         if($vid=$request->get_param('vendor_id')){$sql.=" AND i.vendor_id=%d";$args[]=$vid;}
         if($cat=$request->get_param('category')){if($cat!=='Todos'){$sql.=" AND i.category=%s";$args[]=$cat;}}
         if($s=$request->get_param('search')){$sql.=" AND i.product_name LIKE %s";$args[]='%'.$wpdb->esc_like($s).'%';}
@@ -8136,6 +8168,7 @@ Dashboard con analíticas"></textarea>
         $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url,v.status AS vendor_status FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
         if(!$p) return new WP_Error('not_found','Producto no encontrado',['status'=>404]);
         if($p->vendor_status!=='active') return new WP_Error('vendor_inactive','La tienda de este producto se encuentra inactiva.',['status'=>403]);
+        if(intval($p->is_active ?? 1) === 0) return new WP_Error('product_inactive','Este producto no está disponible actualmente.',['status'=>403]);
         $disc=floatval($p->discount_percent??0);$active=false;
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
         $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
@@ -13942,6 +13975,18 @@ IMPORTANTE: Responde con formato Markdown bien estructurado para que la informac
         $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => $id], ['%d']);
         $this->audit('admin_product_delete', 'inventory', $id, 'Producto eliminado');
         return rest_ensure_response(['message' => 'Producto eliminado']);
+    }
+
+    /** Toggle product active/inactive (admin REST) */
+    public function api_admin_toggle_product($request) {
+        global $wpdb;
+        $id = intval($request->get_param('id'));
+        $exists = $wpdb->get_row($wpdb->prepare("SELECT id, product_name, COALESCE(is_active,1) AS is_active FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $id));
+        if (!$exists) return new WP_Error('not_found', 'Producto no encontrado', ['status' => 404]);
+        $new_val = intval($exists->is_active) ? 0 : 1;
+        $wpdb->update("{$wpdb->prefix}petsgo_inventory", ['is_active' => $new_val], ['id' => $id], ['%d'], ['%d']);
+        $this->audit('admin_product_toggle', 'inventory', $id, $exists->product_name . ' → ' . ($new_val ? 'activo' : 'inactivo'));
+        return rest_ensure_response(['is_active' => $new_val, 'message' => $new_val ? 'Producto activado' : 'Producto desactivado']);
     }
 
     /** Upload product image for PetsGo official store */
