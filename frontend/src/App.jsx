@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import BotChatOverlay from './components/BotChatOverlay'
@@ -36,6 +36,7 @@ function App() {
   const { setOnCartOpen } = useCart()
   const { loggedOut, user, isRider } = useAuth()
   const site = useSite()
+  const location = useLocation()
   const autoCloseTimer = useRef(null)
 
   // Rider logueado: restringir navegación — solo puede ver su panel
@@ -105,8 +106,8 @@ function App() {
           </div>
         </div>
       )}
-      {/* Banner persistente para riders no aprobados */}
-      {site.module_riders !== false && isUnapprovedRider && (
+      {/* Banner persistente para riders no aprobados — oculto si ya estamos en /rider */}
+      {site.module_riders !== false && isUnapprovedRider && location.pathname !== '/rider' && (
         <div style={{
           background: 'linear-gradient(135deg, #FEF3C7, #FFF7ED)',
           borderBottom: '2px solid #FCD34D',
