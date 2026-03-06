@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { Store, MapPin, Phone, Mail, Plus, Minus, ArrowLeft, PawPrint, Star, MessageSquare } from 'lucide-react';
 import { getVendorDetail, getProducts, getVendorReviews } from '../services/api';
 import { useCart } from '../context/CartContext';
@@ -25,7 +25,9 @@ const getProductImage = (product) => {
 
 const VendorDetailPage = () => {
   const { id } = useParams();
-  const [vendor, setVendor] = useState(null);
+  const location = useLocation();
+  const stateVendor = location.state?.vendor || null;
+  const [vendor, setVendor] = useState(stateVendor);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [vendorReviews, setVendorReviews] = useState([]);
@@ -55,6 +57,8 @@ const VendorDetailPage = () => {
       } catch { /* ignore */ }
     } catch (err) {
       console.error('Error cargando tienda:', err);
+      // Si la API falla pero tenemos datos del state, mantenerlos como fallback
+      if (!stateVendor) setVendor(null);
     } finally {
       setLoading(false);
     }

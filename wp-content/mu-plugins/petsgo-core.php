@@ -8515,6 +8515,7 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $vendors = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE status='active'");
         foreach ($vendors as &$v) {
+            $v->id = (int) $v->id;
             $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
             $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
             $v->rating = $avg ? round(floatval($avg), 1) : null;
@@ -8526,6 +8527,7 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $v = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $request->get_param('id')));
         if (!$v) return new WP_Error('not_found', 'No encontrada', ['status' => 404]);
+        $v->id = (int) $v->id;
         $avg = $wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
         $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
         $v->rating = $avg ? round(floatval($avg), 1) : null;

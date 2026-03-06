@@ -302,7 +302,7 @@ const CategoryPage = () => {
   /* Helper: resolver link de tienda por vendor_id o store_name */
   const resolveVendor = useCallback((product) => {
     if (!product) return null;
-    let v = allVendors.find(av => av.id === product.vendor_id);
+    let v = allVendors.find(av => String(av.id) === String(product.vendor_id));
     if (!v && product.store_name) v = allVendors.find(av => av.store_name === product.store_name);
     return v || null;
   }, [allVendors]);
@@ -660,6 +660,7 @@ const CategoryPage = () => {
                           return rv ? (
                             <Link
                               to={`/tienda/${rv.id}`}
+                              state={{ vendor: rv }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
                                 display: 'flex', alignItems: 'center', gap: '4px',

@@ -322,6 +322,7 @@ const ProductDetailPage = () => {
           {/* Vendor / Tienda */}
           {(product.store_name || product.brand) && (() => {
             const vendorLink = product.vendor_id ? `/tienda/${product.vendor_id}` : null;
+            const vendorState = { vendor: { id: product.vendor_id, store_name: product.store_name, logo_url: product.logo_url } };
             const vendorContent = (
               <>
                 <div style={{
@@ -353,6 +354,7 @@ const ProductDetailPage = () => {
             return vendorLink ? (
               <Link
                 to={vendorLink}
+                state={vendorState}
                 style={boxStyle}
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#00A8E8'; e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,168,232,0.12)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = 'none'; }}
