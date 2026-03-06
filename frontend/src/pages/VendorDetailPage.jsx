@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { Store, MapPin, Phone, Mail, Plus, Minus, ArrowLeft, PawPrint, Star, MessageSquare } from 'lucide-react';
+import { Store, MapPin, Phone, Mail, Plus, Minus, ArrowLeft, PawPrint, Star, MessageSquare, SlidersHorizontal, ChevronDown, Search } from 'lucide-react';
 import { getVendorDetail, getProducts, getVendorReviews } from '../services/api';
 import { useCart } from '../context/CartContext';
 
@@ -35,6 +35,13 @@ const VendorDetailPage = () => {
   const [vendorReviewCount, setVendorReviewCount] = useState(0);
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
+  /* Filtros y ordenamiento */
+  const [sortBy, setSortBy] = useState('default');
+  const [priceRange, setPriceRange] = useState([0, 999999]);
+  const [priceMax, setPriceMax] = useState(999999);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+
   useEffect(() => {
     loadVendor();
   }, [id]);
@@ -65,6 +72,41 @@ const VendorDetailPage = () => {
   };
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
+
+  /* Calcular rango de precios cuando cambien los productos */
+  useEffect(() => {
+    if (products.length > 0) {
+      const prices = products.map(p => Number(p.final_price || p.price) || 0);
+      const max = Math.ceil(Math.max(...prices) / 1000) * 1000;
+      setPriceMax(max || 200000);
+      setPriceRange([0, max || 200000]);
+    }
+  }, [products]);
+
+  /* Productos filtrados y ordenados */
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    // Filtro por búsqueda local
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(p =>
+        p.product_name?.toLowerCase().includes(term) ||
+        p.category?.toLowerCase().includes(term) ||
+        p.description?.toLowerCase().includes(term)
+      );
+    }
+    // Filtro por rango de precio
+    result = result.filter(p => {
+      const price = Number(p.final_price || p.price) || 0;
+      return price >= priceRange[0] && price <= priceRange[1];
+    });
+    // Ordenamiento
+    if (sortBy === 'price_asc') result = [...result].sort((a, b) => (Number(a.final_price || a.price) || 0) - (Number(b.final_price || b.price) || 0));
+    else if (sortBy === 'price_desc') result = [...result].sort((a, b) => (Number(b.final_price || b.price) || 0) - (Number(a.final_price || a.price) || 0));
+    else if (sortBy === 'name_asc') result = [...result].sort((a, b) => (a.product_name || '').localeCompare(b.product_name || ''));
+    else if (sortBy === 'discount') result = [...result].sort((a, b) => (Number(b.discount_percent) || 0) - (Number(a.discount_percent) || 0));
+    return result;
+  }, [products, searchTerm, priceRange, sortBy]);
 
   if (loading) {
     return (
@@ -107,6 +149,7 @@ const VendorDetailPage = () => {
           .vd-product-name { font-size: 13px !important; }
           .vd-product-price { font-size: 16px !important; }
           .vd-product-desc { display: none !important; }
+          .vd-filters-bar { flex-direction: column; }
         }
         @media (max-width: 380px) { .vd-products-grid { grid-template-columns: 1fr !important; } }
       `}</style>
@@ -159,19 +202,119 @@ const VendorDetailPage = () => {
         </div>
 
         {/* Productos */}
-        <h3 style={{ fontSize: '22px', fontWeight: 900, color: '#2F3A40', marginBottom: '20px' }}>
-          Productos
-          <span style={{ color: '#9ca3af', fontSize: '14px', fontWeight: 500, marginLeft: '8px' }}>({products.length})</span>
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+          <h3 style={{ fontSize: '22px', fontWeight: 900, color: '#2F3A40', margin: 0 }}>
+            Productos
+            <span style={{ color: '#9ca3af', fontSize: '14px', fontWeight: 500, marginLeft: '8px' }}>
+              ({filteredProducts.length}{filteredProducts.length !== products.length ? ` de ${products.length}` : ''})
+            </span>
+          </h3>
+          {products.length > 0 && (
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                background: showFilters ? '#00A8E8' : '#f3f4f6', color: showFilters ? '#fff' : '#4b5563',
+                border: 'none', borderRadius: '10px', padding: '8px 14px', cursor: 'pointer',
+                fontSize: '13px', fontWeight: 600, transition: 'all 0.2s',
+              }}
+            >
+              <SlidersHorizontal size={15} /> Filtros
+            </button>
+          )}
+        </div>
+
+        {/* Barra de filtros */}
+        {showFilters && products.length > 0 && (
+          <div style={{
+            background: '#fff', borderRadius: '14px', border: '1px solid #e5e7eb',
+            padding: '16px 20px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+          }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'flex-end' }}>
+              {/* Buscar */}
+              <div style={{ flex: '1 1 200px', minWidth: '160px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: '4px' }}>Buscar</label>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+                  <input
+                    type="text" placeholder="Nombre del producto..."
+                    value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                    style={{
+                      width: '100%', height: '36px', border: '1px solid #e5e7eb', borderRadius: '8px',
+                      paddingLeft: '32px', paddingRight: '10px', fontSize: '13px', outline: 'none',
+                      fontFamily: 'Poppins, sans-serif',
+                    }}
+                  />
+                </div>
+              </div>
+              {/* Ordenar por */}
+              <div style={{ flex: '0 1 180px', minWidth: '140px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: '4px' }}>Ordenar por</label>
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                    style={{
+                      width: '100%', height: '36px', border: '1px solid #e5e7eb', borderRadius: '8px',
+                      padding: '0 28px 0 10px', fontSize: '13px', fontWeight: 500, color: '#1f2937',
+                      background: '#fff', appearance: 'none', cursor: 'pointer', outline: 'none',
+                      fontFamily: 'Poppins, sans-serif',
+                    }}
+                  >
+                    <option value="default">Predeterminado</option>
+                    <option value="price_asc">Precio: Menor a Mayor</option>
+                    <option value="price_desc">Precio: Mayor a Menor</option>
+                    <option value="name_asc">Nombre A-Z</option>
+                    <option value="discount">Mayor descuento</option>
+                  </select>
+                  <ChevronDown size={14} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: '#9ca3af' }} />
+                </div>
+              </div>
+              {/* Rango de precio */}
+              <div style={{ flex: '1 1 220px', minWidth: '180px' }}>
+                <label style={{ fontSize: '11px', fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: '4px' }}>
+                  Precio: {formatPrice(priceRange[0])} — {formatPrice(priceRange[1])}
+                </label>
+                <input
+                  type="range" min={0} max={priceMax} step={1000}
+                  value={priceRange[1]}
+                  onChange={(e) => setPriceRange([0, Number(e.target.value)])}
+                  style={{ width: '100%', accentColor: '#00A8E8', cursor: 'pointer' }}
+                />
+              </div>
+              {/* Limpiar filtros */}
+              {(searchTerm || sortBy !== 'default' || priceRange[1] < priceMax) && (
+                <button
+                  onClick={() => { setSearchTerm(''); setSortBy('default'); setPriceRange([0, priceMax]); }}
+                  style={{
+                    height: '36px', padding: '0 14px', background: '#fee2e2', color: '#dc2626',
+                    border: 'none', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+                    cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {products.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '64px 0' }}>
             <PawPrint size={48} color="#d1d5db" style={{ margin: '0 auto 16px' }} />
             <p style={{ color: '#9ca3af', fontWeight: 700, fontSize: '16px' }}>Esta tienda aún no tiene productos</p>
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <Search size={40} color="#d1d5db" style={{ margin: '0 auto 12px' }} />
+            <p style={{ color: '#9ca3af', fontWeight: 700, fontSize: '15px' }}>No se encontraron productos con estos filtros</p>
+            <button onClick={() => { setSearchTerm(''); setSortBy('default'); setPriceRange([0, priceMax]); }} style={{
+              marginTop: '12px', background: '#00A8E8', color: '#fff', border: 'none', borderRadius: '10px',
+              padding: '10px 20px', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+            }}>Limpiar filtros</button>
+          </div>
         ) : (
           <div className="vd-products-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-            {products.map((product) => {
+            {filteredProducts.map((product) => {
               const qty = getItemQuantity(product.id);
               const inactive = Number(product.is_active) === 0;
               return (
