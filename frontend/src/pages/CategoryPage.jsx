@@ -269,8 +269,11 @@ const CategoryPage = () => {
   /* Filtrar productos por búsqueda + rango de precio */
   const filteredProducts = useMemo(() => {
     let result = products;
-    if (searchTerm.trim()) {
-      const term = searchTerm.toLowerCase();
+    // Solo filtrar localmente si el usuario escribió en el buscador de la página,
+    // NO re-filtrar cuando queryFromUrl ya aplicó el filtro en la API
+    const localTerm = searchTerm.trim();
+    if (localTerm && localTerm !== queryFromUrl) {
+      const term = localTerm.toLowerCase();
       result = result.filter(p =>
         p.product_name?.toLowerCase().includes(term) ||
         p.category?.toLowerCase().includes(term) ||
