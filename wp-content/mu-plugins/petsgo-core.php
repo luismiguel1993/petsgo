@@ -8487,7 +8487,7 @@ Dashboard con analíticas"></textarea>
         $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active'";$args=[];
         if($vid=$request->get_param('vendor_id')){$sql.=" AND i.vendor_id=%d";$args[]=$vid;}
         if($cat=$request->get_param('category')){if($cat!=='Todos'){$sql.=" AND i.category=%s";$args[]=$cat;}}
-        if($s=$request->get_param('search')){$sql.=" AND i.product_name LIKE %s";$args[]='%'.$wpdb->esc_like($s).'%';}
+        if($s=$request->get_param('search')){$like='%'.$wpdb->esc_like($s).'%';$sql.=" AND (i.product_name LIKE %s OR i.category LIKE %s OR i.description LIKE %s OR v.store_name LIKE %s)";$args[]=$like;$args[]=$like;$args[]=$like;$args[]=$like;}
         if($args) $sql=$wpdb->prepare($sql,...$args);
         $products=$wpdb->get_results($sql);
         return rest_ensure_response(['data'=>array_map(function($p) use ($wpdb){

@@ -6,21 +6,29 @@ import { getProductReviews, getProductDetail, getProducts } from '../services/ap
 import { getProductImage } from '../utils/productImages';
 
 // Normalizar datos de producto (desde state o API) a un formato consistente
+// _rawPrice preserva el precio original de BD a través de normalizaciones sucesivas
 const normalizeProduct = (p) => {
   if (!p) return null;
   const hasDiscount = p.discount_active && Number(p.discount_percent) > 0;
+  // Precio original de BD: _rawPrice (ya normalizado) > originalPrice (ya normalizado) > price (crudo de API)
+  const rawPrice = Number(p._rawPrice || p.originalPrice || p.price);
+  const discPercent = Number(p.discount_percent || 0);
+  const finalPrice = hasDiscount
+    ? Number(p.final_price || Math.round(rawPrice * (1 - discPercent / 100)))
+    : rawPrice;
   return {
     ...p,
+    _rawPrice: rawPrice,
     name: p.product_name || p.name,
     image: p.image_url || p.image,
     brand: p.store_name || p.brand || '',
     vendor_id: p.vendor_id,
     store_name: p.store_name || '',
     logo_url: p.logo_url || '',
-    price: Number(hasDiscount ? (p.final_price || p.price) : p.price),
-    originalPrice: hasDiscount ? Number(p.price) : null,
+    price: finalPrice,
+    originalPrice: hasDiscount ? rawPrice : null,
     discount_active: hasDiscount,
-    discount_percent: Number(p.discount_percent || 0),
+    discount_percent: discPercent,
     rating: p.rating || null,
   };
 };
@@ -358,9 +366,11 @@ const ProductDetailPage = () => {
 
           {/* Description */}
           {(() => {
+            const productName = product.name || product.product_name || 'este producto';
+            const catDesc = CATEGORY_DESCRIPTIONS[product.category];
             const fullDesc = product.description
-              || CATEGORY_DESCRIPTIONS[product.category]
-              || `${product.name || product.product_name} — Producto premium seleccionado para tu mascota. Formulado con ingredientes de primera calidad que aseguran una nutrición completa y balanceada. Contribuye a mantener la salud, energía y vitalidad de tu compañero.`;
+              || (catDesc ? `${productName} — ${catDesc}` : null)
+              || `${productName} — Producto premium seleccionado para tu mascota. Formulado con ingredientes de primera calidad que aseguran una nutrición completa y balanceada. Contribuye a mantener la salud, energía y vitalidad de tu compañero.`;
             const isLong = fullDesc.length > 180;
             const displayText = (!showFullDesc && isLong) ? fullDesc.slice(0, 180) + '...' : fullDesc;
             return (

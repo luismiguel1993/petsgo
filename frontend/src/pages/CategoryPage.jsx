@@ -272,7 +272,9 @@ const CategoryPage = () => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(p =>
-        p.product_name.toLowerCase().includes(term) ||
+        p.product_name?.toLowerCase().includes(term) ||
+        p.category?.toLowerCase().includes(term) ||
+        p.description?.toLowerCase().includes(term) ||
         p.store_name?.toLowerCase().includes(term)
       );
     }
