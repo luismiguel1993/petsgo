@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare, Store, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Star, ShoppingCart, Plus, Minus, Truck, Shield, Clock, Heart, Share2, Check, MessageSquare, Store } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { getProductReviews, getProductDetail, getProducts } from '../services/api';
 import { getProductImage } from '../utils/productImages';
@@ -46,7 +46,6 @@ const ProductDetailPage = () => {
   const { addItem, getItemQuantity, updateQuantity } = useCart();
   const [product, setProduct] = useState(() => normalizeProduct(stateProduct));
   const [loading, setLoading] = useState(!stateProduct);
-  const [selectedImage, setSelectedImage] = useState(0);
   const [addedToCart, setAddedToCart] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [reviewAvg, setReviewAvg] = useState(null);
@@ -79,28 +78,27 @@ const ProductDetailPage = () => {
     }
   }, [product?.id]);
 
-  // CA-046: Load related products (same category, excluding current)
+  // CA-046: Load related products (same category, excluding current; fallback to any)
   useEffect(() => {
     if (!product) return;
-    const cat = product.category;
-    if (!cat) return;
-    getProducts({ category: cat, perPage: 12 }).then(res => {
-      const all = res.data?.data || [];
-      const filtered = all.filter(p => p.id !== product.id).slice(0, 6);
-      setRelatedProducts(filtered);
-    }).catch(() => {});
+    const loadRelated = async () => {
+      try {
+        // Intentar misma categoría primero
+        if (product.category) {
+          const res = await getProducts({ category: product.category, perPage: 12 });
+          const all = res.data?.data || [];
+          const filtered = all.filter(p => String(p.id) !== String(product.id)).slice(0, 6);
+          if (filtered.length > 0) { setRelatedProducts(filtered); return; }
+        }
+        // Fallback: cualquier producto
+        const res = await getProducts({ perPage: 12 });
+        const all = res.data?.data || [];
+        const filtered = all.filter(p => String(p.id) !== String(product.id)).slice(0, 6);
+        setRelatedProducts(filtered);
+      } catch { /* silenciar */ }
+    };
+    loadRelated();
   }, [product?.id, product?.category]);
-
-  // CA-041: Keyboard navigation for image gallery
-  const IMAGE_TRANSFORMS = ['none', 'scaleX(-1)', 'rotate(15deg)'];
-  const handleKeyDown = useCallback((e) => {
-    if (e.key === 'ArrowRight') setSelectedImage(prev => (prev + 1) % 3);
-    if (e.key === 'ArrowLeft') setSelectedImage(prev => (prev - 1 + 3) % 3);
-  }, []);
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
 
   const formatPrice = (price) =>
     new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', minimumFractionDigits: 0 }).format(price);
@@ -184,12 +182,11 @@ const ProductDetailPage = () => {
           .pd-price-box { padding: 16px !important; }
           .pd-price { font-size: 28px !important; }
           .pd-features { grid-template-columns: 1fr !important; }
-          .pd-thumbs { justify-content: flex-start !important; }
         }
       `}</style>
       {/* Breadcrumb */}
       <div className="pd-breadcrumb" style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px 32px 0' }}>
-        <Link to="/productos" style={{
+        <Link to="/categoria/Todos" style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px',
           color: '#9ca3af', fontSize: '13px', fontWeight: 600, textDecoration: 'none',
           transition: 'color 0.2s',
@@ -225,67 +222,9 @@ const ProductDetailPage = () => {
             <img
               src={productImage}
               alt={product.name || product.product_name}
-              style={{
-                maxWidth: '100%', maxHeight: '100%', objectFit: 'contain',
-                transition: 'transform 0.4s ease',
-                transform: IMAGE_TRANSFORMS[selectedImage],
-              }}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
             />
-            {/* Navigation arrows */}
-            <button onClick={() => setSelectedImage(prev => (prev - 1 + 3) % 3)} style={{
-              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-              width: '36px', height: '36px', borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              transition: 'background 0.2s',
-            }} onMouseEnter={e => e.currentTarget.style.background = '#fff'}
-               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.85)'}>
-              <ChevronLeft size={18} color="#374151" />
-            </button>
-            <button onClick={() => setSelectedImage(prev => (prev + 1) % 3)} style={{
-              position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
-              width: '36px', height: '36px', borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.85)', cursor: 'pointer', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              transition: 'background 0.2s',
-            }} onMouseEnter={e => e.currentTarget.style.background = '#fff'}
-               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.85)'}>
-              <ChevronRight size={18} color="#374151" />
-            </button>
-          </div>
-          {/* Thumbnail strip */}
-          <div className="pd-thumbs" style={{ display: 'flex', gap: '12px', marginTop: '16px', justifyContent: 'center' }}>
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                onClick={() => setSelectedImage(i)}
-                style={{
-                  width: '72px', height: '72px', borderRadius: '14px', overflow: 'hidden',
-                  border: selectedImage === i ? '2px solid #00A8E8' : '2px solid #f0f0f0',
-                  cursor: 'pointer', background: '#fff', display: 'flex',
-                  alignItems: 'center', justifyContent: 'center', padding: '8px',
-                  transition: 'border-color 0.2s, transform 0.2s',
-                  transform: selectedImage === i ? 'scale(1.05)' : 'scale(1)',
-                }}
-              >
-                <img
-                  src={productImage}
-                  alt={`Vista ${i + 1}`}
-                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', transform: IMAGE_TRANSFORMS[i], opacity: selectedImage === i ? 1 : 0.5 }}
-                />
-              </div>
-            ))}
-          </div>
-          {/* Image indicator dots */}
-          <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', marginTop: '8px' }}>
-            {[0, 1, 2].map(i => (
-              <div key={i} onClick={() => setSelectedImage(i)} style={{
-                width: selectedImage === i ? '20px' : '8px', height: '8px',
-                borderRadius: '4px', cursor: 'pointer', transition: 'all 0.3s',
-                background: selectedImage === i ? '#00A8E8' : '#d1d5db',
-              }} />
-            ))}
           </div>
         </div>
 

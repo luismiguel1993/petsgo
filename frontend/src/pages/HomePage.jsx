@@ -75,14 +75,14 @@ const HomePage = () => {
   ];
 
   const [featuredProducts, setFeaturedProducts] = useState(HARDCODED_PRODUCTS);
+  const [suggestedProducts, setSuggestedProducts] = useState([]);
 
   useEffect(() => {
-    // Intentar cargar productos reales desde la API
-    getProducts({ perPage: 12 }).then(res => {
+    // Cargar productos reales desde la API (24 para Featured + Sugeridos)
+    getProducts({ perPage: 24 }).then(res => {
       const apiProducts = res.data?.data || [];
       if (apiProducts.length > 0) {
-        // Normalizar campos de productos de la API al formato del HomePage
-        const normalized = apiProducts.map(p => ({
+        const normalize = (p) => ({
           ...p,
           name: p.product_name || p.name,
           image: getProductImage(p),
@@ -91,8 +91,11 @@ const HomePage = () => {
           originalPrice: p.discount_active ? Number(p.price) : null,
           rating: p.rating || 4.5,
           description: p.description || p.product_name || '',
-        }));
-        setFeaturedProducts(normalized);
+        });
+        setFeaturedProducts(apiProducts.slice(0, 12).map(normalize));
+        if (apiProducts.length > 12) {
+          setSuggestedProducts(apiProducts.slice(12, 18).map(normalize));
+        }
       }
     }).catch(() => {
       // Si falla la API, mantener los productos hardcoded
@@ -508,6 +511,63 @@ const HomePage = () => {
             <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-white/5 rounded-full blur-3xl"></div>
           </div>
         </section>
+
+        {/* ========== TAMBIÉN TE PUEDE GUSTAR ========== */}
+        {suggestedProducts.length > 0 && (
+          <section style={{ marginTop: '80px' }}>
+            <div className="flex flex-col items-center mb-8 text-center">
+              <h2 className="text-4xl font-black text-gray-800 mb-2">🐾 También te puede gustar</h2>
+              <p className="font-bold text-gray-400 uppercase tracking-widest text-xs italic">
+                Descubre más productos para tu mascota
+              </p>
+            </div>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px',
+            }}>
+              {suggestedProducts.map((product) => {
+                const discount = calculateDiscount(product.price, product.originalPrice);
+                return (
+                  <Link
+                    key={product.id}
+                    to={`/producto/${product.id}`}
+                    state={{ product }}
+                    style={{
+                      background: '#fff', borderRadius: '16px', overflow: 'hidden',
+                      border: '1px solid #f0f0f0', textDecoration: 'none', color: 'inherit',
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  >
+                    <div style={{ aspectRatio: '1', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative' }}>
+                      {discount && (
+                        <span style={{ position: 'absolute', top: '8px', left: '8px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>-{discount}%</span>
+                      )}
+                      <img src={product.image} alt={product.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        onError={e => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=300&auto=format&fit=crop&q=80'; }} />
+                    </div>
+                    <div style={{ padding: '12px 14px' }}>
+                      <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, marginBottom: '4px' }}>{product.brand}</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937', lineHeight: 1.3, marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {product.name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>{formatPrice(product.price)}</span>
+                        {product.originalPrice && <span style={{ fontSize: '11px', color: '#9ca3af', textDecoration: 'line-through' }}>{formatPrice(product.originalPrice)}</span>}
+                      </div>
+                      {product.rating && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
+                          <Star size={12} fill="#FFC400" color="#FFC400" />
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#374151' }}>{product.rating}</span>
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* ========== TIENDAS (CARRUSEL INFINITO) ========== */}
         <section style={{ marginTop: '96px', overflow: 'hidden' }}>

@@ -180,6 +180,7 @@ const CategoryPage = () => {
   const [priceMax, setPriceMax] = useState(200000);
   const [sortBy, setSortBy] = useState('default');
   const [currentPage, setCurrentPage] = useState(1);
+  const [suggestedProducts, setSuggestedProducts] = useState([]);
   const { addItem, getItemQuantity, updateQuantity } = useCart();
 
   /* Cargar categorías desde la API */
@@ -199,6 +200,16 @@ const CategoryPage = () => {
   useEffect(() => {
     if (queryFromUrl) setSearchTerm(queryFromUrl);
   }, [queryFromUrl]);
+
+  // CA-046: Cargar productos sugeridos de otras categorías
+  useEffect(() => {
+    if (!categoryName) return;
+    getProducts({ perPage: 12 }).then(res => {
+      const all = res.data?.data || [];
+      const diff = categoryName !== 'Todos' ? all.filter(p => p.category !== categoryName) : all;
+      setSuggestedProducts((diff.length > 0 ? diff : all).slice(0, 6));
+    }).catch(() => {});
+  }, [categoryName]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -877,6 +888,63 @@ const CategoryPage = () => {
               </>
             )}
           </>
+        )}
+
+        {/* ── También te puede gustar ── */}
+        {suggestedProducts.length > 0 && (
+          <div style={{ marginTop: '48px', borderTop: '1px solid #e5e7eb', paddingTop: '32px' }}>
+            <h3 style={{ fontSize: '20px', fontWeight: 800, color: '#1f2937', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              🐾 También te puede gustar
+            </h3>
+            <div style={{
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '16px',
+            }}>
+              {suggestedProducts.map((rp) => {
+                const rpImage = getSmartProductImage(rp);
+                const rpPrice = Number(rp.final_price || rp.price);
+                const rpOriginal = rp.discount_active ? Number(rp.price) : null;
+                const rpDiscount = rpOriginal ? Math.round((1 - rpPrice / rpOriginal) * 100) : null;
+                return (
+                  <Link
+                    key={rp.id}
+                    to={`/producto/${rp.id}`}
+                    state={{ product: { ...rp, name: rp.product_name, image: rp.image_url, brand: rp.store_name, price: rpPrice, originalPrice: rpOriginal } }}
+                    style={{
+                      background: '#fff', borderRadius: '16px', overflow: 'hidden',
+                      border: '1px solid #f0f0f0', textDecoration: 'none', color: 'inherit',
+                      transition: 'transform 0.2s, box-shadow 0.2s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.08)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
+                  >
+                    <div style={{ aspectRatio: '1', background: '#fafafa', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', position: 'relative' }}>
+                      {rpDiscount && (
+                        <span style={{ position: 'absolute', top: '8px', left: '8px', background: '#ef4444', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '3px 8px', borderRadius: '6px' }}>-{rpDiscount}%</span>
+                      )}
+                      <img src={rpImage} alt={rp.product_name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        onError={e => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=300&auto=format&fit=crop&q=80'; }} />
+                    </div>
+                    <div style={{ padding: '12px 14px' }}>
+                      <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 600, marginBottom: '4px' }}>{rp.store_name}</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#1f2937', lineHeight: 1.3, marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {rp.product_name}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>{formatPrice(rpPrice)}</span>
+                        {rpOriginal && <span style={{ fontSize: '11px', color: '#9ca3af', textDecoration: 'line-through' }}>{formatPrice(rpOriginal)}</span>}
+                      </div>
+                      {rp.rating && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px' }}>
+                          <Star size={12} fill="#FFC400" color="#FFC400" />
+                          <span style={{ fontSize: '11px', fontWeight: 700, color: '#374151' }}>{rp.rating}</span>
+                        </div>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* ── Todas las categorías (navegación rápida) ── */}
