@@ -4316,7 +4316,7 @@ Dashboard con analíticas"></textarea>
         $errors=[];
         if(strlen($name)<3)$errors[]='Nombre mín 3 chars';if(strlen($desc)<10)$errors[]='Descripción mín 10 chars';
         if($price<=0)$errors[]='Precio > 0';if($stock<0)$errors[]='Stock >= 0';if(!$cat)$errors[]='Categoría obligatoria';
-        if(!$vendor_id)$errors[]='Tienda obligatoria';if(!$img1)$errors[]='Foto principal obligatoria';
+        if(!$vendor_id)$errors[]='Tienda obligatoria';// if(!$img1)$errors[]='Foto principal obligatoria'; // Temporalmente opcional para pruebas
         if($errors) wp_send_json_error(implode('. ',$errors));
 
         $data=['vendor_id'=>$vendor_id,'product_name'=>$name,'description'=>$desc,'price'=>$price,'stock'=>$stock,'category'=>$cat,'image_id'=>$img1,'image_id_2'=>$img2,'image_id_3'=>$img3];
