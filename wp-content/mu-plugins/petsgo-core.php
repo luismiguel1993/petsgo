@@ -2892,7 +2892,8 @@ class PetsGo_Core {
                 var st=$('#pf-stock').val();if(st===''||parseInt(st)<0){$('#field-stock').addClass('has-error');ok=false;}else{$('#field-stock').removeClass('has-error');}
                 if(!$('#pf-category').val()){$('#field-category').addClass('has-error');ok=false;}else{$('#field-category').removeClass('has-error');}
                 if(!$('#pf-vendor').val()){$('#field-vendor').addClass('has-error');ok=false;}else{$('#field-vendor').removeClass('has-error');}
-                if(!$('#pf-image-0').val()){$('#img-error').show();ok=false;}else{$('#img-error').hide();}
+                // Foto principal opcional (prueba)
+                $('#img-error').hide();
                 return ok;
             }
             $('.petsgo-field input,.petsgo-field select,.petsgo-field textarea').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
