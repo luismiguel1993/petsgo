@@ -222,10 +222,23 @@ const CategoryPage = () => {
     try {
       const apiParams = {};
       const isOfertas = categoryName === 'Ofertas';
+      const isSearchMode = categoryName === 'Todos' && !!queryFromUrl;
+
+      // CA-060: Detectar si el término de búsqueda coincide con una categoría conocida
+      const knownCategories = Object.keys(FALLBACK_CATEGORY_META).filter(k => k !== 'Todos');
+      const matchedCategory = isSearchMode
+        ? knownCategories.find(c => c.toLowerCase() === queryFromUrl.trim().toLowerCase())
+        : null;
+      const isSearchOfertas = isSearchMode && matchedCategory === 'Ofertas';
+      const isSearchNuevos  = isSearchMode && matchedCategory === 'Nuevos';
+
       // Ofertas: traer todos los productos y filtrar por descuento activo
-      if (isOfertas) {
+      if (isOfertas || isSearchOfertas) {
         // No pasar category para traer todos
-      } else if (categoryName === 'Todos' && queryFromUrl) {
+      } else if (isSearchMode && matchedCategory && !isSearchNuevos) {
+        // Búsqueda coincide con categoría real → buscar por categoría + texto
+        apiParams.category = matchedCategory;
+      } else if (isSearchMode) {
         apiParams.search = queryFromUrl;
       } else if (categoryName !== 'Todos') {
         apiParams.category = categoryName;
@@ -237,19 +250,33 @@ const CategoryPage = () => {
       let realProducts = productsRes.data.data || [];
       const realVendors = vendorsRes.data.data || [];
 
-      // Para Ofertas, filtrar solo productos con descuento activo
-      if (isOfertas && realProducts.length > 0) {
+      // Para Ofertas (directa o desde búsqueda), filtrar solo productos con descuento activo
+      if ((isOfertas || isSearchOfertas) && realProducts.length > 0) {
         realProducts = realProducts.filter(p => p.discount_active);
       }
 
-      // Si no hay productos reales, usar datos demo
-      const demoProducts = DEMO_PRODUCTS[categoryName] || [];
+      // CA-060: Si la búsqueda por categoría no devolvió resultados, intentar búsqueda por texto
+      if (isSearchMode && realProducts.length === 0 && matchedCategory && !isSearchOfertas) {
+        try {
+          const searchRes = await getProducts({ search: queryFromUrl });
+          realProducts = searchRes.data?.data || [];
+        } catch (_) {}
+      }
+
+      // Si no hay productos reales, usar datos demo (CA-060: usar categoría coincidente para fallback)
+      const demoKey = matchedCategory || categoryName;
+      const demoProducts = DEMO_PRODUCTS[demoKey] || DEMO_PRODUCTS[categoryName] || [];
       setProducts(realProducts.length > 0 ? realProducts : demoProducts);
       setAllVendors(realVendors.length > 0 ? realVendors : DEMO_VENDORS);
     } catch (err) {
       console.error('Error cargando categoría:', err);
-      // Fallback a demo en caso de error
-      setProducts(DEMO_PRODUCTS[categoryName] || []);
+      // Fallback a demo en caso de error (CA-060: considerar categoría del query)
+      const knownCategories = Object.keys(FALLBACK_CATEGORY_META).filter(k => k !== 'Todos');
+      const matchedCategory = (categoryName === 'Todos' && queryFromUrl)
+        ? knownCategories.find(c => c.toLowerCase() === queryFromUrl.trim().toLowerCase())
+        : null;
+      const demoKey = matchedCategory || categoryName;
+      setProducts(DEMO_PRODUCTS[demoKey] || DEMO_PRODUCTS[categoryName] || []);
       setAllVendors(DEMO_VENDORS);
     } finally {
       setLoading(false);

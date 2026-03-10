@@ -126,17 +126,17 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
             {/* Buscador Central - Oculto para riders (no navegan el marketplace) */}
             {!isRider() && (
             <div className="hidden md:flex flex-1 max-w-3xl">
-              <div className="w-full relative">
+              <div className="w-full relative" style={{ marginBottom: searchError ? '18px' : '0' }}>
                 <input
                   type="text"
                   value={localSearch}
                   onChange={handleSearchChange}
                   onKeyDown={handleSearchKeyDown}
                   placeholder={searchError ? 'Ingresa un término de búsqueda' : '¿Qué estás buscando?'}
-                  className={`w-full h-12 bg-white border-2 rounded-xl pl-10 pr-14 focus:ring-2 focus:ring-[#00A8E8]/20 focus:border-[#00A8E8] transition-all outline-none text-sm text-gray-700 shadow-sm ${searchError ? 'border-red-400 placeholder-red-400 animate-[headShake_0.5s_ease-in-out]' : 'border-gray-200 placeholder-gray-400'}`}
-                  style={{ fontFamily: 'Poppins, sans-serif' }}
+                  className={`w-full h-12 bg-white border-2 rounded-xl pl-10 pr-14 focus:ring-2 focus:ring-[#00A8E8]/20 focus:border-[#00A8E8] transition-all outline-none text-sm text-gray-700 shadow-sm ${searchError ? 'border-red-400 placeholder-red-400' : 'border-gray-200 placeholder-gray-400'}`}
+                  style={{ fontFamily: 'Poppins, sans-serif', animation: searchError ? 'headShake 0.5s ease-in-out' : 'none' }}
                 />
-                {searchError && <span className="absolute left-10 -bottom-5 text-xs text-red-500 font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>Campo requerido</span>}
+                {searchError && <span className="absolute left-10 text-xs text-red-500 font-medium" style={{ fontFamily: 'Poppins, sans-serif', bottom: '-18px' }}>⚠ Escribe algo para buscar</span>}
                 <button onClick={handleSearchSubmit} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#00A8E8] hover:bg-[#0090c7] text-white rounded-lg flex items-center justify-center transition-colors">
                   <Search size={20} />
                 </button>
@@ -430,17 +430,17 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
           <div className="md:hidden bg-white border-t px-4 py-4 space-y-2">
             {!isRider() && (
             <>
-            <div className="relative mb-4">
+            <div className="relative" style={{ marginBottom: searchError ? '24px' : '16px' }}>
               <input
                 type="text"
                 value={localSearch}
                 onChange={handleSearchChange}
                 onKeyDown={handleSearchKeyDown}
                 placeholder={searchError ? 'Ingresa un término de búsqueda' : '¿Qué estás buscando?'}
-                className={`w-full h-12 bg-gray-50 border rounded-full pl-10 pr-12 text-sm ${searchError ? 'border-red-400 placeholder-red-400 animate-[headShake_0.5s_ease-in-out]' : 'border-gray-200 placeholder-gray-400'}`}
-                style={{ fontFamily: 'Poppins, sans-serif' }}
+                className={`w-full h-12 bg-gray-50 border rounded-full pl-10 pr-12 text-sm ${searchError ? 'border-red-400 placeholder-red-400' : 'border-gray-200 placeholder-gray-400'}`}
+                style={{ fontFamily: 'Poppins, sans-serif', animation: searchError ? 'headShake 0.5s ease-in-out' : 'none' }}
               />
-              {searchError && <span className="absolute left-10 -bottom-5 text-xs text-red-500 font-medium" style={{ fontFamily: 'Poppins, sans-serif' }}>Campo requerido</span>}
+              {searchError && <span className="absolute left-10 text-xs text-red-500 font-medium" style={{ fontFamily: 'Poppins, sans-serif', bottom: '-18px' }}>⚠ Escribe algo para buscar</span>}
               <button onClick={handleSearchSubmit} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#00A8E8] transition-colors bg-transparent border-0 cursor-pointer p-0">
                 <Search size={20} />
               </button>
