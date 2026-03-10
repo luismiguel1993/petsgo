@@ -2916,7 +2916,7 @@ class PetsGo_Core {
             }
 
             $('#petsgo-product-form').on('submit',function(e){
-                e.preventDefault();if(!validate())return;
+                e.preventDefault();if(!validate()){PG.toast('⚠️ Completa todos los campos obligatorios','warning');var $fe=$('.has-error:first, #img-error:visible').first();if($fe.length)$fe[0].scrollIntoView({behavior:'smooth',block:'center'});return;}
                 var stockVal=parseInt($('#pf-stock').val());
                 if(stockVal===0){
                     if(!confirm('⚠️ El stock quedará en 0. El producto no estará disponible para compra. ¿Deseas continuar?'))return;
@@ -3121,7 +3121,7 @@ class PetsGo_Core {
                 if(!$.trim($('#vf-rut').val())){$('#vf-f-rut').addClass('has-error');ok=false;}else{$('#vf-f-rut').removeClass('has-error');}
                 if(!$('#vf-email').val()||$('#vf-email').val().indexOf('@')<1){$('#vf-f-email').addClass('has-error');ok=false;}else{$('#vf-f-email').removeClass('has-error');}
                 if(!$('#vf-user').val()){$('#vf-f-user').addClass('has-error');ok=false;}else{$('#vf-f-user').removeClass('has-error');}
-                if(!ok)return;
+                if(!ok){PG.toast('⚠️ Completa todos los campos obligatorios','warning');$('.has-error:first')[0]?.scrollIntoView({behavior:'smooth',block:'center'});return;}
                 $('#vf-loader').addClass('active');$('#vf-msg').hide();
                 PG.post('petsgo_save_vendor',{
                     id:$('#vf-id').val(),store_name:$('#vf-name').val(),rut:$('#vf-rut').val(),email:$('#vf-email').val(),
@@ -3437,7 +3437,7 @@ class PetsGo_Core {
                 if(!$('#uf-email').val()||$('#uf-email').val().indexOf('@')<1){$('#uf-f-email').addClass('has-error');ok=false;}else{$('#uf-f-email').removeClass('has-error');}
                 // Vendor store validation
                 if($('#uf-role').val()==='petsgo_vendor' && !$('#uf-vendor').val()){$('#uf-f-vendor').addClass('has-error');ok=false;}else{$('#uf-f-vendor').removeClass('has-error');}
-                if(!ok)return;
+                if(!ok){PG.toast('⚠️ Completa todos los campos obligatorios','warning');$('.has-error:first')[0]?.scrollIntoView({behavior:'smooth',block:'center'});return;}
                 $('#uf-loader').addClass('active');$('#uf-msg').hide();
                 PG.post('petsgo_save_user',{
                     id:$('#uf-id').val(),user_login:$('#uf-login').val(),
