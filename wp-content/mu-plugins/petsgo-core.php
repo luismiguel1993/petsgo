@@ -2892,8 +2892,7 @@ class PetsGo_Core {
                 var st=$('#pf-stock').val();if(st===''||parseInt(st)<0){$('#field-stock').addClass('has-error');ok=false;}else{$('#field-stock').removeClass('has-error');}
                 if(!$('#pf-category').val()){$('#field-category').addClass('has-error');ok=false;}else{$('#field-category').removeClass('has-error');}
                 if(!$('#pf-vendor').val()){$('#field-vendor').addClass('has-error');ok=false;}else{$('#field-vendor').removeClass('has-error');}
-                // Foto principal opcional (prueba)
-                $('#img-error').hide();
+                if(!$('#pf-image-0').val()){$('#img-error').show();ok=false;}else{$('#img-error').hide();}
                 return ok;
             }
             $('.petsgo-field input,.petsgo-field select,.petsgo-field textarea').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
@@ -4316,7 +4315,7 @@ Dashboard con analíticas"></textarea>
         $errors=[];
         if(strlen($name)<3)$errors[]='Nombre mín 3 chars';if(strlen($desc)<10)$errors[]='Descripción mín 10 chars';
         if($price<=0)$errors[]='Precio > 0';if($stock<0)$errors[]='Stock >= 0';if(!$cat)$errors[]='Categoría obligatoria';
-        if(!$vendor_id)$errors[]='Tienda obligatoria';// if(!$img1)$errors[]='Foto principal obligatoria'; // Temporalmente opcional para pruebas
+        if(!$vendor_id)$errors[]='Tienda obligatoria';if(!$img1)$errors[]='Foto principal obligatoria';
         if($errors) wp_send_json_error(implode('. ',$errors));
 
         $data=['vendor_id'=>$vendor_id,'product_name'=>$name,'description'=>$desc,'price'=>$price,'stock'=>$stock,'category'=>$cat,'image_id'=>$img1,'image_id_2'=>$img2,'image_id_3'=>$img3];
