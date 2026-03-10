@@ -59,6 +59,7 @@ class PetsGo_Core {
         add_action('init', [$this, 'ensure_category_table']);
         add_action('init', [$this, 'ensure_ticket_tables']);
         add_action('init', [$this, 'ensure_ticket_images_columns']);
+        add_action('init', [$this, 'ensure_product_variants_column']);
         add_action('init', [$this, 'ensure_chat_history_table']);
         add_action('init', [$this, 'ensure_chat_history_v2']);
         add_action('init', [$this, 'ensure_coupon_table']);
@@ -2623,6 +2624,11 @@ class PetsGo_Core {
         $vendors = $is_admin ? $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name") : [];
         $categories = ['Alimento','Juguetes','Salud','Accesorios','Higiene','Ropa','Camas','Transporte'];
         $images = ['','',''];
+        // CA-042: Parse existing variants
+        $existing_variants = [];
+        if ($product && !empty($product->variants)) {
+            $existing_variants = json_decode($product->variants, true) ?: [];
+        }
         if ($product) {
             $images[0] = $product->image_id ? wp_get_attachment_url($product->image_id) : '';
             $images[1] = $product->image_id_2 ? wp_get_attachment_url($product->image_id_2) : '';
@@ -2751,6 +2757,26 @@ class PetsGo_Core {
                             </div>
                             <div class="field-error" id="img-error" style="display:none;">La foto principal es obligatoria.</div>
                         </div>
+                        <!-- CA-042: VARIANTES -->
+                        <div class="petsgo-form-section" style="margin-top:20px;">
+                            <h3>📐 Variantes (opcional)</h3>
+                            <p style="color:#666;font-size:13px;margin-top:0;">Agrega opciones como talla, color o peso. El cliente podrá seleccionarlas al comprar.</p>
+                            <div id="pf-variants-list">
+                                <?php if (!empty($existing_variants)): foreach ($existing_variants as $idx => $var): ?>
+                                <div class="pf-variant-row" style="display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:center;margin-bottom:8px;">
+                                    <select class="pf-var-type" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:13px;">
+                                        <option value="talla" <?php selected($var['type'] ?? '', 'talla'); ?>>Talla</option>
+                                        <option value="color" <?php selected($var['type'] ?? '', 'color'); ?>>Color</option>
+                                        <option value="peso" <?php selected($var['type'] ?? '', 'peso'); ?>>Peso</option>
+                                        <option value="cantidad" <?php selected($var['type'] ?? '', 'cantidad'); ?>>Cantidad</option>
+                                    </select>
+                                    <input type="text" class="pf-var-options" placeholder="Ej: S, M, L, XL (separar con coma)" value="<?php echo esc_attr($var['options'] ?? ''); ?>" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-size:13px;">
+                                    <button type="button" class="pf-var-remove" style="width:34px;height:34px;border:none;background:#fee2e2;color:#dc2626;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;" title="Eliminar">&times;</button>
+                                </div>
+                                <?php endforeach; endif; ?>
+                            </div>
+                            <button type="button" id="pf-add-variant" class="petsgo-btn petsgo-btn-sm" style="margin-top:8px;background:#e0f2fe;color:#0284c7;border:1px solid #bae6fd;font-size:13px;padding:6px 16px;border-radius:8px;cursor:pointer;">+ Agregar variante</button>
+                        </div>
                         <div style="margin-top:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
                             <?php if ($pid && $is_admin): ?>
                             <button type="button" id="pf-toggle-active" class="petsgo-btn petsgo-btn-sm" style="padding:8px 18px;font-size:13px;border-radius:20px;font-weight:700;cursor:pointer;border:none;<?php
@@ -2871,15 +2897,38 @@ class PetsGo_Core {
             }
             $('.petsgo-field input,.petsgo-field select,.petsgo-field textarea').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
 
+            // CA-042: Variants management
+            var variantRowHtml='<div class="pf-variant-row" style="display:grid;grid-template-columns:1fr 2fr auto;gap:10px;align-items:center;margin-bottom:8px;">'
+                +'<select class="pf-var-type" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:13px;">'
+                +'<option value="talla">Talla</option><option value="color">Color</option><option value="peso">Peso</option><option value="cantidad">Cantidad</option></select>'
+                +'<input type="text" class="pf-var-options" placeholder="Ej: S, M, L, XL (separar con coma)" style="height:38px;border:1px solid #ddd;border-radius:8px;padding:0 12px;font-size:13px;">'
+                +'<button type="button" class="pf-var-remove" style="width:34px;height:34px;border:none;background:#fee2e2;color:#dc2626;border-radius:8px;cursor:pointer;font-size:16px;font-weight:bold;" title="Eliminar">&times;</button></div>';
+            $('#pf-add-variant').on('click',function(){$('#pf-variants-list').append(variantRowHtml);});
+            $(document).on('click','.pf-var-remove',function(){$(this).closest('.pf-variant-row').remove();});
+            function collectVariants(){
+                var vars=[];
+                $('.pf-variant-row').each(function(){
+                    var type=$(this).find('.pf-var-type').val();
+                    var opts=$.trim($(this).find('.pf-var-options').val());
+                    if(opts){vars.push({type:type,options:opts});}
+                });
+                return JSON.stringify(vars);
+            }
+
             $('#petsgo-product-form').on('submit',function(e){
                 e.preventDefault();if(!validate())return;
+                var stockVal=parseInt($('#pf-stock').val());
+                if(stockVal===0){
+                    if(!confirm('⚠️ El stock quedará en 0. El producto no estará disponible para compra. ¿Deseas continuar?'))return;
+                }
                 $('#pf-loader').addClass('active');$('#pf-message').hide();
                 PG.post('petsgo_save_product',{
                     id:$('#pf-id').val(),product_name:$.trim($('#pf-name').val()),description:$.trim($('#pf-desc').val()),
                     price:$('#pf-price').val(),stock:$('#pf-stock').val(),category:$('#pf-category').val(),vendor_id:$('#pf-vendor').val(),
                     image_id:$('#pf-image-0').val(),image_id_2:$('#pf-image-1').val(),image_id_3:$('#pf-image-2').val(),
                     discount_percent:$('#pf-discount').val()||0,discount_type:$('#pf-discount-type').val(),
-                    discount_start:$('#pf-discount-start').val()||'',discount_end:$('#pf-discount-end').val()||''
+                    discount_start:$('#pf-discount-start').val()||'',discount_end:$('#pf-discount-end').val()||'',
+                    variants:collectVariants()
                 },function(r){
                     $('#pf-loader').removeClass('active');
                     if(r.success){
@@ -4271,6 +4320,11 @@ Dashboard con analíticas"></textarea>
 
         $data=['vendor_id'=>$vendor_id,'product_name'=>$name,'description'=>$desc,'price'=>$price,'stock'=>$stock,'category'=>$cat,'image_id'=>$img1,'image_id_2'=>$img2,'image_id_3'=>$img3];
 
+        // CA-042: Save variants
+        $variants_raw = stripslashes($_POST['variants'] ?? '[]');
+        $variants_arr = json_decode($variants_raw, true);
+        $data['variants'] = is_array($variants_arr) && count($variants_arr) > 0 ? wp_json_encode($variants_arr) : null;
+
         // Descuento
         $disc_type = sanitize_text_field($_POST['discount_type'] ?? 'none');
         $disc_pct  = floatval($_POST['discount_percent'] ?? 0);
@@ -4287,16 +4341,18 @@ Dashboard con analíticas"></textarea>
         }
 
         if($id){
-            $wpdb->update("{$wpdb->prefix}petsgo_inventory",$data,['id'=>$id]);
+            $wpdb->update("{$wpdb->prefix}petsgo_inventory",$data,['id'=>$id],null,['%d']);
             $this->audit('product_update','product',$id,$name);
-            $this->check_stock_alert($id);
-            wp_send_json_success(['message'=>'Producto actualizado','id'=>$id]);
+            try { $this->check_stock_alert($id); } catch (\Throwable $e) { /* no bloquear guardado */ }
+            $msg = $stock === 0 ? 'Producto actualizado (stock en 0 — sin inventario)' : 'Producto actualizado';
+            wp_send_json_success(['message'=>$msg,'id'=>$id]);
         } else {
             $wpdb->insert("{$wpdb->prefix}petsgo_inventory",$data);
             $nid=$wpdb->insert_id;
             $this->audit('product_create','product',$nid,$name);
-            $this->check_stock_alert($nid);
-            wp_send_json_success(['message'=>'Producto creado','id'=>$nid]);
+            try { $this->check_stock_alert($nid); } catch (\Throwable $e) { /* no bloquear guardado */ }
+            $msg = $stock === 0 ? 'Producto creado (stock en 0 — sin inventario)' : 'Producto creado';
+            wp_send_json_success(['message'=>$msg,'id'=>$nid]);
         }
     }
 
@@ -7904,6 +7960,17 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_tickets_v2', true);
     }
 
+    /** CA-042: Ensure variants column exists in inventory table */
+    public function ensure_product_variants_column() {
+        if (get_option('petsgo_inventory_variants_v1')) return;
+        global $wpdb;
+        $cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_inventory", 0);
+        if (!in_array('variants', $cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_inventory ADD COLUMN variants text DEFAULT NULL AFTER category");
+        }
+        update_option('petsgo_inventory_variants_v1', true);
+    }
+
     /**
      * Ensure chat history table exists for persisting chatbot conversations.
      */
@@ -8495,7 +8562,7 @@ Dashboard con analíticas"></textarea>
             if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
             $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
             $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
-            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'description'=>$p->description ?? '','price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'is_active'=>intval($p->is_active??1)];
+            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'description'=>$p->description ?? '','price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'is_active'=>intval($p->is_active??1),'variants'=>!empty($p->variants)?json_decode($p->variants,true):null];
         },$products)]);
     }
     public function api_get_product_detail($request) {
@@ -8508,7 +8575,7 @@ Dashboard con analíticas"></textarea>
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
         $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
         $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
-        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price]);
+        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'variants'=>!empty($p->variants)?json_decode($p->variants,true):null]);
     }
     // --- API Vendors ---
     public function api_get_vendors() {

@@ -61,6 +61,7 @@ const ProductDetailPage = () => {
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [productInactive, setProductInactive] = useState(false);
   const [showFullDesc, setShowFullDesc] = useState(false);
+  const [selectedVariants, setSelectedVariants] = useState({});
   const navigate = useNavigate();
 
   // Siempre cargar datos frescos desde la API (incluso con stateProduct como preview)
@@ -169,7 +170,8 @@ const ProductDetailPage = () => {
   const productVariant = extractVariant(product.name || product.product_name);
 
   const handleAddToCart = () => {
-    addItem({ ...product, quantity: 1 });
+    const variantInfo = Object.keys(selectedVariants).length > 0 ? selectedVariants : undefined;
+    addItem({ ...product, selectedVariants: variantInfo, quantity: 1 });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
   };
@@ -408,6 +410,41 @@ const ProductDetailPage = () => {
                 background: product.stock > 10 ? '#059669' : '#f59e0b',
               }} />
               {product.stock > 10 ? `Stock disponible (${product.stock} unidades)` : `¡Últimas ${product.stock} unidades!`}
+            </div>
+          )}
+
+          {/* CA-042: Variant selectors */}
+          {product.variants && product.variants.length > 0 && (
+            <div style={{ marginBottom: '24px' }}>
+              {product.variants.map((v, i) => {
+                const label = { talla: 'Talla', color: 'Color', peso: 'Peso', cantidad: 'Cantidad' }[v.type] || v.type;
+                const opts = v.options.split(',').map(o => o.trim()).filter(Boolean);
+                return (
+                  <div key={i} style={{ marginBottom: '14px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '6px' }}>{label}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {opts.map(opt => {
+                        const isSelected = selectedVariants[v.type] === opt;
+                        return (
+                          <button
+                            key={opt}
+                            onClick={() => setSelectedVariants(prev => ({ ...prev, [v.type]: isSelected ? undefined : opt }))}
+                            style={{
+                              padding: '8px 16px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
+                              cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'Poppins, sans-serif',
+                              border: isSelected ? '2px solid #00A8E8' : '2px solid #e5e7eb',
+                              background: isSelected ? '#f0f9ff' : '#fff',
+                              color: isSelected ? '#00A8E8' : '#4b5563',
+                            }}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
