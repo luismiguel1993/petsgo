@@ -14,13 +14,16 @@ export const CartProvider = ({ children }) => {
   }, []);
 
   const addItem = (product) => {
+    const maxStock = Number(product.stock);
     setItems((prev) => {
       const existing = prev.find((i) => i.id === product.id);
       if (existing) {
+        if (maxStock && existing.quantity >= maxStock) return prev;
         return prev.map((i) =>
           i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i
         );
       }
+      if (maxStock === 0) return prev;
       return [...prev, { ...product, quantity: 1 }];
     });
     // Abrir carrito flotante automáticamente
@@ -37,7 +40,12 @@ export const CartProvider = ({ children }) => {
       return;
     }
     setItems((prev) =>
-      prev.map((i) => (i.id === productId ? { ...i, quantity } : i))
+      prev.map((i) => {
+        if (i.id !== productId) return i;
+        const maxStock = Number(i.stock);
+        const safeQty = maxStock ? Math.min(quantity, maxStock) : quantity;
+        return { ...i, quantity: safeQty };
+      })
     );
   };
 

@@ -488,33 +488,35 @@ const ProductDetailPage = () => {
                   {qty}
                 </span>
                 <button
-                  onClick={() => addItem({ ...product, quantity: 1 })}
+                  onClick={() => { if (qty < Number(product.stock)) addItem({ ...product, quantity: 1 }); }}
+                  disabled={qty >= Number(product.stock)}
                   style={{
                     width: '44px', height: '44px', borderRadius: '10px',
-                    border: 'none', background: '#00A8E8', cursor: 'pointer',
+                    border: 'none', background: qty >= Number(product.stock) ? '#e5e7eb' : '#00A8E8', cursor: qty >= Number(product.stock) ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 2px 6px rgba(0,168,232,0.3)',
+                    boxShadow: qty >= Number(product.stock) ? 'none' : '0 2px 6px rgba(0,168,232,0.3)',
                   }}
                 >
-                  <Plus size={18} color="#fff" />
+                  <Plus size={18} color={qty >= Number(product.stock) ? '#9ca3af' : '#fff'} />
                 </button>
               </div>
             ) : null}
 
             <button
               onClick={handleAddToCart}
+              disabled={qty >= Number(product.stock)}
               style={{
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
-                background: addedToCart ? '#059669' : '#00A8E8', color: '#fff',
+                background: qty >= Number(product.stock) ? '#e5e7eb' : addedToCart ? '#059669' : '#00A8E8',
+                color: qty >= Number(product.stock) ? '#9ca3af' : '#fff',
                 border: 'none', borderRadius: '14px', padding: '16px 28px',
-                fontSize: '15px', fontWeight: 700, cursor: 'pointer',
-                transition: 'all 0.3s', boxShadow: '0 4px 16px rgba(0,168,232,0.25)',
+                fontSize: '15px', fontWeight: 700, cursor: qty >= Number(product.stock) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.3s', boxShadow: qty >= Number(product.stock) ? 'none' : '0 4px 16px rgba(0,168,232,0.25)',
               }}
-              onMouseEnter={(e) => { if (!addedToCart) e.currentTarget.style.background = '#0090c7'; }}
-              onMouseLeave={(e) => { if (!addedToCart) e.currentTarget.style.background = '#00A8E8'; }}
+              onMouseEnter={(e) => { if (!addedToCart && qty < Number(product.stock)) e.currentTarget.style.background = '#0090c7'; }}
+              onMouseLeave={(e) => { if (!addedToCart && qty < Number(product.stock)) e.currentTarget.style.background = '#00A8E8'; }}
             >
-              {addedToCart ? <Check size={20} /> : <ShoppingCart size={20} />}
-              {addedToCart ? '¡Agregado al carrito!' : qty > 0 ? 'Agregar más al carrito' : 'Agregar al carrito'}
+              {qty >= Number(product.stock) ? <>⚠️ Máximo stock alcanzado ({product.stock})</> : addedToCart ? <><Check size={20} /> ¡Agregado al carrito!</> : <><ShoppingCart size={20} /> {qty > 0 ? 'Agregar más al carrito' : 'Agregar al carrito'}</>}
             </button>
             </>)}
 

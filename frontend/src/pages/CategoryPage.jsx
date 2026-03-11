@@ -746,19 +746,20 @@ const CategoryPage = () => {
                                 >
                                   <Minus size={14} color="#00A8E8" />
                                 </button>
-                                <span style={{ fontSize: '14px', fontWeight: 700, color: '#1f2937', minWidth: '24px', textAlign: 'center' }}>
+                                <span style={{ fontSize: '14px', fontWeight: 700, color: qty >= Number(product.stock) ? '#dc2626' : '#1f2937', minWidth: '24px', textAlign: 'center' }}>
                                   {qty}
                                 </span>
                                 <button
-                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), price: product.discount_active ? Number(product.final_price || product.price) : Number(product.price), quantity: 1 }); }}
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); if (qty < Number(product.stock)) addItem({ ...product, name: product.product_name, image: getSmartProductImage(product), price: product.discount_active ? Number(product.final_price || product.price) : Number(product.price), quantity: 1 }); }}
+                                  disabled={qty >= Number(product.stock)}
                                   style={{
                                     width: '30px', height: '30px', borderRadius: '8px',
-                                    border: 'none', background: '#00A8E8', cursor: 'pointer',
+                                    border: 'none', background: qty >= Number(product.stock) ? '#e5e7eb' : '#00A8E8', cursor: qty >= Number(product.stock) ? 'not-allowed' : 'pointer',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    boxShadow: '0 2px 6px rgba(0,168,232,0.3)',
+                                    boxShadow: qty >= Number(product.stock) ? 'none' : '0 2px 6px rgba(0,168,232,0.3)',
                                   }}
                                 >
-                                  <Plus size={14} color="#fff" />
+                                  <Plus size={14} color={qty >= Number(product.stock) ? '#9ca3af' : '#fff'} />
                                 </button>
                               </div>
                             ) : (
