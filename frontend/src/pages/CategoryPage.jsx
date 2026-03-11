@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Store, Star, Clock, MapPin, Plus, Minus, PawPrint, Package, Filter } from 'lucide-react';
 import { getProducts, getVendors, getCategories } from '../services/api';
@@ -183,6 +183,18 @@ const CategoryPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [suggestedProducts, setSuggestedProducts] = useState([]);
   const { addItem, getItemQuantity, updateQuantity } = useCart();
+  const searchDebounceRef = useRef(null);
+
+  // Debounced global search: navigate to /categoria/Todos?q=term
+  const handleLocalSearch = useCallback((value) => {
+    setSearchTerm(value);
+    clearTimeout(searchDebounceRef.current);
+    if (value.trim() && value.trim() !== queryFromUrl) {
+      searchDebounceRef.current = setTimeout(() => {
+        navigate(`/categoria/Todos?q=${encodeURIComponent(value.trim())}`);
+      }, 600);
+    }
+  }, [navigate, queryFromUrl]);
 
   /* Cargar categorías desde la API */
   useEffect(() => {
@@ -527,10 +539,11 @@ const CategoryPage = () => {
                 type="text"
                 placeholder="Buscar productos..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleLocalSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && searchTerm.trim()) {
                     e.preventDefault();
+                    clearTimeout(searchDebounceRef.current);
                     navigate(`/categoria/Todos?q=${encodeURIComponent(searchTerm.trim())}`);
                   }
                 }}
