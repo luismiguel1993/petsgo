@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useParams, Link, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Search, Store, Star, Clock, MapPin, Plus, Minus, PawPrint, Package, Filter } from 'lucide-react';
 import { getProducts, getVendors, getCategories } from '../services/api';
 import { useCart } from '../context/CartContext';
@@ -165,6 +165,7 @@ const PRODUCTS_PER_PAGE = 12;
 const CategoryPage = () => {
   const { slug } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryFromUrl = searchParams.get('q') || '';
   const categoryName = slug ? decodeURIComponent(slug) : null;
 
@@ -527,6 +528,12 @@ const CategoryPage = () => {
                 placeholder="Buscar productos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchTerm.trim()) {
+                    e.preventDefault();
+                    navigate(`/categoria/Todos?q=${encodeURIComponent(searchTerm.trim())}`);
+                  }
+                }}
                 autoComplete="off"
                 style={{
                   width: '100%', padding: '12px 16px 12px 44px',
