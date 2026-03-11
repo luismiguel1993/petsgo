@@ -403,13 +403,13 @@ const ProductDetailPage = () => {
           {product.stock !== undefined && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px',
-              fontSize: '13px', color: product.stock > 10 ? '#059669' : '#f59e0b', fontWeight: 600,
+              fontSize: '13px', color: Number(product.stock) === 0 ? '#dc2626' : product.stock > 10 ? '#059669' : '#f59e0b', fontWeight: 600,
             }}>
               <div style={{
                 width: '8px', height: '8px', borderRadius: '50%',
-                background: product.stock > 10 ? '#059669' : '#f59e0b',
+                background: Number(product.stock) === 0 ? '#dc2626' : product.stock > 10 ? '#059669' : '#f59e0b',
               }} />
-              {product.stock > 10 ? `Stock disponible (${product.stock} unidades)` : `¡Últimas ${product.stock} unidades!`}
+              {Number(product.stock) === 0 ? '🚫 Sin stock — Producto agotado' : product.stock > 10 ? `Stock disponible (${product.stock} unidades)` : `¡Últimas ${product.stock} unidades!`}
             </div>
           )}
 
@@ -452,6 +452,19 @@ const ProductDetailPage = () => {
           <div style={{
             display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '32px',
           }}>
+            {Number(product.stock) === 0 ? (
+              <button
+                disabled
+                style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+                  background: '#e5e7eb', color: '#9ca3af',
+                  border: 'none', borderRadius: '14px', padding: '16px 28px',
+                  fontSize: '15px', fontWeight: 700, cursor: 'not-allowed',
+                }}
+              >
+                🚫 Sin stock
+              </button>
+            ) : (<>
             {qty > 0 ? (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: '4px',
@@ -503,6 +516,7 @@ const ProductDetailPage = () => {
               {addedToCart ? <Check size={20} /> : <ShoppingCart size={20} />}
               {addedToCart ? '¡Agregado al carrito!' : qty > 0 ? 'Agregar más al carrito' : 'Agregar al carrito'}
             </button>
+            </>)}
 
             <button style={{
               width: '52px', height: '52px', borderRadius: '14px',

@@ -650,6 +650,11 @@ const CategoryPage = () => {
                           <span style={{ background: '#fff', color: '#ef4444', fontWeight: 800, fontSize: '13px', padding: '8px 16px', borderRadius: '10px', boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>🚫 Producto inaccesible</span>
                         </div>
                       )}
+                      {!inactive && Number(product.stock) === 0 && (
+                        <div style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 5, background: '#dc2626', color: '#fff', fontSize: '10px', fontWeight: 800, padding: '4px 8px', borderRadius: '6px' }}>
+                          Sin stock
+                        </div>
+                      )}
                       <div style={{ position: 'relative', aspectRatio: '1', overflow: 'hidden', background: '#f9fafb' }}>
                         <img
                           src={getSmartProductImage(product)}
@@ -724,7 +729,7 @@ const CategoryPage = () => {
                               </span>
                             )}
                           </div>
-                          {!inactive && <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
+                          {!inactive && Number(product.stock) !== 0 && <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}>
                             {qty > 0 ? (
                               <div style={{
                                 display: 'flex', alignItems: 'center', gap: '4px',
@@ -770,6 +775,9 @@ const CategoryPage = () => {
                               </button>
                             )}
                           </div>}
+                          {!inactive && Number(product.stock) === 0 && (
+                            <span style={{ fontSize: '11px', fontWeight: 700, color: '#dc2626' }}>Agotado</span>
+                          )}
                         </div>
                       </div>
                     </Link>
