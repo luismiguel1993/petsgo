@@ -219,6 +219,7 @@ class PetsGo_Core {
             'petsgo-dashboard', 'petsgo-products', 'petsgo-product-form',
             'petsgo-orders', 'petsgo-delivery', 'petsgo-invoices',
             'petsgo-invoice-config', 'petsgo-coupons',
+            'petsgo-tickets', 'petsgo-categories',
         ];
 
         // Páginas permitidas para Soporte
