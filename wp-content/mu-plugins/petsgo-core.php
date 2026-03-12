@@ -12769,11 +12769,25 @@ Dashboard con analíticas"></textarea>
             'status'        => 'abierto',
         ];
         if ($image_url) $insert_data['image_url'] = $image_url;
+        // Admin can assign ticket on creation
+        $assigned_to = intval($_POST['assigned_to'] ?? 0);
+        if ($is_admin && $assigned_to) {
+            $assigned_user = get_userdata($assigned_to);
+            if ($assigned_user) {
+                $insert_data['assigned_to'] = $assigned_to;
+                $insert_data['assigned_name'] = $assigned_user->display_name;
+                $insert_data['status'] = 'en_proceso';
+            }
+        }
         $wpdb->insert("{$wpdb->prefix}petsgo_tickets", $insert_data);
         $ticket_id = $wpdb->insert_id;
 
         $this->send_ticket_email_creator($ticket_number, $subject, $user->user_email, $user->display_name);
         $this->send_ticket_email_admin($ticket_number, $subject, $description, $user->display_name, $user_role, $category, $priority);
+        // Notify assigned user if set
+        if ($is_admin && $assigned_to && !empty($assigned_user)) {
+            $this->send_ticket_assigned_email($ticket_number, $subject, $description, $assigned_user->user_email, $assigned_user->display_name, $user->display_name);
+        }
         $this->audit('create_ticket', 'ticket', $ticket_id, $ticket_number . ' — ' . $subject);
 
         wp_send_json_success(['message' => 'Ticket ' . $ticket_number . ' creado exitosamente.', 'ticket_number' => $ticket_number]);
@@ -13127,6 +13141,10 @@ Dashboard con analíticas"></textarea>
         $is_staff = $is_admin || $is_support; // admin/support = vista de gestión completa
         global $wpdb;
         $admins = $is_staff ? get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]) : [];
+        $assignable_users = $is_admin ? array_merge(
+            get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]),
+            get_users(['role' => 'petsgo_support', 'fields' => ['ID','display_name']])
+        ) : [];
         ?>
         <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
@@ -13136,9 +13154,7 @@ Dashboard con analíticas"></textarea>
             <p><?php echo $is_staff ? 'Gestiona las solicitudes de clientes, tiendas y riders.' : 'Crea y da seguimiento a tus solicitudes de soporte técnico.'; ?></p>
 
             <div class="petsgo-search-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <?php if (!$is_staff): ?>
                 <button class="petsgo-btn petsgo-btn-primary" onclick="pgNewTicket()" style="white-space:nowrap;">➕ Nuevo Ticket</button>
-                <?php endif; ?>
                 <input type="text" id="tk-search" placeholder="Buscar por N°, asunto..." style="flex:1;min-width:200px;">
                 <select id="tk-status-filter">
                     <option value="">Activos (sin cerrados)</option>
@@ -13205,8 +13221,7 @@ Dashboard con analíticas"></textarea>
                 </div>
             </div>
 
-            <!-- Modal: Nuevo Ticket (vendor/tienda) -->
-            <?php if (!$is_staff): ?>
+            <!-- Modal: Nuevo Ticket -->
             <div id="tk-new-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
                 <div style="background:#fff;border-radius:12px;padding:28px;max-width:600px;width:95%;max-height:85vh;overflow-y:auto;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
@@ -13236,6 +13251,16 @@ Dashboard con analíticas"></textarea>
                             </select>
                         </div>
                     </div>
+                    <?php if ($is_admin): ?>
+                    <div class="petsgo-field"><label>👤 Asignar a (opcional)</label>
+                        <select id="tk-new-assigned" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;">
+                            <option value="">— Sin asignar —</option>
+                            <?php foreach ($assignable_users as $au): ?>
+                            <option value="<?php echo (int)$au->ID; ?>"><?php echo esc_html($au->display_name); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
                     <div class="petsgo-field"><label>Descripción *</label><textarea id="tk-new-description" rows="5" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;" placeholder="Describe en detalle tu problema o consulta..."></textarea></div>
                     <div class="petsgo-field"><label>📎 Imagen (opcional)</label><input type="file" id="tk-new-image" accept="image/*" style="padding:8px 0;"></div>
                     <div style="display:flex;gap:10px;margin-top:16px;">
@@ -13244,10 +13269,10 @@ Dashboard con analíticas"></textarea>
                     </div>
                 </div>
             </div>
-            <?php endif; ?>
         </div>
         <script>
         var pgTicketIsStaff = <?php echo $is_staff ? 'true' : 'false'; ?>;
+        var pgTicketIsAdmin = <?php echo $is_admin ? 'true' : 'false'; ?>;
         jQuery(function($){
             var admins = <?php echo json_encode($admins); ?>;
             var _tkPage = 1;
@@ -13520,6 +13545,7 @@ Dashboard con analíticas"></textarea>
             window.pgNewTicket = function(){
                 $('#tk-new-subject').val('');$('#tk-new-description').val('');
                 $('#tk-new-category').val('general');$('#tk-new-priority').val('media');
+                if(pgTicketIsAdmin) $('#tk-new-assigned').val('');
                 var fi=document.getElementById('tk-new-image');if(fi)fi.value='';
                 $('#tk-new-modal').css('display','flex');
             };
@@ -13535,6 +13561,10 @@ Dashboard con analíticas"></textarea>
                 fd.append('description',description);
                 fd.append('category',$('#tk-new-category').val());
                 fd.append('priority',$('#tk-new-priority').val());
+                if(pgTicketIsAdmin){
+                    var assignedTo=$('#tk-new-assigned').val();
+                    if(assignedTo) fd.append('assigned_to',assignedTo);
+                }
                 var fileInput=document.getElementById('tk-new-image');
                 if(fileInput && fileInput.files[0]) fd.append('image',fileInput.files[0]);
                 $.ajax({url:PG.ajaxUrl,type:'POST',data:fd,processData:false,contentType:false,success:function(r){
