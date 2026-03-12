@@ -32,7 +32,11 @@ const LoginPage = () => {
       // Wait a moment to show message, then redirect
       setTimeout(() => {
         if (user.role === 'admin') navigate('/admin');
-        else if (user.role === 'vendor') navigate('/vendor');
+        else if (user.role === 'vendor') {
+          // Vendors acceden solo por el backend (WP Admin)
+          window.location.href = '/wp-admin/admin.php?page=petsgo-dashboard';
+          return;
+        }
         else if (user.role === 'rider') navigate('/rider');
         else navigate('/');
       }, 1800);

@@ -21,7 +21,6 @@ import PlansPage from './pages/PlansPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import CategoryPage from './pages/CategoryPage'
 import MyOrdersPage from './pages/MyOrdersPage'
-import VendorDashboard from './pages/VendorDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import RiderDashboard from './pages/RiderDashboard'
 import SupportPage from './pages/SupportPage'
@@ -31,16 +30,41 @@ import InvoiceVerifyPage from './pages/InvoiceVerifyPage'
 import ForceChangePasswordPage from './pages/ForceChangePasswordPage'
 import RiderVerifyEmailPage from './pages/RiderVerifyEmailPage'
 
+// Componente que redirige vendors al backend WP Admin
+function VendorBackendRedirect() {
+  useEffect(() => {
+    window.location.href = '/wp-admin/admin.php?page=petsgo-dashboard';
+  }, []);
+  return (
+    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Poppins, sans-serif' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🏠</div>
+        <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#2F3A40' }}>Redirigiendo al Panel de Tienda...</h2>
+        <p style={{ fontSize: '14px', color: '#64748b', marginTop: '8px' }}>Tu acceso es por el portal de administración.</p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const { setOnCartOpen } = useCart()
-  const { loggedOut, user, isRider } = useAuth()
+  const { loggedOut, user, isRider, isVendor } = useAuth()
   const site = useSite()
   const location = useLocation()
   const autoCloseTimer = useRef(null)
 
   // Rider logueado: restringir navegación — solo puede ver su panel
   const activeRider = isRider();
+  // Vendor logueado: redirigir al backend (WP Admin)
+  const activeVendor = isVendor();
+
+  // Si un vendor intenta navegar por el frontend, redirigir al backend
+  useEffect(() => {
+    if (activeVendor && location.pathname !== '/login' && location.pathname !== '/cambiar-contrasena') {
+      window.location.href = '/wp-admin/admin.php?page=petsgo-dashboard';
+    }
+  }, [activeVendor, location.pathname]);
   // Rider no aprobado: mostrar banner de estado
   const isUnapprovedRider = activeRider && user?.rider_status && user.rider_status !== 'approved';
   const riderStatusLabels = {
@@ -158,8 +182,8 @@ function App() {
           <Route path="/perfil" element={activeRider ? <Navigate to="/rider" /> : <UserProfilePage />} />
           <Route path="/soporte" element={<SupportPage />} />
 
-          {/* Dashboards por rol */}
-          <Route path="/vendor" element={<VendorDashboard />} />
+          {/* Dashboards por rol — Vendor redirige al backend */}
+          <Route path="/vendor" element={<VendorBackendRedirect />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/rider" element={<RiderDashboard />} />
         </Routes>
