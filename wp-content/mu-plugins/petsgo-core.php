@@ -110,6 +110,7 @@ class PetsGo_Core {
             'petsgo_ticket_count',
             'petsgo_create_ticket_backend',
             'petsgo_get_ticket_replies',
+            'petsgo_save_my_store',
             'petsgo_save_legal',
             'petsgo_save_faqs',
             'petsgo_search_rider_payouts',
@@ -219,7 +220,7 @@ class PetsGo_Core {
             'petsgo-dashboard', 'petsgo-products', 'petsgo-product-form',
             'petsgo-orders', 'petsgo-delivery', 'petsgo-invoices',
             'petsgo-invoice-config', 'petsgo-coupons',
-            'petsgo-tickets', 'petsgo-categories',
+            'petsgo-tickets', 'petsgo-categories', 'petsgo-my-store',
         ];
 
         // Páginas permitidas para Soporte
@@ -1440,6 +1441,9 @@ class PetsGo_Core {
         // Solo admin
         add_submenu_page('petsgo-dashboard', 'Tiendas', 'Tiendas', $cap_admin, 'petsgo-vendors', [$this, 'page_vendors']);
         add_submenu_page(null, 'Tienda', 'Tienda', $cap_admin, 'petsgo-vendor-form', [$this, 'page_vendor_form']);
+
+        // Mi Tienda — solo vendor
+        add_submenu_page('petsgo-dashboard', 'Mi Tienda', '🏪 Mi Tienda', $cap_vendor, 'petsgo-my-store', [$this, 'page_my_store']);
 
         // Pedidos — admin y vendor (vendor ve solo los suyos)
         add_submenu_page('petsgo-dashboard', 'Pedidos', 'Pedidos', $cap_vendor, 'petsgo-orders', [$this, 'page_orders']);
@@ -3154,6 +3158,186 @@ class PetsGo_Core {
     }
 
     // ============================================================
+    // 3b. MI TIENDA — vendor edita su propia tienda
+    // ============================================================
+    public function page_my_store() {
+        if (!$this->is_vendor() && !$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        global $wpdb;
+        $is_admin = $this->is_admin();
+        $vid = $this->get_my_vendor_id();
+        if (!$is_admin && !$vid) { echo '<div class="wrap"><h1>⚠️ No tienes una tienda asociada</h1><p>Contacta al administrador.</p></div>'; return; }
+        // Admin can view any vendor via ?vendor_id=
+        if ($is_admin && isset($_GET['vendor_id'])) $vid = intval($_GET['vendor_id']);
+        $vendor = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $vid));
+        if (!$vendor) { echo '<div class="wrap"><h1>⚠️ Tienda no encontrada</h1></div>'; return; }
+
+        // Get associated WP users for this store
+        $associated_users = get_users(['role' => 'petsgo_vendor', 'fields' => ['ID', 'display_name', 'user_login', 'user_email']]);
+        // Filter: only users whose vendor_id points to this store
+        $store_users = [];
+        foreach ($associated_users as $au) {
+            $their_vid = (int)$wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_vendors WHERE user_id=%d", $au->ID));
+            if ($their_vid === (int)$vid) $store_users[] = $au;
+        }
+        // Also check if the main user_id is administrator (won't be in petsgo_vendor role)
+        $main_user = get_userdata($vendor->user_id);
+
+        // Plan info
+        $plan = $wpdb->get_row($wpdb->prepare("SELECT plan_name FROM {$wpdb->prefix}petsgo_subscriptions WHERE id=%d", $vendor->plan_id ?? 1));
+
+        $regiones = [
+            'Arica y Parinacota'=>['Arica','Camarones','General Lagos','Putre'],
+            'Tarapacá'=>['Alto Hospicio','Camina','Colchane','Huara','Iquique','Pica','Pozo Almonte'],
+            'Antofagasta'=>['Antofagasta','Calama','María Elena','Mejillones','Ollagüe','San Pedro de Atacama','Sierra Gorda','Taltal','Tocopilla'],
+            'Atacama'=>['Caldera','Chañaral','Copiapó','Diego de Almagro','Freirina','Huasco','Tierra Amarilla','Vallenar'],
+            'Coquimbo'=>['Andacollo','Canela','Combarbalá','Coquimbo','Illapel','La Higuera','La Serena','Los Vilos','Monte Patria','Ovalle','Paihuano','Punitaqui','Río Hurtado','Salamanca','Vicuña'],
+            'Valparaíso'=>['Algarrobo','Cabildo','Calera','Cartagena','Casablanca','Catemu','Concón','El Quisco','El Tabo','Hijuelas','Isla de Pascua','Juan Fernández','La Cruz','La Ligua','Limache','Llaillay','Los Andes','Nogales','Olmué','Panquehue','Papudo','Petorca','Puchuncaví','Putaendo','Quillota','Quilpué','Quintero','Rinconada','San Antonio','San Esteban','San Felipe','Santa María','Santo Domingo','Valparaíso','Villa Alemana','Viña del Mar','Zapallar'],
+            'Metropolitana'=>['Alhué','Buin','Calera de Tango','Cerrillos','Cerro Navia','Colina','Conchalí','Curacaví','El Bosque','El Monte','Estación Central','Huechuraba','Independencia','Isla de Maipo','La Cisterna','La Florida','La Granja','La Pintana','La Reina','Lampa','Las Condes','Lo Barnechea','Lo Espejo','Lo Prado','Macul','Maipú','María Pinto','Melipilla','Ñuñoa','Padre Hurtado','Paine','Pedro Aguirre Cerda','Peñaflor','Peñalolén','Pirque','Providencia','Pudahuel','Puente Alto','Quilicura','Quinta Normal','Recoleta','Renca','San Bernardo','San Joaquín','San José de Maipo','San Miguel','San Pedro','San Ramón','Santiago','Talagante','Tiltil','Vitacura'],
+            'O\'Higgins'=>['Chépica','Chimbarongo','Codegua','Coinco','Coltauco','Doñihue','Graneros','La Estrella','Las Cabras','Litueche','Lolol','Machalí','Malloa','Marchihue','Mostazal','Nancagua','Navidad','Olivar','Palmilla','Paredones','Peralillo','Peumo','Pichidegua','Pichilemu','Placilla','Pumanque','Quinta de Tilcoco','Rancagua','Rengo','Requínoa','San Fernando','San Vicente','Santa Cruz'],
+            'Maule'=>['Cauquenes','Chanco','Colbún','Constitución','Curepto','Curicó','Empedrado','Hualañé','Licantén','Linares','Longaví','Maule','Molina','Parral','Pelarco','Pelluhue','Pencahue','Rauco','Retiro','Río Claro','Romeral','Sagrada Familia','San Clemente','San Javier','San Rafael','Talca','Teno','Vichuquén','Villa Alegre','Yerbas Buenas'],
+            'Ñuble'=>['Bulnes','Chillán','Chillán Viejo','Cobquecura','Coelemu','Coihueco','El Carmen','Ninhue','Ñiquén','Pemuco','Pinto','Portezuelo','Quillón','Quirihue','Ránquil','San Carlos','San Fabián','San Ignacio','San Nicolás','Treguaco','Yungay'],
+            'Biobío'=>['Alto Biobío','Antuco','Arauco','Cabrero','Cañete','Chiguayante','Concepción','Contulmo','Coronel','Curanilahue','Florida','Hualpén','Hualqui','Laja','Lebu','Los Álamos','Los Ángeles','Lota','Mulchén','Nacimiento','Negrete','Penco','Quilaco','Quilleco','San Pedro de la Paz','San Rosendo','Santa Bárbara','Santa Juana','Talcahuano','Tirúa','Tomé','Tucapel','Yumbel'],
+            'Araucanía'=>['Angol','Carahue','Cholchol','Collipulli','Cunco','Curacautín','Curarrehue','Ercilla','Freire','Galvarino','Gorbea','Lautaro','Loncoche','Lonquimay','Los Sauces','Lumaco','Melipeuco','Nueva Imperial','Padre Las Casas','Perquenco','Pitrufquén','Pucón','Purén','Renaico','Saavedra','Temuco','Teodoro Schmidt','Toltén','Traiguén','Victoria','Vilcún','Villarrica'],
+            'Los Ríos'=>['Corral','Futrono','La Unión','Lago Ranco','Lanco','Los Lagos','Máfil','Mariquina','Paillaco','Panguipulli','Río Bueno','Valdivia'],
+            'Los Lagos'=>['Ancud','Calbuco','Castro','Chaitén','Chonchi','Cochamó','Curaco de Vélez','Dalcahue','Fresia','Frutillar','Futaleufú','Hualaihué','Llanquihue','Los Muermos','Maullín','Osorno','Palena','Puerto Montt','Puerto Octay','Puerto Varas','Puqueldón','Purranque','Puyehue','Queilén','Quellón','Quemchi','Quinchao','Río Negro','San Juan de la Costa','San Pablo'],
+            'Aysén'=>['Aysén','Chile Chico','Cisnes','Cochrane','Coyhaique','Guaitecas','Lago Verde','O\'Higgins','Río Ibáñez','Tortel'],
+            'Magallanes'=>['Antártica','Cabo de Hornos','Laguna Blanca','Natales','Porvenir','Primavera','Punta Arenas','Río Verde','San Gregorio','Timaukel','Torres del Paine']
+        ];
+        $regiones_json = json_encode($regiones, JSON_UNESCAPED_UNICODE);
+        $status_labels = ['active'=>'✅ Activa','pending'=>'🟡 Pendiente','inactive'=>'❌ Inactiva'];
+        $tickets_url = admin_url('admin.php?page=petsgo-tickets');
+        ?>
+        <div class="wrap petsgo-wrap">
+            <h1>🏪 Mi Tienda</h1>
+            <p style="color:#6b7280;margin-bottom:20px;">Administra la información de tu tienda. Los campos de configuración son solo lectura.</p>
+
+            <form id="my-store-form" novalidate>
+                <input type="hidden" id="ms-id" value="<?php echo (int)$vid; ?>">
+
+                <!-- Datos editables -->
+                <div class="petsgo-form-section" style="max-width:700px;">
+                    <h3>📋 Datos de la Tienda</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="petsgo-field" id="ms-f-name"><label>Nombre tienda *</label><input type="text" id="ms-name" value="<?php echo esc_attr($vendor->store_name); ?>" maxlength="255"><div class="field-error">Obligatorio.</div></div>
+                        <div class="petsgo-field"><label>RUT</label><input type="text" value="<?php echo esc_attr($vendor->rut); ?>" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"><small style="color:#9ca3af;">No editable. Para cambios, crea un ticket de soporte.</small></div>
+                        <div class="petsgo-field" id="ms-f-email"><label>Email *</label><input type="email" id="ms-email" value="<?php echo esc_attr($vendor->email); ?>"><div class="field-error">Email válido obligatorio.</div></div>
+                        <div class="petsgo-field"><label>Teléfono</label><input type="text" id="ms-phone" value="<?php echo esc_attr($vendor->phone ?? ''); ?>"></div>
+                    </div>
+
+                    <h3 style="margin-top:24px;">📍 Ubicación</h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="petsgo-field"><label>Región</label>
+                            <select id="ms-region"><option value="">— Seleccionar Región —</option>
+                            <?php foreach (array_keys($regiones) as $r): ?>
+                            <option value="<?php echo esc_attr($r); ?>" <?php selected(($vendor->region ?? ''), $r); ?>><?php echo esc_html($r); ?></option>
+                            <?php endforeach; ?></select></div>
+                        <div class="petsgo-field"><label>Comuna</label>
+                            <select id="ms-comuna"><option value="">— Seleccionar Comuna —</option></select></div>
+                        <div class="petsgo-field" style="grid-column:1/3;"><label>Dirección (calle, número, depto.)</label><input type="text" id="ms-address" value="<?php echo esc_attr($vendor->address ?? ''); ?>" placeholder="Av. Libertador 1234, Depto 5B"></div>
+                    </div>
+
+                    <div style="margin-top:20px;display:flex;gap:12px;align-items:center;">
+                        <button type="submit" class="petsgo-btn petsgo-btn-primary">💾 Guardar Cambios</button>
+                        <span class="petsgo-loader" id="ms-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
+                        <div id="ms-msg" style="display:none;"></div>
+                    </div>
+                </div>
+
+                <!-- Configuración (solo lectura) -->
+                <div class="petsgo-form-section" style="max-width:700px;margin-top:24px;">
+                    <h3>⚙️ Configuración <span style="font-size:12px;font-weight:400;color:#9ca3af;">(solo lectura)</span></h3>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                        <div class="petsgo-field"><label>Plan</label><input type="text" value="<?php echo esc_attr($plan->plan_name ?? 'Sin plan'); ?>" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"></div>
+                        <div class="petsgo-field"><label>Comisión venta (%)</label><input type="text" value="<?php echo esc_attr($vendor->sales_commission ?? '10'); ?>%" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"></div>
+                        <div class="petsgo-field"><label>Inicio suscripción</label><input type="text" value="<?php echo esc_attr($vendor->subscription_start ?? '—'); ?>" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"></div>
+                        <div class="petsgo-field"><label>Fin suscripción</label><input type="text" value="<?php echo esc_attr($vendor->subscription_end ?? '—'); ?>" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"></div>
+                        <div class="petsgo-field"><label>Estado</label><input type="text" value="<?php echo $status_labels[$vendor->status] ?? $vendor->status; ?>" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;"></div>
+                    </div>
+                    <p style="font-size:12px;color:#9ca3af;margin-top:12px;">Para cambios en plan, comisión o suscripción, <a href="<?php echo esc_url($tickets_url); ?>" style="color:#00A8E8;font-weight:600;">crea un ticket de soporte</a>.</p>
+                </div>
+
+                <!-- Usuarios asociados -->
+                <div class="petsgo-form-section" style="max-width:700px;margin-top:24px;">
+                    <h3>👥 Usuarios Asociados</h3>
+                    <?php if ($store_users || $main_user): ?>
+                    <table class="widefat striped" style="border-radius:8px;overflow:hidden;">
+                        <thead><tr><th>Usuario</th><th>Login</th><th>Email</th><th>Rol</th></tr></thead>
+                        <tbody>
+                        <?php
+                        // Main user always shown
+                        if ($main_user):
+                            $mu_roles = implode(', ', $main_user->roles);
+                        ?>
+                        <tr>
+                            <td><strong><?php echo esc_html($main_user->display_name); ?></strong></td>
+                            <td><?php echo esc_html($main_user->user_login); ?></td>
+                            <td><?php echo esc_html($main_user->user_email); ?></td>
+                            <td><span style="background:#e0f2fe;color:#0284c7;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:600;">Principal</span></td>
+                        </tr>
+                        <?php endif; ?>
+                        <?php foreach ($store_users as $su):
+                            if ($main_user && (int)$su->ID === (int)$main_user->ID) continue; // skip duplicate
+                        ?>
+                        <tr>
+                            <td><?php echo esc_html($su->display_name); ?></td>
+                            <td><?php echo esc_html($su->user_login); ?></td>
+                            <td><?php echo esc_html($su->user_email); ?></td>
+                            <td><span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:8px;font-size:12px;font-weight:600;">Colaborador</span></td>
+                        </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    <?php else: ?>
+                    <p style="color:#9ca3af;">No hay usuarios asociados.</p>
+                    <?php endif; ?>
+                    <p style="font-size:12px;color:#9ca3af;margin-top:12px;">Para agregar o cambiar usuarios asociados, <a href="<?php echo esc_url($tickets_url); ?>" style="color:#00A8E8;font-weight:600;">crea un ticket de soporte</a>.</p>
+                </div>
+            </form>
+        </div>
+        <script>
+        jQuery(function($){
+            var regiones=<?php echo $regiones_json; ?>;
+            function loadComunas(region,selected){
+                var $c=$('#ms-comuna');$c.html('<option value="">— Seleccionar Comuna —</option>');
+                if(region && regiones[region]){
+                    $.each(regiones[region],function(i,com){
+                        $c.append('<option value="'+com+'"'+(com===selected?' selected':'')+'>'+com+'</option>');
+                    });
+                }
+            }
+            $('#ms-region').on('change',function(){loadComunas($(this).val(),'');});
+            <?php if(!empty($vendor->region)): ?>
+            loadComunas('<?php echo esc_js($vendor->region); ?>','<?php echo esc_js($vendor->comuna ?? ''); ?>');
+            <?php endif; ?>
+
+            $('#my-store-form').on('submit',function(e){
+                e.preventDefault();var ok=true;
+                if(!$.trim($('#ms-name').val())){$('#ms-f-name').addClass('has-error');ok=false;}else{$('#ms-f-name').removeClass('has-error');}
+                if(!$('#ms-email').val()||$('#ms-email').val().indexOf('@')<1){$('#ms-f-email').addClass('has-error');ok=false;}else{$('#ms-f-email').removeClass('has-error');}
+                if(!ok){PG.toast('⚠️ Completa todos los campos obligatorios','warning');$('.has-error:first')[0]?.scrollIntoView({behavior:'smooth',block:'center'});return;}
+                $('#ms-loader').addClass('active');$('#ms-msg').hide();
+                PG.post('petsgo_save_my_store',{
+                    store_name:$('#ms-name').val(),
+                    email:$('#ms-email').val(),
+                    phone:$('#ms-phone').val(),
+                    region:$('#ms-region').val(),
+                    comuna:$('#ms-comuna').val(),
+                    address:$('#ms-address').val()
+                },function(r){
+                    $('#ms-loader').removeClass('active');
+                    var cls=r.success?'notice-success':'notice-error';
+                    $('#ms-msg').html('<div class="notice '+cls+'" style="padding:10px"><p>'+(r.success?'✅ '+r.data.message:'❌ '+r.data)+'</p></div>').show();
+                    if(r.success) PG.toast('✅ '+r.data.message,'success');
+                    else PG.toast('❌ '+(r.data||'Error al guardar'),'error');
+                });
+            });
+            $('.petsgo-field input,.petsgo-field select').on('input change',function(){$(this).closest('.petsgo-field').removeClass('has-error');});
+        });
+        </script>
+        <?php
+    }
+
+    // ============================================================
     // 4. PEDIDOS — vendor ve solo los suyos, admin ve todo
     // ============================================================
     public function page_orders() {
@@ -4429,6 +4613,31 @@ Dashboard con analíticas"></textarea>
         global $wpdb;$did=intval($_POST['id']??0);$wpdb->delete("{$wpdb->prefix}petsgo_vendors",['id'=>$did]);
         $this->audit('vendor_delete','vendor',$did);
         wp_send_json_success(['message'=>'Tienda eliminada']);
+    }
+
+    /**
+     * Vendor self-edit: only allows editing name, email, phone, region, comuna, address.
+     * RUT, user_id, commission, plan, subscription, status are NOT editable by vendor.
+     */
+    public function petsgo_save_my_store() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_vendor() && !$this->is_admin()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $vid = $this->get_my_vendor_id();
+        if (!$vid) wp_send_json_error('No tienes una tienda asociada.');
+        $data = [
+            'store_name' => sanitize_text_field($_POST['store_name'] ?? ''),
+            'email'      => sanitize_email($_POST['email'] ?? ''),
+            'phone'      => sanitize_text_field($_POST['phone'] ?? ''),
+            'region'     => sanitize_text_field($_POST['region'] ?? ''),
+            'comuna'     => sanitize_text_field($_POST['comuna'] ?? ''),
+            'address'    => sanitize_textarea_field($_POST['address'] ?? ''),
+        ];
+        if (!$data['store_name']) wp_send_json_error('Nombre de tienda obligatorio.');
+        if (!$data['email']) wp_send_json_error('Email obligatorio.');
+        $wpdb->update("{$wpdb->prefix}petsgo_vendors", $data, ['id' => $vid]);
+        $this->audit('vendor_self_update', 'vendor', $vid, $data['store_name']);
+        wp_send_json_success(['message' => 'Tienda actualizada correctamente.']);
     }
 
     // --- ORDERS ---
