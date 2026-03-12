@@ -1463,8 +1463,8 @@ class PetsGo_Core {
         // Configuración — solo admin
         add_submenu_page('petsgo-dashboard', 'Configuración', '⚙️ Configuración', $cap_admin, 'petsgo-settings', [$this, 'page_settings']);
 
-        // Categorías — solo admin
-        add_submenu_page('petsgo-dashboard', 'Categorías', '📂 Categorías', $cap_admin, 'petsgo-categories', [$this, 'page_categories']);
+        // Categorías — admin y vendor (vendor solo lectura)
+        add_submenu_page('petsgo-dashboard', 'Categorías', '📂 Categorías', $cap_vendor, 'petsgo-categories', [$this, 'page_categories']);
 
         // Cupones — admin y vendor
         add_submenu_page('petsgo-dashboard', 'Cupones', '🎟️ Cupones', $cap_vendor, 'petsgo-coupons', [$this, 'page_coupons']);
@@ -7627,6 +7627,30 @@ Dashboard con analíticas"></textarea>
             $admin_role->add_cap('manage_support_tickets');
             $admin_role->add_cap('manage_deliveries');
         }
+
+        // Asegurar que vendor siempre tenga sus capabilities (add_role no actualiza roles existentes)
+        $vendor_role = get_role('petsgo_vendor');
+        if ($vendor_role) {
+            $vendor_role->add_cap('read');
+            $vendor_role->add_cap('upload_files');
+            $vendor_role->add_cap('manage_inventory');
+        }
+
+        // Asegurar que rider siempre tenga sus capabilities
+        $rider_role = get_role('petsgo_rider');
+        if ($rider_role) {
+            $rider_role->add_cap('read');
+            $rider_role->add_cap('upload_files');
+            $rider_role->add_cap('manage_deliveries');
+        }
+
+        // Asegurar que soporte siempre tenga sus capabilities
+        $support_role = get_role('petsgo_support');
+        if ($support_role) {
+            $support_role->add_cap('read');
+            $support_role->add_cap('moderate_comments');
+            $support_role->add_cap('manage_support_tickets');
+        }
     }
 
     /**
@@ -11969,7 +11993,9 @@ Dashboard con analíticas"></textarea>
     // ADMIN PAGE — Categorías
     // ============================================================
     public function page_categories() {
-        if (!$this->is_admin()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $is_admin = $this->is_admin();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_vendor) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
         ?>
         <div class="wrap petsgo-wrap">
             <h1>📂 Categorías del Marketplace <button class="pg-info-guide-btn" data-guide="categories" title="Guía"><svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#8B5CF6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/></svg></button></h1>
@@ -11977,7 +12003,9 @@ Dashboard con analíticas"></textarea>
             <p>Gestiona las categorías de productos. Se muestran en el frontend (Header, HomePage, Categoría).</p>
 
             <div style="display:flex;gap:12px;align-items:center;margin:16px 0;">
+                <?php if ($is_admin): ?>
                 <button class="petsgo-btn petsgo-btn-primary" onclick="pgCatEdit(0)">➕ Nueva Categoría</button>
+                <?php endif; ?>
                 <span class="petsgo-loader" id="cat-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
 
@@ -11985,7 +12013,7 @@ Dashboard con analíticas"></textarea>
             <table class="petsgo-table" id="cat-table">
                 <thead>
                     <tr>
-                        <th>Orden</th><th>Emoji</th><th>Nombre</th><th>Slug</th><th>Descripción</th><th>Estado</th><th>Acciones</th>
+                        <th>Orden</th><th>Emoji</th><th>Nombre</th><th>Slug</th><th>Descripción</th><th>Estado</th><?php if ($is_admin): ?><th>Acciones</th><?php endif; ?>
                     </tr>
                 </thead>
                 <tbody id="cat-body"></tbody>
@@ -12014,6 +12042,7 @@ Dashboard con analíticas"></textarea>
             </div>
         </div>
         <script>
+        var pgCatIsAdmin = <?php echo $is_admin ? 'true' : 'false'; ?>;
         jQuery(function($){
             function loadCats(){
                 $('#cat-loader').addClass('active');
@@ -12029,8 +12058,10 @@ Dashboard con analíticas"></textarea>
                         html+='<td><code>'+c.slug+'</code></td>';
                         html+='<td>'+c.description+'</td>';
                         html+='<td><span class="petsgo-badge '+(c.is_active=='1'?'active':'inactive')+'">'+(c.is_active=='1'?'Activa':'Inactiva')+'</span></td>';
-                        html+='<td><button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgCatEdit('+c.id+')">✏️</button> ';
-                        html+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm" onclick="pgCatDel('+c.id+',\''+c.name+'\')">🗑️</button></td>';
+                        if(pgCatIsAdmin){
+                            html+='<td><button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgCatEdit('+c.id+')">✏️</button> ';
+                            html+='<button class="petsgo-btn petsgo-btn-danger petsgo-btn-sm" onclick="pgCatDel('+c.id+',\''+c.name+'\')">🗑️</button></td>';
+                        }
                         html+='</tr>';
                     });
                     $('#cat-body').html(html);
