@@ -21,6 +21,8 @@ const normalizeProduct = (p) => {
     _rawPrice: rawPrice,
     name: p.product_name || p.name,
     image: p.image_url || p.image,
+    image_url_2: p.image_url_2 || null,
+    image_url_3: p.image_url_3 || null,
     brand: p.store_name || p.brand || '',
     vendor_id: p.vendor_id,
     store_name: p.store_name || '',
@@ -156,6 +158,8 @@ const ProductDetailPage = () => {
   }
 
   const productImage = getProductImage(product);
+  const allImages = [productImage, product.image_url_2, product.image_url_3].filter(Boolean);
+  const [selectedImage, setSelectedImage] = useState(0);
   const qty = getItemQuantity(product.id);
   const discount = product.originalPrice ? Math.round((1 - product.price / product.originalPrice) * 100) : null;
   const displayRating = reviewAvg || product.rating || null;
@@ -230,12 +234,31 @@ const ProductDetailPage = () => {
               </span>
             )}
             <img
-              src={productImage}
+              src={allImages[selectedImage] || productImage}
               alt={product.name || product.product_name}
               style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
               onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=600&auto=format&fit=crop&q=80'; }}
             />
           </div>
+          {allImages.length > 1 && (
+            <div style={{ display: 'flex', gap: '10px', marginTop: '12px', justifyContent: 'center' }}>
+              {allImages.map((img, i) => (
+                <button
+                  key={i}
+                  onClick={() => setSelectedImage(i)}
+                  style={{
+                    width: '72px', height: '72px', borderRadius: '12px', overflow: 'hidden',
+                    border: selectedImage === i ? '3px solid #00A8E8' : '2px solid #e5e7eb',
+                    padding: '4px', background: '#fff', cursor: 'pointer',
+                    opacity: selectedImage === i ? 1 : 0.7,
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  <img src={img} alt={`Foto ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }} />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Info section */}

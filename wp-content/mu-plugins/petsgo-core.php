@@ -2935,7 +2935,10 @@ class PetsGo_Core {
                 },function(r){
                     $('#pf-loader').removeClass('active');
                     if(r.success){
-                        $('#pf-message').html('<div class="notice notice-success" style="padding:10px"><p>✅ '+r.data.message+'</p></div>').show();
+                        var pid = r.data.id || $('#pf-id').val();
+                        var frontUrl = '<?php echo esc_js(home_url("/producto/")); ?>' + pid;
+                        var linkHtml = pid ? ' <a href="'+frontUrl+'" target="_blank" style="color:#00A8E8;font-weight:600;text-decoration:underline;">🔗 Ver producto en la tienda</a>' : '';
+                        $('#pf-message').html('<div class="notice notice-success" style="padding:10px"><p>✅ '+r.data.message+linkHtml+'</p></div>').show();
                         PG.toast('✅ '+r.data.message, 'success');
                         if(!$('#pf-id').val()&&r.data.id){$('#pf-id').val(r.data.id);history.replaceState(null,'',PG.adminUrl+'?page=petsgo-product-form&id='+r.data.id);}
                     }else{
@@ -8602,7 +8605,7 @@ Dashboard con analíticas"></textarea>
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
         $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
         $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
-        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'variants'=>!empty($p->variants)?json_decode($p->variants,true):null]);
+        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'image_url_2'=>!empty($p->image_id_2)?wp_get_attachment_url($p->image_id_2):null,'image_url_3'=>!empty($p->image_id_3)?wp_get_attachment_url($p->image_id_3):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'variants'=>!empty($p->variants)?json_decode($p->variants,true):null]);
     }
     // --- API Vendors ---
     public function api_get_vendors() {
