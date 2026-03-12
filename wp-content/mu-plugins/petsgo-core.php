@@ -13408,6 +13408,12 @@ Dashboard con analíticas"></textarea>
                 <div id="tk-page-btns" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
             </div>
 
+            <!-- Image Lightbox -->
+            <div id="tk-lightbox" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);z-index:99999;justify-content:center;align-items:center;cursor:zoom-out;" onclick="this.style.display='none'">
+                <button onclick="event.stopPropagation();document.getElementById('tk-lightbox').style.display='none'" style="position:absolute;top:16px;right:20px;background:none;border:none;color:#fff;font-size:32px;cursor:pointer;z-index:100000;">✕</button>
+                <img id="tk-lightbox-img" src="" alt="Imagen ampliada" style="max-width:92vw;max-height:90vh;object-fit:contain;border-radius:8px;cursor:default;" onclick="event.stopPropagation()">
+            </div>
+
             <!-- Detail Modal -->
             <div id="tk-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
                 <div style="background:#fff;border-radius:12px;padding:28px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;">
@@ -13425,8 +13431,9 @@ Dashboard con analíticas"></textarea>
                         <textarea id="tk-reply-msg" rows="3" style="flex:1;min-width:300px;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
                         <div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end;">
                             <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;cursor:pointer;">
-                                📎 <input type="file" id="tk-reply-file" accept="image/*" style="width:130px;font-size:11px;">
+                                📎 <input type="file" id="tk-reply-file" accept="image/*" style="width:130px;font-size:11px;" onchange="pgFilePreview(this)">
                             </label>
+                            <div id="tk-file-preview" style="display:none;margin-top:4px;"></div>
                             <button class="petsgo-btn petsgo-btn-primary" onclick="pgTicketReply()">📤 Enviar</button>
                         </div>
                     </div>
@@ -13601,7 +13608,7 @@ Dashboard con analíticas"></textarea>
                 }
                 detailHtml+='</table>';
                 detailHtml+='<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>';
-                if(t.image_url) detailHtml+='<div style="margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">📎 Evidencia adjunta:</p><a href="'+t.image_url+'" target="_blank"><img src="'+t.image_url+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee;margin-top:6px;cursor:pointer;" alt="Evidencia"></a></div>';
+                if(t.image_url) detailHtml+='<div style="margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">📎 Evidencia adjunta:</p><img src="'+t.image_url+'" onclick="pgImageZoom(this.src)" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee;margin-top:6px;cursor:zoom-in;" alt="Evidencia"></div>';
                 $('#tk-detail').html(detailHtml);
                 $('#tk-reply-id').val(id);
                 var repliesHtml='<p style="color:#999;font-size:13px;">Cargando respuestas…</p>';
@@ -13615,7 +13622,7 @@ Dashboard con analíticas"></textarea>
                             rh+='<div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;'+(isStaffReply?'background:#e8f4fd;border-left:3px solid #00A8E8;':'background:#f8f9fa;border-left:3px solid #ccc;')+'">';
                             rh+='<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><strong style="font-size:13px;">'+rp.user_name+' <span style="color:#999;font-weight:400;">('+rp.user_role+')</span></strong><span style="font-size:11px;color:#999;">'+new Date(rp.created_at).toLocaleString('es-CL')+'</span></div>';
                             rh+='<p style="margin:0;font-size:13px;">'+rp.message.replace(/\n/g,'<br>')+'</p>';
-                            if(rp.image_url) rh+='<a href="'+rp.image_url+'" target="_blank"><img src="'+rp.image_url+'" style="max-width:200px;max-height:150px;border-radius:6px;margin-top:6px;border:1px solid #eee;" alt="Adjunto"></a>';
+                            if(rp.image_url) rh+='<img src="'+rp.image_url+'" onclick="pgImageZoom(this.src)" style="max-width:200px;max-height:150px;border-radius:6px;margin-top:6px;border:1px solid #eee;cursor:zoom-in;" alt="Adjunto">';
                             rh+='</div>';
                         });
                         $('#tk-replies').html(rh);
@@ -13633,6 +13640,31 @@ Dashboard con analíticas"></textarea>
                 }
                 $('#tk-modal').css('display','flex');
             };
+            window.pgImageZoom = function(src){
+                var lb = document.getElementById('tk-lightbox');
+                document.getElementById('tk-lightbox-img').src = src;
+                lb.style.display = 'flex';
+            };
+            document.addEventListener('keydown', function(e){ if(e.key==='Escape') document.getElementById('tk-lightbox').style.display='none'; });
+
+            window.pgFilePreview = function(input){
+                var preview = document.getElementById('tk-file-preview');
+                preview.innerHTML = '';
+                if(!input.files || !input.files[0]){ preview.style.display='none'; return; }
+                var file = input.files[0];
+                if(file.type.startsWith('image/')){
+                    var reader = new FileReader();
+                    reader.onload = function(e){
+                        preview.innerHTML = '<div style="position:relative;display:inline-block;"><img src="'+e.target.result+'" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid #ddd;" alt="Vista previa"><button onclick="document.getElementById(\'tk-reply-file\').value=\'\';document.getElementById(\'tk-file-preview\').style.display=\'none\';document.getElementById(\'tk-file-preview\').innerHTML=\'\';" style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:18px;">✕</button></div>';
+                        preview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    preview.innerHTML = '<div style="font-size:11px;color:#555;background:#f5f5f5;padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;">📄 '+file.name+'<button onclick="document.getElementById(\'tk-reply-file\').value=\'\';document.getElementById(\'tk-file-preview\').style.display=\'none\';document.getElementById(\'tk-file-preview\').innerHTML=\'\';" style="background:none;border:none;color:#e74c3c;font-size:14px;cursor:pointer;padding:0 2px;">✕</button></div>';
+                    preview.style.display = 'block';
+                }
+            };
+
             window.pgTicketReply = function(){
                 var msg=$('#tk-reply-msg').val().trim();
                 if(!msg){PG.toast('⚠️ Escribe un mensaje','warning');return;}
@@ -13644,7 +13676,7 @@ Dashboard con analíticas"></textarea>
                 var fileInput = document.getElementById('tk-reply-file');
                 if(fileInput && fileInput.files[0]) fd.append('image', fileInput.files[0]);
                 $.ajax({url:PG.ajaxUrl, type:'POST', data:fd, processData:false, contentType:false, success:function(r){
-                    if(r.success){$('#tk-reply-msg').val('');if(fileInput)fileInput.value='';pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();PG.toast('✅ Respuesta enviada correctamente','success');}else{PG.toast('❌ '+(r.data||'Error al enviar respuesta'),'error');}
+                    if(r.success){$('#tk-reply-msg').val('');if(fileInput)fileInput.value='';$('#tk-file-preview').hide().html('');pgTicketDetail(parseInt($('#tk-reply-id').val()));loadTickets();PG.toast('✅ Respuesta enviada correctamente','success');}else{PG.toast('❌ '+(r.data||'Error al enviar respuesta'),'error');}
                 }});
             };
 
