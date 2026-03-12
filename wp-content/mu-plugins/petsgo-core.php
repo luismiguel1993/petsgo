@@ -108,6 +108,8 @@ class PetsGo_Core {
             'petsgo_assign_ticket',
             'petsgo_add_ticket_reply',
             'petsgo_ticket_count',
+            'petsgo_create_ticket_backend',
+            'petsgo_get_ticket_replies',
             'petsgo_save_legal',
             'petsgo_save_faqs',
             'petsgo_search_rider_payouts',
@@ -1469,8 +1471,8 @@ class PetsGo_Core {
         // Cupones — admin y vendor
         add_submenu_page('petsgo-dashboard', 'Cupones', '🎟️ Cupones', $cap_vendor, 'petsgo-coupons', [$this, 'page_coupons']);
 
-        // Tickets / Soporte — admin y soporte
-        add_submenu_page('petsgo-dashboard', 'Tickets', '🎫 Tickets', $cap_support, 'petsgo-tickets', [$this, 'page_tickets']);
+        // Tickets / Soporte — admin, soporte y vendor
+        add_submenu_page('petsgo-dashboard', 'Tickets', '🎫 Tickets', 'read', 'petsgo-tickets', [$this, 'page_tickets']);
 
         // Leads — solo admin
         add_submenu_page('petsgo-dashboard', 'Leads', '📩 Leads', $cap_admin, 'petsgo-leads', [$this, 'page_leads']);
@@ -12552,7 +12554,10 @@ Dashboard con analíticas"></textarea>
     // ============================================================
     public function petsgo_search_tickets() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
+        $is_admin = $this->is_admin();
+        $is_support = $this->is_support();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_support && !$is_vendor) wp_send_json_error('Sin permisos');
         global $wpdb;
         $status   = sanitize_text_field($_POST['status'] ?? '');
         $search   = sanitize_text_field($_POST['search'] ?? '');
@@ -12563,6 +12568,12 @@ Dashboard con analíticas"></textarea>
         // --- build WHERE ---
         $where = " WHERE 1=1";
         $args  = [];
+
+        // Vendor solo ve sus propios tickets
+        if ($is_vendor && !$is_admin) {
+            $where .= " AND user_id=%d"; $args[] = get_current_user_id();
+        }
+
         if ($status === 'todos') {
             // include all statuses
         } elseif ($status) {
@@ -12590,9 +12601,13 @@ Dashboard con analíticas"></textarea>
         if ($args) $sql = $wpdb->prepare($sql, ...$args);
         $rows = $wpdb->get_results($sql);
 
-        // --- global stats (always from ALL tickets) ---
+        // --- stats (filtradas por usuario para vendor) ---
         $stats = [];
-        $st_rows = $wpdb->get_results("SELECT status, COUNT(*) as cnt FROM {$tbl} GROUP BY status");
+        $stats_where = '';
+        if ($is_vendor && !$is_admin) {
+            $stats_where = $wpdb->prepare(" WHERE user_id=%d", get_current_user_id());
+        }
+        $st_rows = $wpdb->get_results("SELECT status, COUNT(*) as cnt FROM {$tbl}{$stats_where} GROUP BY status");
         foreach (['abierto','en_proceso','resuelto','cerrado'] as $s) $stats[$s] = 0;
         foreach ($st_rows as $sr) $stats[$sr->status] = (int) $sr->cnt;
 
@@ -12649,30 +12664,42 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_add_ticket_reply() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
+        $is_admin = $this->is_admin();
+        $is_support = $this->is_support();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_support && !$is_vendor) wp_send_json_error('Sin permisos');
         global $wpdb;
         $id = intval($_POST['ticket_id'] ?? 0);
         $message = sanitize_textarea_field($_POST['message'] ?? '');
         if (!$id || !$message) wp_send_json_error('Datos inválidos');
+        // Vendor solo puede responder sus propios tickets
+        if ($is_vendor && !$is_admin) {
+            $ticket_owner = (int)$wpdb->get_var($wpdb->prepare("SELECT user_id FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+            if ($ticket_owner !== get_current_user_id()) wp_send_json_error('Sin permisos');
+        }
         $user = wp_get_current_user();
         // Handle optional image upload in admin reply
         $image_url = $this->handle_ticket_image_upload('image');
+        $roles = (array) $user->roles;
+        $role_label = 'admin';
+        if (in_array('petsgo_vendor', $roles) && !in_array('administrator', $roles)) $role_label = 'tienda';
+        elseif (in_array('petsgo_support', $roles)) $role_label = 'soporte';
         $reply_data = [
             'ticket_id' => $id,
             'user_id'   => $user->ID,
             'user_name' => $user->display_name ?: $user->user_login,
-            'user_role' => 'admin',
+            'user_role' => $role_label,
             'message'   => $message,
         ];
         if ($image_url) $reply_data['image_url'] = $image_url;
         $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", $reply_data);
         // Update ticket status
         $ticket = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
-        if ($ticket && $ticket->status === 'abierto') {
+        if ($ticket && $ticket->status === 'abierto' && ($is_admin || $is_support)) {
             $wpdb->update("{$wpdb->prefix}petsgo_tickets", ['status' => 'en_proceso'], ['id' => $id]);
         }
-        // Notify ticket creator
-        if ($ticket) {
+        // Notify ticket creator (if admin/support replies)
+        if ($ticket && ($is_admin || $is_support)) {
             $this->send_ticket_reply_email($ticket->ticket_number, $ticket->subject, $ticket->user_email, $ticket->user_name, $message);
         }
         $this->audit('reply_ticket', 'ticket', $id, $ticket->ticket_number ?? '');
@@ -12681,18 +12708,94 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_ticket_count() {
         check_ajax_referer('petsgo_ajax');
-        if (!$this->is_admin() && !$this->is_support()) wp_send_json_error('Sin permisos');
+        $is_admin = $this->is_admin();
+        $is_support = $this->is_support();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_support && !$is_vendor) wp_send_json_error('Sin permisos');
         global $wpdb;
         $tbl = "{$wpdb->prefix}petsgo_tickets";
-        $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE status IN ('abierto','en_proceso')");
-        $latest = $wpdb->get_row("SELECT id, ticket_number, subject, user_name, user_role, priority, created_at FROM {$tbl} ORDER BY id DESC LIMIT 1");
+        $vendor_filter = '';
+        if ($is_vendor && !$is_admin) {
+            $vendor_filter = $wpdb->prepare(" AND user_id=%d", get_current_user_id());
+        }
+        $open = (int)$wpdb->get_var("SELECT COUNT(*) FROM {$tbl} WHERE status IN ('abierto','en_proceso'){$vendor_filter}");
+        $latest = $wpdb->get_row("SELECT id, ticket_number, subject, user_name, user_role, priority, created_at FROM {$tbl} WHERE 1=1{$vendor_filter} ORDER BY id DESC LIMIT 1");
         // Pending tickets list for startup modal (last 15)
-        $pending = $wpdb->get_results("SELECT id, ticket_number, subject, user_name, user_role, priority, status, created_at FROM {$tbl} WHERE status IN ('abierto','en_proceso') ORDER BY FIELD(priority,'urgente','alta','media','baja'), created_at DESC LIMIT 15");
+        $pending = $wpdb->get_results("SELECT id, ticket_number, subject, user_name, user_role, priority, status, created_at FROM {$tbl} WHERE status IN ('abierto','en_proceso'){$vendor_filter} ORDER BY FIELD(priority,'urgente','alta','media','baja'), created_at DESC LIMIT 15");
         wp_send_json_success([
             'count'   => $open,
             'latest'  => $latest,
             'pending' => $pending,
         ]);
+    }
+
+    public function petsgo_create_ticket_backend() {
+        check_ajax_referer('petsgo_ajax');
+        $is_admin = $this->is_admin();
+        $is_vendor = $this->is_vendor();
+        $is_support = $this->is_support();
+        if (!$is_admin && !$is_vendor && !$is_support) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $user = wp_get_current_user();
+        $subject = sanitize_text_field($_POST['subject'] ?? '');
+        $description = sanitize_textarea_field($_POST['description'] ?? '');
+        $category = sanitize_text_field($_POST['category'] ?? 'general');
+        $priority = sanitize_text_field($_POST['priority'] ?? 'media');
+        if (empty($subject) || empty($description)) wp_send_json_error('Asunto y descripción son obligatorios.');
+        $allowed_categories = ['general','productos','pedidos','pagos','cuenta','entregas','plataforma','otro'];
+        if (!in_array($category, $allowed_categories)) $category = 'general';
+        $allowed_priorities = ['baja','media','alta','urgente'];
+        if (!in_array($priority, $allowed_priorities)) $priority = 'media';
+
+        $roles = (array) $user->roles;
+        $user_role = 'cliente';
+        if (in_array('petsgo_vendor', $roles)) $user_role = 'tienda';
+        elseif (in_array('petsgo_rider', $roles)) $user_role = 'rider';
+        elseif (in_array('administrator', $roles)) $user_role = 'admin';
+
+        $image_url = $this->handle_ticket_image_upload('image');
+        $ticket_number = $this->generate_ticket_number();
+        $insert_data = [
+            'ticket_number' => $ticket_number,
+            'user_id'       => $user->ID,
+            'user_name'     => $user->display_name ?: $user->user_login,
+            'user_email'    => $user->user_email,
+            'user_role'     => $user_role,
+            'subject'       => $subject,
+            'description'   => $description,
+            'category'      => $category,
+            'priority'      => $priority,
+            'status'        => 'abierto',
+        ];
+        if ($image_url) $insert_data['image_url'] = $image_url;
+        $wpdb->insert("{$wpdb->prefix}petsgo_tickets", $insert_data);
+        $ticket_id = $wpdb->insert_id;
+
+        $this->send_ticket_email_creator($ticket_number, $subject, $user->user_email, $user->display_name);
+        $this->send_ticket_email_admin($ticket_number, $subject, $description, $user->display_name, $user_role, $category, $priority);
+        $this->audit('create_ticket', 'ticket', $ticket_id, $ticket_number . ' — ' . $subject);
+
+        wp_send_json_success(['message' => 'Ticket ' . $ticket_number . ' creado exitosamente.', 'ticket_number' => $ticket_number]);
+    }
+
+    public function petsgo_get_ticket_replies() {
+        check_ajax_referer('petsgo_ajax');
+        $is_admin = $this->is_admin();
+        $is_support = $this->is_support();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_support && !$is_vendor) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $id = intval($_POST['ticket_id'] ?? 0);
+        if (!$id) wp_send_json_error('ID inválido');
+        // Vendor solo puede ver replies de sus propios tickets
+        if ($is_vendor && !$is_admin) {
+            $ticket_owner = (int)$wpdb->get_var($wpdb->prepare("SELECT user_id FROM {$wpdb->prefix}petsgo_tickets WHERE id=%d", $id));
+            if ($ticket_owner !== get_current_user_id()) wp_send_json_error('Sin permisos');
+        }
+        $replies = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_ticket_replies WHERE ticket_id=%d ORDER BY created_at ASC", $id
+        ));
+        wp_send_json_success(['replies' => $replies]);
     }
 
     /**
@@ -12701,7 +12804,7 @@ Dashboard con analíticas"></textarea>
      * Visible only to admin and support roles.
      */
     public function admin_ticket_notifier() {
-        if (!$this->is_admin() && !$this->is_support()) return;
+        if (!$this->is_admin() && !$this->is_support() && !$this->is_vendor()) return;
         $nonce = wp_create_nonce('petsgo_ajax');
         $tickets_url = admin_url('admin.php?page=petsgo-tickets');
         ?>
@@ -13016,19 +13119,26 @@ Dashboard con analíticas"></textarea>
     // ADMIN PAGE — Tickets
     // ============================================================
     public function page_tickets() {
-        if (!$this->is_admin() && !$this->is_support()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $is_admin = $this->is_admin();
+        $is_support = $this->is_support();
+        $is_vendor = $this->is_vendor();
+        if (!$is_admin && !$is_support && !$is_vendor) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        $is_staff = $is_admin || $is_support; // admin/support = vista de gestión completa
         global $wpdb;
-        $admins = get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]);
+        $admins = $is_staff ? get_users(['role' => 'administrator', 'fields' => ['ID','display_name']]) : [];
         ?>
         <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
         <div class="wrap petsgo-wrap">
-            <h1>🎫 Tickets de Soporte <button class="pg-info-guide-btn" data-guide="tickets" title="Guía"><svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#DC2626' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/></svg></button></h1>
-            <script>PG.regGuide('tickets','🎫','Tickets de Soporte','<h4>🎫 Tickets de Soporte</h4><p><strong>¿Qué es?</strong><br>Sistema de atención al cliente. Los usuarios pueden crear tickets para reportar problemas o hacer consultas.</p><p><strong>Estados del ticket:</strong></p><ul><li><strong>🟡 Abierto:</strong> Ticket recién creado, pendiente de respuesta.</li><li><strong>🔵 En proceso:</strong> El equipo está trabajando en la solución.</li><li><strong>🟢 Resuelto:</strong> Problema solucionado.</li><li><strong>⚫ Cerrado:</strong> Ticket finalizado sin más acciones.</li></ul><p><strong>Acciones:</strong></p><ul><li><strong>Responder:</strong> Envía una respuesta al usuario.</li><li><strong>Cambiar estado:</strong> Actualiza el progreso del ticket.</li><li><strong>Filtrar:</strong> Por estado, búsqueda por asunto o número.</li></ul><p><strong>Prioridad:</strong> Atiende primero los tickets más antiguos para mantener buenos tiempos de respuesta.</p>','#DC2626');</script>
-            <p>Gestiona las solicitudes de clientes, tiendas y riders.</p>
+            <h1>🎫 <?php echo $is_staff ? 'Tickets de Soporte' : 'Mis Tickets de Soporte'; ?> <button class="pg-info-guide-btn" data-guide="tickets" title="Guía"><svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#DC2626' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/></svg></button></h1>
+            <script>PG.regGuide('tickets','🎫','Tickets de Soporte','<h4>🎫 Tickets de Soporte</h4><p><strong>¿Qué es?</strong><br>Sistema de atención al cliente. Los usuarios pueden crear tickets para reportar problemas o hacer consultas.</p><p><strong>Estados del ticket:</strong></p><ul><li><strong>🟡 Abierto:</strong> Ticket recién creado, pendiente de respuesta.</li><li><strong>🔵 En proceso:</strong> El equipo está trabajando en la solución.</li><li><strong>🟢 Resuelto:</strong> Problema solucionado.</li><li><strong>⚫ Cerrado:</strong> Ticket finalizado sin más acciones.</li></ul><p><strong>Acciones:</strong></p><ul><li><strong>Crear ticket:</strong> Reporta un problema o consulta al equipo.</li><li><strong>Responder:</strong> Envía una respuesta en un ticket existente.</li><li><strong>Filtrar:</strong> Por estado, búsqueda por asunto o número.</li></ul><p><strong>Prioridad:</strong> Atiende primero los tickets más antiguos para mantener buenos tiempos de respuesta.</p>','#DC2626');</script>
+            <p><?php echo $is_staff ? 'Gestiona las solicitudes de clientes, tiendas y riders.' : 'Crea y da seguimiento a tus solicitudes de soporte técnico.'; ?></p>
 
             <div class="petsgo-search-bar" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                <input type="text" id="tk-search" placeholder="Buscar por N°, asunto o nombre..." style="flex:1;min-width:200px;">
+                <?php if (!$is_staff): ?>
+                <button class="petsgo-btn petsgo-btn-primary" onclick="pgNewTicket()" style="white-space:nowrap;">➕ Nuevo Ticket</button>
+                <?php endif; ?>
+                <input type="text" id="tk-search" placeholder="Buscar por N°, asunto..." style="flex:1;min-width:200px;">
                 <select id="tk-status-filter">
                     <option value="">Activos (sin cerrados)</option>
                     <option value="abierto">🟡 Abierto</option>
@@ -13044,7 +13154,9 @@ Dashboard con analíticas"></textarea>
                     <option value="100">100 / pág</option>
                 </select>
                 <button class="petsgo-btn petsgo-btn-primary" onclick="loadTickets(1)">🔍 Buscar</button>
+                <?php if ($is_staff): ?>
                 <button class="petsgo-btn" onclick="pgExportTicketsPDF()" style="background:#dc3545;color:#fff;" title="Exportar resultados a PDF">📄 PDF</button>
+                <?php endif; ?>
             </div>
 
             <!-- Stats -->
@@ -13054,7 +13166,7 @@ Dashboard con analíticas"></textarea>
             <table class="petsgo-table" id="tk-table">
                 <thead>
                     <tr>
-                        <th>N° Ticket</th><th>Solicitante</th><th>Rol</th><th>Asunto</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><th>Asignado</th><th>Fecha</th><th>Acciones</th>
+                        <th>N° Ticket</th><?php if ($is_staff): ?><th>Solicitante</th><th>Rol</th><?php endif; ?><th>Asunto</th><th>Categoría</th><th>Prioridad</th><th>Estado</th><?php if ($is_staff): ?><th>Asignado</th><?php endif; ?><th>Fecha</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="tk-body"></tbody>
@@ -13078,7 +13190,8 @@ Dashboard con analíticas"></textarea>
                     <hr style="margin:20px 0;">
                     <h4>💬 Respuestas</h4>
                     <div id="tk-replies" style="max-height:250px;overflow-y:auto;margin-bottom:16px;"></div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <div id="tk-reply-status" style="display:none;margin-bottom:8px;"></div>
+                    <div id="tk-reply-form" style="display:flex;gap:8px;flex-wrap:wrap;">
                         <input type="hidden" id="tk-reply-id">
                         <textarea id="tk-reply-msg" rows="3" style="flex:1;min-width:300px;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
                         <div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end;">
@@ -13090,11 +13203,54 @@ Dashboard con analíticas"></textarea>
                     </div>
                 </div>
             </div>
+
+            <!-- Modal: Nuevo Ticket (vendor/tienda) -->
+            <?php if (!$is_staff): ?>
+            <div id="tk-new-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:9999;justify-content:center;align-items:center;">
+                <div style="background:#fff;border-radius:12px;padding:28px;max-width:600px;width:95%;max-height:85vh;overflow-y:auto;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                        <h3 style="margin:0;">➕ Nuevo Ticket de Soporte</h3>
+                        <button onclick="document.getElementById('tk-new-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button>
+                    </div>
+                    <div class="petsgo-field"><label>Asunto *</label><input type="text" id="tk-new-subject" maxlength="255" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;" placeholder="Describe brevemente tu problema"></div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                        <div class="petsgo-field"><label>Categoría</label>
+                            <select id="tk-new-category" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;">
+                                <option value="general">General</option>
+                                <option value="productos">Productos</option>
+                                <option value="pedidos">Pedidos</option>
+                                <option value="pagos">Pagos</option>
+                                <option value="cuenta">Mi Cuenta</option>
+                                <option value="entregas">Entregas</option>
+                                <option value="plataforma">Plataforma</option>
+                                <option value="otro">Otro</option>
+                            </select>
+                        </div>
+                        <div class="petsgo-field"><label>Prioridad</label>
+                            <select id="tk-new-priority" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;">
+                                <option value="baja">🟢 Baja</option>
+                                <option value="media" selected>🟡 Media</option>
+                                <option value="alta">🟠 Alta</option>
+                                <option value="urgente">🔴 Urgente</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="petsgo-field"><label>Descripción *</label><textarea id="tk-new-description" rows="5" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;" placeholder="Describe en detalle tu problema o consulta..."></textarea></div>
+                    <div class="petsgo-field"><label>📎 Imagen (opcional)</label><input type="file" id="tk-new-image" accept="image/*" style="padding:8px 0;"></div>
+                    <div style="display:flex;gap:10px;margin-top:16px;">
+                        <button class="petsgo-btn petsgo-btn-primary" onclick="pgSubmitNewTicket()">📤 Crear Ticket</button>
+                        <button class="petsgo-btn" onclick="document.getElementById('tk-new-modal').style.display='none'" style="background:#eee;">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
         <script>
+        var pgTicketIsStaff = <?php echo $is_staff ? 'true' : 'false'; ?>;
         jQuery(function($){
             var admins = <?php echo json_encode($admins); ?>;
             var _tkPage = 1;
+            var colSpan = pgTicketIsStaff ? 10 : 7;
 
             function loadTickets(page){
                 _tkPage = page || _tkPage || 1;
@@ -13111,21 +13267,25 @@ Dashboard con analíticas"></textarea>
                     var stBadge={abierto:'background:#fff3cd;color:#856404',en_proceso:'background:#cce5ff;color:#004085',resuelto:'background:#d4edda;color:#155724',cerrado:'background:#e2e3e5;color:#383d41'};
                     var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                     $.each(data,function(i,t){
-                        var assignOpts='<option value="">Sin asignar</option>';
-                        $.each(admins,function(_,a){ assignOpts+='<option value="'+a.ID+'" '+(t.assigned_to==a.ID?'selected':'')+'>'+a.display_name+'</option>'; });
                         html+='<tr>';
                         html+='<td><strong style="color:#00A8E8;">'+t.ticket_number+'</strong></td>';
-                        html+='<td>'+t.user_name+'<br><small style="color:#999;">'+t.user_email+'</small></td>';
-                        html+='<td><span class="petsgo-badge" style="'+(roleBadge[t.user_role]||'')+'">'+(t.user_role||'')+'</span></td>';
+                        if(pgTicketIsStaff){
+                            var assignOpts='<option value="">Sin asignar</option>';
+                            $.each(admins,function(_,a){ assignOpts+='<option value="'+a.ID+'" '+(t.assigned_to==a.ID?'selected':'')+'>'+a.display_name+'</option>'; });
+                            html+='<td>'+t.user_name+'<br><small style="color:#999;">'+t.user_email+'</small></td>';
+                            html+='<td><span class="petsgo-badge" style="'+(roleBadge[t.user_role]||'')+'">'+(t.user_role||'')+'</span></td>';
+                        }
                         html+='<td style="max-width:200px;">'+t.subject+'</td>';
                         html+='<td>'+t.category+'</td>';
                         html+='<td><span class="petsgo-badge" style="'+(priBadge[t.priority]||'')+'">'+t.priority+'</span></td>';
                         html+='<td><span class="petsgo-badge" style="'+(stBadge[t.status]||'')+'">'+stLabel[t.status]+'</span></td>';
-                        html+='<td><select onchange="pgTicketAssign('+t.id+',this.value)" style="padding:4px;border-radius:4px;border:1px solid #ccc;font-size:12px;">'+assignOpts+'</select></td>';
+                        if(pgTicketIsStaff){
+                            html+='<td><select onchange="pgTicketAssign('+t.id+',this.value)" style="padding:4px;border-radius:4px;border:1px solid #ccc;font-size:12px;">'+assignOpts+'</select></td>';
+                        }
                         html+='<td style="white-space:nowrap;font-size:12px;">'+new Date(t.created_at).toLocaleDateString('es-CL')+'</td>';
                         html+='<td style="white-space:nowrap;">';
                         html+='<button class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" onclick="pgTicketDetail('+t.id+')" title="Ver detalle">👁️</button> ';
-                        if(t.status!='cerrado'){
+                        if(pgTicketIsStaff && t.status!='cerrado'){
                             var nextSt = t.status=='abierto'?'en_proceso':(t.status=='en_proceso'?'resuelto':'cerrado');
                             var nextLbl = nextSt=='en_proceso'?'▶️ Procesar':(nextSt=='resuelto'?'✅ Resolver':'🔒 Cerrar');
                             html+='<button class="petsgo-btn petsgo-btn-success petsgo-btn-sm" onclick="pgTicketStatus('+t.id+',\''+nextSt+'\')">'+nextLbl+'</button>';
@@ -13133,7 +13293,7 @@ Dashboard con analíticas"></textarea>
                         html+='</td>';
                         html+='</tr>';
                     });
-                    $('#tk-body').html(html||'<tr><td colspan="10" style="text-align:center;color:#999;padding:30px;">No hay tickets</td></tr>');
+                    $('#tk-body').html(html||'<tr><td colspan="'+colSpan+'" style="text-align:center;color:#999;padding:30px;">No hay tickets</td></tr>');
 
                     // Stats cards (global – always from all tickets)
                     $('#tk-stats').html(
@@ -13189,29 +13349,32 @@ Dashboard con analíticas"></textarea>
                 if(!t) return;
                 var stLabel={abierto:'Abierto',en_proceso:'En Proceso',resuelto:'Resuelto',cerrado:'Cerrado'};
                 $('#tk-modal-title').html('Ticket: <span style="color:#00A8E8;">'+t.ticket_number+'</span>');
-                $('#tk-detail').html(
-                    '<table style="width:100%;border-collapse:collapse;">'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Solicitante</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_name+' ('+t.user_role+')</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Email</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_email+'</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asunto</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.subject+'</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Categoría</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.category+'</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Prioridad</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.priority+'</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Estado</td><td style="padding:6px 10px;border:1px solid #eee;">'+(stLabel[t.status]||t.status)+'</td></tr>'+
-                    '<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asignado a</td><td style="padding:6px 10px;border:1px solid #eee;">'+(t.assigned_name||'Sin asignar')+'</td></tr>'+
-                    '</table>'+
-                    '<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>'+
-                    (t.image_url ? '<div style="margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">📎 Evidencia adjunta:</p><a href="'+t.image_url+'" target="_blank"><img src="'+t.image_url+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee;margin-top:6px;cursor:pointer;" alt="Evidencia"></a></div>' : '')
-                );
+                var detailHtml='<table style="width:100%;border-collapse:collapse;">';
+                if(pgTicketIsStaff){
+                    detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Solicitante</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_name+' ('+t.user_role+')</td></tr>';
+                    detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Email</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.user_email+'</td></tr>';
+                }
+                detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asunto</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.subject+'</td></tr>';
+                detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Categoría</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.category+'</td></tr>';
+                detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Prioridad</td><td style="padding:6px 10px;border:1px solid #eee;">'+t.priority+'</td></tr>';
+                detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Estado</td><td style="padding:6px 10px;border:1px solid #eee;">'+(stLabel[t.status]||t.status)+'</td></tr>';
+                if(pgTicketIsStaff){
+                    detailHtml+='<tr><td style="padding:6px 10px;font-weight:600;background:#f8f9fa;border:1px solid #eee;">Asignado a</td><td style="padding:6px 10px;border:1px solid #eee;">'+(t.assigned_name||'Sin asignar')+'</td></tr>';
+                }
+                detailHtml+='</table>';
+                detailHtml+='<div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">Descripción:</p><p style="margin:0;">'+t.description.replace(/\n/g,'<br>')+'</p></div>';
+                if(t.image_url) detailHtml+='<div style="margin-top:12px;"><p style="font-weight:600;margin:0 0 6px;">📎 Evidencia adjunta:</p><a href="'+t.image_url+'" target="_blank"><img src="'+t.image_url+'" style="max-width:100%;max-height:300px;border-radius:8px;border:1px solid #eee;margin-top:6px;cursor:pointer;" alt="Evidencia"></a></div>';
+                $('#tk-detail').html(detailHtml);
                 $('#tk-reply-id').val(id);
                 var repliesHtml='<p style="color:#999;font-size:13px;">Cargando respuestas…</p>';
                 $('#tk-replies').html(repliesHtml);
-                // Use REST to get replies
-                $.ajax({url:'/wp-json/petsgo/v1/tickets/'+id,method:'GET',beforeSend:function(xhr){var tk=localStorage.getItem('petsgo_token');if(tk)xhr.setRequestHeader('Authorization','Bearer '+tk);},success:function(r){
-                    if(r.replies && r.replies.length){
+                // Load replies via AJAX (works for all roles including vendor in WP admin)
+                PG.post('petsgo_get_ticket_replies',{ticket_id:id},function(r){
+                    if(r.success && r.data.replies && r.data.replies.length){
                         var rh='';
-                        $.each(r.replies,function(_,rp){
-                            var isAdmin=rp.user_role=='admin';
-                            rh+='<div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;'+(isAdmin?'background:#e8f4fd;border-left:3px solid #00A8E8;':'background:#f8f9fa;border-left:3px solid #ccc;')+'">';
+                        $.each(r.data.replies,function(_,rp){
+                            var isStaffReply = rp.user_role=='admin' || rp.user_role=='soporte';
+                            rh+='<div style="padding:10px 14px;margin-bottom:8px;border-radius:8px;'+(isStaffReply?'background:#e8f4fd;border-left:3px solid #00A8E8;':'background:#f8f9fa;border-left:3px solid #ccc;')+'">';
                             rh+='<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><strong style="font-size:13px;">'+rp.user_name+' <span style="color:#999;font-weight:400;">('+rp.user_role+')</span></strong><span style="font-size:11px;color:#999;">'+new Date(rp.created_at).toLocaleString('es-CL')+'</span></div>';
                             rh+='<p style="margin:0;font-size:13px;">'+rp.message.replace(/\n/g,'<br>')+'</p>';
                             if(rp.image_url) rh+='<a href="'+rp.image_url+'" target="_blank"><img src="'+rp.image_url+'" style="max-width:200px;max-height:150px;border-radius:6px;margin-top:6px;border:1px solid #eee;" alt="Adjunto"></a>';
@@ -13221,7 +13384,15 @@ Dashboard con analíticas"></textarea>
                     } else {
                         $('#tk-replies').html('<p style="color:#999;font-size:13px;">Sin respuestas aún.</p>');
                     }
-                },error:function(){ $('#tk-replies').html('<p style="color:#999;font-size:13px;">Sin respuestas aún.</p>'); }});
+                });
+                // Hide reply form for closed tickets
+                if(t.status==='cerrado'){
+                    $('#tk-reply-status').html('<span style="color:#6c757d;font-size:13px;">⚫ Este ticket está cerrado y no admite más respuestas.</span>').show();
+                    $('#tk-reply-form').hide();
+                } else {
+                    $('#tk-reply-status').hide();
+                    $('#tk-reply-form').show();
+                }
                 $('#tk-modal').css('display','flex');
             };
             window.pgTicketReply = function(){
@@ -13343,6 +13514,38 @@ Dashboard con analíticas"></textarea>
             }
             refreshTicketBadge();
             setInterval(refreshTicketBadge, 30000);
+
+            // ── Vendor: crear nuevo ticket ──
+            window.pgNewTicket = function(){
+                $('#tk-new-subject').val('');$('#tk-new-description').val('');
+                $('#tk-new-category').val('general');$('#tk-new-priority').val('media');
+                var fi=document.getElementById('tk-new-image');if(fi)fi.value='';
+                $('#tk-new-modal').css('display','flex');
+            };
+            window.pgSubmitNewTicket = function(){
+                var subject=$('#tk-new-subject').val().trim();
+                var description=$('#tk-new-description').val().trim();
+                if(!subject){PG.toast('⚠️ Escribe un asunto para el ticket','warning');$('#tk-new-subject').focus();return;}
+                if(!description){PG.toast('⚠️ Escribe una descripción del problema','warning');$('#tk-new-description').focus();return;}
+                var fd = new FormData();
+                fd.append('action','petsgo_create_ticket_backend');
+                fd.append('_ajax_nonce', PG.nonce);
+                fd.append('subject',subject);
+                fd.append('description',description);
+                fd.append('category',$('#tk-new-category').val());
+                fd.append('priority',$('#tk-new-priority').val());
+                var fileInput=document.getElementById('tk-new-image');
+                if(fileInput && fileInput.files[0]) fd.append('image',fileInput.files[0]);
+                $.ajax({url:PG.ajaxUrl,type:'POST',data:fd,processData:false,contentType:false,success:function(r){
+                    if(r.success){
+                        $('#tk-new-modal').hide();
+                        loadTickets(1);
+                        PG.toast('✅ '+r.data.message,'success');
+                    } else {
+                        PG.toast('❌ '+(r.data||'Error al crear ticket'),'error');
+                    }
+                }});
+            };
         });
         </script>
         <?php
