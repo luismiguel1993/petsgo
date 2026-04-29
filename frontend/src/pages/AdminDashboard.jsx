@@ -4,6 +4,7 @@ import {
   BarChart3, DollarSign, Store, Users, Package, ShoppingBag, TrendingUp,
   Eye, Percent, Save, Search, Shield, PawPrint, Truck, Star, MapPin,
   Calendar, Download, ChevronLeft, ChevronRight, ArrowLeft, FileText, X, Plus, Trash2, Edit3, Image,
+  UserPlus, ClipboardList, CreditCard, Tag, MessageSquare, Settings, Layers, ToggleLeft, ToggleRight, RefreshCw, Check, Bike,
 } from 'lucide-react';
 import huellaPng from '../assets/huella.png';
 import InfoGuideButton from '../components/InfoGuideButton';
@@ -13,6 +14,16 @@ import {
   updateCommissions, getAdminRiders, getAdminRiderStats,
   getAdminInventory, addAdminProduct, updateAdminProduct, deleteAdminProduct, toggleAdminProduct, uploadAdminProductImage,
   getCategories,
+  getAdminUsers, createAdminUser, updateAdminUser, deleteAdminUser,
+  getAdminOrders, updateAdminOrderStatus, assignRiderToOrder,
+  getAdminAllProducts, toggleAdminAnyProduct, deleteAdminAnyProduct,
+  createAdminCategory, updateAdminCategory, deleteAdminCategory,
+  getAdminFinance, getAdminFinanceExport,
+  getAdminCoupons, createAdminCoupon, updateAdminCoupon, deleteAdminCoupon,
+  getAdminTickets, updateAdminTicket, replyAdminTicket,
+  getAdminPlans, createAdminPlan, updateAdminPlan,
+  getAdminSettings, updateAdminSettings,
+  updateAdminVendorStatus, updateAdminRiderStatus,
 } from '../services/api';
 
 const DEMO_ADMIN_STATS = {
@@ -103,9 +114,46 @@ const AdminDashboard = () => {
   const [productSaving, setProductSaving] = useState(false);
   const [categories, setCategories] = useState([]);
   const [uploadingImage, setUploadingImage] = useState(false);
+  // Pagination
   const [vendorPage, setVendorPage] = useState(1);
   const [riderPage, setRiderPage] = useState(1);
   const [storePage, setStorePage] = useState(1);
+  // ── New tab states ──
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('');
+  const [userPage, setUserPage] = useState(1);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ first_name: '', last_name: '', email: '', role: 'subscriber' });
+  const [adminOrders, setAdminOrders] = useState([]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState('');
+  const [orderPage, setOrderPage] = useState(1);
+  const [allProducts, setAllProducts] = useState([]);
+  const [allProductSearch, setAllProductSearch] = useState('');
+  const [allProductPage, setAllProductPage] = useState(1);
+  const [financeData, setFinanceData] = useState(null);
+  const [financeFrom, setFinanceFrom] = useState('');
+  const [financeTo, setFinanceTo] = useState('');
+  const [adminCoupons, setAdminCoupons] = useState([]);
+  const [showCouponForm, setShowCouponForm] = useState(false);
+  const [couponForm, setCouponForm] = useState({ code: '', description: '', discount_type: 'percentage', discount_value: '', min_purchase: '', usage_limit: '', per_user_limit: '', valid_until: '' });
+  const [adminTickets, setAdminTickets] = useState([]);
+  const [ticketStatusFilter, setTicketStatusFilter] = useState('');
+  const [ticketPage, setTicketPage] = useState(1);
+  const [replyingTicket, setReplyingTicket] = useState(null);
+  const [ticketReplyMsg, setTicketReplyMsg] = useState('');
+  const [adminPlans, setAdminPlans] = useState([]);
+  const [showPlanForm, setShowPlanForm] = useState(false);
+  const [planForm, setPlanForm] = useState({ plan_name: '', monthly_price: '', features: '' });
+  const [editingPlan, setEditingPlan] = useState(null);
+  const [adminSettings, setAdminSettings] = useState({});
+  // Delivery tab
+  const [deliveryOrders, setDeliveryOrders] = useState([]);
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('');
+  const [deliveryRiderFilter, setDeliveryRiderFilter] = useState('');
+  const [deliveryPage, setDeliveryPage] = useState(1);
+  const [approvedRiders, setApprovedRiders] = useState([]);
+  const [assigningOrder, setAssigningOrder] = useState(null);
 
   useEffect(() => {
     setVendorPage(1); setRiderPage(1); setStorePage(1);
@@ -133,6 +181,48 @@ const AdminDashboard = () => {
         setPetsgoVendorId(invRes.data?.vendor_id || null);
         setCategories(catRes.data?.data || catRes.data || []);
       }
+      if (tab === 'users') {
+        const { data } = await getAdminUsers({ role: userRoleFilter, search: userSearch });
+        setAdminUsers(data?.data || []);
+      }
+      if (tab === 'orders') {
+        const { data } = await getAdminOrders({ status: orderStatusFilter });
+        setAdminOrders(data?.data || []);
+      }
+      if (tab === 'products') {
+        const [prodRes, catRes] = await Promise.all([getAdminAllProducts({ search: allProductSearch }), getCategories()]);
+        setAllProducts(prodRes.data?.data || []);
+        setCategories(catRes.data?.data || catRes.data || []);
+      }
+      if (tab === 'finance') {
+        const { data } = await getAdminFinance({ from: financeFrom, to: financeTo });
+        setFinanceData(data);
+      }
+      if (tab === 'coupons') {
+        const { data } = await getAdminCoupons();
+        setAdminCoupons(data?.data || []);
+      }
+      if (tab === 'tickets') {
+        const { data } = await getAdminTickets({ status: ticketStatusFilter });
+        setAdminTickets(data?.data || []);
+      }
+      if (tab === 'plans') {
+        const { data } = await getAdminPlans();
+        setAdminPlans(data?.data || []);
+      }
+      if (tab === 'settings') {
+        const { data } = await getAdminSettings();
+        setAdminSettings(data || {});
+      }
+      if (tab === 'delivery') {
+        const [ordRes, ridRes] = await Promise.all([
+          getAdminOrders({ status: deliveryStatusFilter, rider: deliveryRiderFilter }),
+          getAdminRiders()
+        ]);
+        setDeliveryOrders(ordRes.data?.data || []);
+        const allRiders = Array.isArray(ridRes.data) ? ridRes.data : (ridRes.data?.data || []);
+        setApprovedRiders(allRiders.filter(r => r.status === 'approved'));
+      }
     } catch (err) {
       console.error('Error cargando datos admin:', err);
       if (tab === 'dashboard') setStats(DEMO_ADMIN_STATS);
@@ -157,7 +247,6 @@ const AdminDashboard = () => {
       setImpersonateData(data);
     } catch (err) {
       if (window.PG?.toast) window.PG.toast('Error al acceder al dashboard de la tienda', 'error');
-      else alert('Error al acceder al dashboard de la tienda');
     }
   };
 
@@ -174,7 +263,6 @@ const AdminDashboard = () => {
       if (window.PG?.toast) window.PG.toast('Comisiones actualizadas', 'success');
     } catch (err) {
       if (window.PG?.toast) window.PG.toast('Error actualizando comisiones', 'error');
-      else alert('Error actualizando comisiones');
     }
   };
 
@@ -183,6 +271,15 @@ const AdminDashboard = () => {
     { key: 'vendors', label: 'Tiendas', icon: Store },
     { key: 'store', label: 'Tienda PetsGo', icon: ShoppingBag },
     { key: 'riders', label: 'Riders', icon: Truck },
+    { key: 'delivery', label: 'Delivery', icon: Bike },
+    { key: 'users', label: 'Usuarios', icon: Users },
+    { key: 'orders', label: 'Pedidos', icon: ClipboardList },
+    { key: 'products', label: 'Productos', icon: Package },
+    { key: 'finance', label: 'Finanzas', icon: DollarSign },
+    { key: 'coupons', label: 'Cupones', icon: Tag },
+    { key: 'tickets', label: 'Soporte', icon: MessageSquare },
+    { key: 'plans', label: 'Planes', icon: Layers },
+    { key: 'settings', label: 'Configuración', icon: Settings },
   ];
 
   return (
@@ -199,7 +296,7 @@ const AdminDashboard = () => {
         </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-8">
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
         {tabs.map((t) => {
           const Icon = t.icon;
           return (
@@ -536,7 +633,7 @@ const AdminDashboard = () => {
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Stock *</label>
                   <input
-                    type="number" value={productForm.stock}
+                    type="number" value={productForm.stock} min="0"
                     onChange={e => setProductForm({ ...productForm, stock: e.target.value })}
                     className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"
                     placeholder="100"
@@ -589,7 +686,7 @@ const AdminDashboard = () => {
                   onClick={async () => {
                     if (!productForm.product_name || !productForm.price || !productForm.stock) {
                       if (window.PG?.toast) window.PG.toast('Completa nombre, precio y stock', 'warning');
-                      else alert('Completa nombre, precio y stock'); return;
+                      return;
                     }
                     setProductSaving(true);
                     try {
@@ -611,7 +708,6 @@ const AdminDashboard = () => {
                     } catch (err) {
                       const msg = err.response?.data?.message || 'Error guardando producto';
                       if (window.PG?.toast) window.PG.toast(msg, 'error');
-                      else alert(msg);
                     }
                     setProductSaving(false);
                   }}
@@ -872,6 +968,673 @@ const AdminDashboard = () => {
               <PaginationControls currentPage={riderPage} totalItems={filteredRiders.length} onPageChange={setRiderPage} />
             </div>
           )}  
+        </div>
+      )}
+
+      {/* ==================== USUARIOS ==================== */}
+      {tab === 'users' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">👤 Usuarios <span className="text-gray-400 font-medium">({adminUsers.length})</span></h3>
+            <div className="flex items-center gap-3">
+              <select value={userRoleFilter} onChange={e => { setUserRoleFilter(e.target.value); setUserPage(1); }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+                <option value="">Todos los roles</option>
+                <option value="subscriber">Cliente</option>
+                <option value="administrator">Admin</option>
+                <option value="petsgo_vendor">Vendor</option>
+                <option value="petsgo_rider">Rider</option>
+              </select>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style={{ pointerEvents: 'none' }} />
+                <input type="text" placeholder="Buscar usuario..." value={userSearch} onChange={e => { setUserSearch(e.target.value); setUserPage(1); }}
+                  className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm w-56" />
+              </div>
+              <button onClick={() => loadData()} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500"><RefreshCw size={16} /></button>
+              <button onClick={() => { setNewUserForm({ first_name: '', last_name: '', email: '', role: 'subscriber' }); setShowUserForm(true); }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]">
+                <UserPlus size={16} /> Crear Usuario
+              </button>
+            </div>
+          </div>
+          {showUserForm && (
+            <div className="petsgo-card p-6 mb-6 border-2 border-[#00A8E8] bg-blue-50/30">
+              <h4 className="font-black text-[#2F3A40] mb-4">Crear Usuario Manual</h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <input type="text" placeholder="Nombre" value={newUserForm.first_name} onChange={e => setNewUserForm({ ...newUserForm, first_name: e.target.value })} className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm" />
+                <input type="text" placeholder="Apellido" value={newUserForm.last_name} onChange={e => setNewUserForm({ ...newUserForm, last_name: e.target.value })} className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm" />
+                <input type="email" placeholder="Email" value={newUserForm.email} onChange={e => setNewUserForm({ ...newUserForm, email: e.target.value })} className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm" />
+                <select value={newUserForm.role} onChange={e => setNewUserForm({ ...newUserForm, role: e.target.value })} className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm">
+                  <option value="subscriber">Cliente</option>
+                  <option value="administrator">Admin</option>
+                  <option value="petsgo_vendor">Vendor</option>
+                  <option value="petsgo_rider">Rider</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button onClick={() => setShowUserForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-xl font-bold">Cancelar</button>
+                <button onClick={async () => {
+                  if (!newUserForm.email) { if (window.PG?.toast) window.PG.toast('Email es obligatorio', 'warning'); return; }
+                  try {
+                    const { data } = await createAdminUser(newUserForm);
+                    if (window.PG?.toast) window.PG.toast(`Usuario creado. Contraseña temporal: ${data.temp_password}`, 'success');
+                    setShowUserForm(false); loadData();
+                  } catch (err) { if (window.PG?.toast) window.PG.toast(err.response?.data?.message || 'Error creando usuario', 'error'); }
+                }} className="px-5 py-2 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]"><Save size={14} className="inline mr-1" /> Crear</button>
+              </div>
+            </div>
+          )}
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /><div className="h-4 bg-gray-200 rounded w-3/4" /></div> : adminUsers.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><Users size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No se encontraron usuarios</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Usuario</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Rol</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Estado</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Registrado</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>
+                </tr></thead>
+                <tbody>
+                  {adminUsers.slice((userPage - 1) * ITEMS_PER_PAGE, userPage * ITEMS_PER_PAGE).map(u => {
+                    const ROLE_LABELS = { subscriber: 'Cliente', administrator: 'Admin', petsgo_vendor: 'Vendor', petsgo_rider: 'Rider' };
+                    return (
+                      <tr key={u.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-3 px-4"><p className="font-bold text-[#2F3A40]">{u.display_name}</p><p className="text-xs text-gray-400">{u.email}</p></td>
+                        <td className="py-3 px-4"><span className="text-xs font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600">{ROLE_LABELS[u.role] || u.role}</span></td>
+                        <td className="py-3 px-4"><span className={`text-xs font-bold px-2 py-1 rounded-lg ${u.status === 'active' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{u.status === 'active' ? 'Activo' : 'Inactivo'}</span></td>
+                        <td className="py-3 px-4 text-xs text-gray-500">{new Date(u.registered).toLocaleDateString('es-CL')}</td>
+                        <td className="py-3 px-4 text-right flex items-center justify-end gap-1">
+                          {u.status === 'active' ? (
+                            <button onClick={async () => { await updateAdminUser(u.id, { status: 'inactive' }); loadData(); }} className="text-red-400 hover:text-red-600 p-1 text-xs font-bold" title="Bloquear">🚫 Bloquear</button>
+                          ) : (
+                            <button onClick={async () => { await updateAdminUser(u.id, { status: 'active' }); loadData(); }} className="text-green-500 hover:text-green-700 p-1 text-xs font-bold" title="Desbloquear">✅ Activar</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <PaginationControls currentPage={userPage} totalItems={adminUsers.length} onPageChange={setUserPage} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== PEDIDOS ==================== */}
+      {tab === 'orders' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">📦 Pedidos <span className="text-gray-400 font-medium">({adminOrders.length})</span></h3>
+            <div className="flex items-center gap-3">
+              <select value={orderStatusFilter} onChange={e => { setOrderStatusFilter(e.target.value); setOrderPage(1); }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendiente</option>
+                <option value="processing">Procesando</option>
+                <option value="ready_for_pickup">Listo para retiro</option>
+                <option value="rider_assigned">Asignado a Rider</option>
+                <option value="on_the_way">En camino</option>
+                <option value="delivered">Entregado</option>
+                <option value="cancelled">Cancelado</option>
+                <option value="refunded">Reembolsado</option>
+              </select>
+              <button onClick={() => loadData()} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500"><RefreshCw size={16} /></button>
+            </div>
+          </div>
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /><div className="h-4 bg-gray-200 rounded w-3/4" /></div> : adminOrders.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><ClipboardList size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay pedidos</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">ID</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Cliente</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Tienda</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Total</th>
+                  <th className="text-center py-3 px-4 font-bold text-gray-400 text-xs uppercase">Estado</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Fecha</th>
+                  <th className="text-center py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acción</th>
+                </tr></thead>
+                <tbody>
+                  {adminOrders.slice((orderPage - 1) * ITEMS_PER_PAGE, orderPage * ITEMS_PER_PAGE).map(o => {
+                    const STATUS_COLORS = { pending: 'bg-yellow-100 text-yellow-600', processing: 'bg-blue-100 text-blue-600', ready_for_pickup: 'bg-purple-100 text-purple-600', rider_assigned: 'bg-sky-100 text-sky-600', on_the_way: 'bg-indigo-100 text-indigo-600', delivered: 'bg-green-100 text-green-600', cancelled: 'bg-red-100 text-red-600', refunded: 'bg-gray-100 text-gray-600' };
+                    const STATUS_LABELS = { pending: 'Pendiente', processing: 'Procesando', ready_for_pickup: 'Listo para retiro', rider_assigned: 'Asignado a Rider', on_the_way: 'En camino', delivered: 'Entregado', cancelled: 'Cancelado', refunded: 'Reembolsado' };
+                    return (
+                      <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-bold text-[#00A8E8]">#{o.id}</td>
+                        <td className="py-3 px-4"><p className="font-bold text-[#2F3A40]">{o.customer_name || '—'}</p><p className="text-xs text-gray-400">{o.customer_email}</p></td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{o.store_name || '—'}</td>
+                        <td className="py-3 px-4 text-right font-bold text-[#2F3A40]">{formatPrice(o.total_amount)}</td>
+                        <td className="py-3 px-4 text-center"><span className={`text-xs font-bold px-2 py-1 rounded-lg ${STATUS_COLORS[o.status] || 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[o.status] || o.status}</span></td>
+                        <td className="py-3 px-4 text-xs text-gray-500">{new Date(o.created_at).toLocaleDateString('es-CL')}</td>
+                        <td className="py-3 px-4 text-center">
+                          <select value={o.status} onChange={async (e) => {
+                            try { await updateAdminOrderStatus(o.id, e.target.value); loadData(); if (window.PG?.toast) window.PG.toast('Estado actualizado', 'success'); }
+                            catch { if (window.PG?.toast) window.PG.toast('Error actualizando estado', 'error'); }
+                          }} className="text-xs px-2 py-1 border rounded-lg">
+                            <option value="pending">Pendiente</option>
+                            <option value="processing">Procesando</option>
+                            <option value="ready_for_pickup">Listo para retiro</option>
+                            <option value="rider_assigned">Asignado a Rider</option>
+                            <option value="on_the_way">En camino</option>
+                            <option value="delivered">Entregado</option>
+                            <option value="cancelled">Cancelado</option>
+                            <option value="refunded">Reembolsado</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <PaginationControls currentPage={orderPage} totalItems={adminOrders.length} onPageChange={setOrderPage} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== PRODUCTOS (TODOS) ==================== */}
+      {tab === 'products' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">📦 Productos del Sistema <span className="text-gray-400 font-medium">({allProducts.length})</span></h3>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" style={{ pointerEvents: 'none' }} />
+                <input type="text" placeholder="Buscar producto..." value={allProductSearch} onChange={e => { setAllProductSearch(e.target.value); setAllProductPage(1); }}
+                  className="pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm w-56" />
+              </div>
+              <button onClick={() => loadData()} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500"><RefreshCw size={16} /></button>
+            </div>
+          </div>
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : allProducts.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><Package size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay productos</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Producto</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Tienda</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Categoría</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Precio</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Stock</th>
+                  <th className="text-center py-3 px-4 font-bold text-gray-400 text-xs uppercase">Estado</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>
+                </tr></thead>
+                <tbody>
+                  {allProducts.slice((allProductPage - 1) * ITEMS_PER_PAGE, allProductPage * ITEMS_PER_PAGE).map(p => (
+                    <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-3 px-4 font-bold text-[#2F3A40]">{p.product_name}</td>
+                      <td className="py-3 px-4 text-sm text-gray-600">{p.store_name || '—'}</td>
+                      <td className="py-3 px-4"><span className="text-xs font-bold px-2 py-1 rounded-lg bg-blue-50 text-blue-600">{p.category || '—'}</span></td>
+                      <td className="py-3 px-4 text-right font-bold text-[#00A8E8]">{formatPrice(p.price)}</td>
+                      <td className="py-3 px-4 text-right"><span className={`font-bold ${parseInt(p.stock) <= 5 ? 'text-red-500' : 'text-[#2F3A40]'}`}>{p.stock}</span></td>
+                      <td className="py-3 px-4 text-center">
+                        <button onClick={async () => { try { await toggleAdminAnyProduct(p.id); loadData(); } catch {} }}
+                          className={`text-xs font-bold px-3 py-1 rounded-full ${parseInt(p.is_active) !== 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {parseInt(p.is_active) !== 0 ? '✅ Activo' : '❌ Inactivo'}
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button onClick={async () => { if (!confirm(`¿Eliminar "${p.product_name}"?`)) return; try { await deleteAdminAnyProduct(p.id); loadData(); } catch {} }}
+                          className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <PaginationControls currentPage={allProductPage} totalItems={allProducts.length} onPageChange={setAllProductPage} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== DELIVERY ==================== */}
+      {tab === 'delivery' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">🚴 Delivery <span className="text-gray-400 font-medium">({deliveryOrders.length})</span></h3>
+            <div className="flex items-center gap-3 flex-wrap">
+              <select value={deliveryStatusFilter} onChange={e => { setDeliveryStatusFilter(e.target.value); setDeliveryPage(1); }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+                <option value="">Todos los estados</option>
+                <option value="pending">Pendiente</option>
+                <option value="processing">Procesando</option>
+                <option value="ready_for_pickup">Listo para envío</option>
+                <option value="rider_assigned">Asignado a Rider</option>
+                <option value="on_the_way">En camino</option>
+                <option value="delivered">Entregado</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+              <select value={deliveryRiderFilter} onChange={e => { setDeliveryRiderFilter(e.target.value); setDeliveryPage(1); }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+                <option value="">Todos los riders</option>
+                <option value="unassigned">Sin asignar</option>
+                {approvedRiders.map(r => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
+              <button onClick={() => loadData()} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500"><RefreshCw size={16} /></button>
+            </div>
+          </div>
+
+          {/* Summary cards */}
+          {!loading && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {[
+                { label: 'Pendientes', count: deliveryOrders.filter(o => o.status === 'pending').length, color: '#F59E0B', bg: '#FEF3C7' },
+                { label: 'Sin asignar', count: deliveryOrders.filter(o => !o.rider_id).length, color: '#EF4444', bg: '#FEE2E2' },
+                { label: 'En camino', count: deliveryOrders.filter(o => o.status === 'on_the_way').length, color: '#6366F1', bg: '#E0E7FF' },
+                { label: 'Entregados', count: deliveryOrders.filter(o => o.status === 'delivered').length, color: '#22C55E', bg: '#DCFCE7' },
+              ].map((s, i) => (
+                <div key={i} className="petsgo-card p-4 flex items-center gap-3">
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: s.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontWeight: 900, fontSize: 16, color: s.color }}>{s.count}</span>
+                  </div>
+                  <span className="text-sm font-bold text-gray-500">{s.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Online riders strip */}
+          {!loading && approvedRiders.length > 0 && (
+            <div className="petsgo-card p-4 mb-6">
+              <p className="text-xs font-bold text-gray-400 uppercase mb-3">Riders Disponibles</p>
+              <div className="flex gap-3 flex-wrap">
+                {approvedRiders.filter(r => r.is_online).length === 0 ? (
+                  <p className="text-sm text-gray-400">Ningún rider en línea</p>
+                ) : approvedRiders.filter(r => r.is_online).map(r => {
+                  const VEHICLE_ICONS = { bicicleta: '🚲', scooter: '🛵', moto: '🏍️', auto: '🚗', a_pie: '🚶' };
+                  return (
+                    <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 border border-green-200">
+                      <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                      <span className="text-sm font-bold text-green-700">{r.name}</span>
+                      <span className="text-xs">{VEHICLE_ICONS[r.vehicle] || '🚗'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {loading ? (
+            <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /><div className="h-4 bg-gray-200 rounded w-3/4" /></div>
+          ) : deliveryOrders.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><Bike size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay pedidos de delivery</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-3 font-bold text-gray-400 text-xs uppercase">Pedido #</th>
+                  <th className="text-left py-3 px-3 font-bold text-gray-400 text-xs uppercase">Cliente</th>
+                  <th className="text-left py-3 px-3 font-bold text-gray-400 text-xs uppercase">Tienda</th>
+                  <th className="text-right py-3 px-3 font-bold text-gray-400 text-xs uppercase">Total</th>
+                  <th className="text-right py-3 px-3 font-bold text-gray-400 text-xs uppercase">Fee Delivery</th>
+                  <th className="text-left py-3 px-3 font-bold text-gray-400 text-xs uppercase">Rider</th>
+                  <th className="text-center py-3 px-3 font-bold text-gray-400 text-xs uppercase">Resp. Rider</th>
+                  <th className="text-center py-3 px-3 font-bold text-gray-400 text-xs uppercase">Estado</th>
+                  <th className="text-left py-3 px-3 font-bold text-gray-400 text-xs uppercase">Fecha</th>
+                  <th className="text-center py-3 px-3 font-bold text-gray-400 text-xs uppercase">Asignar Rider</th>
+                </tr></thead>
+                <tbody>
+                  {deliveryOrders.slice((deliveryPage - 1) * ITEMS_PER_PAGE, deliveryPage * ITEMS_PER_PAGE).map(o => {
+                    const STATUS_COLORS = { pending: 'bg-yellow-100 text-yellow-600', processing: 'bg-blue-100 text-blue-600', ready_for_pickup: 'bg-purple-100 text-purple-600', rider_assigned: 'bg-sky-100 text-sky-600', on_the_way: 'bg-indigo-100 text-indigo-600', delivered: 'bg-green-100 text-green-600', cancelled: 'bg-red-100 text-red-600' };
+                    const STATUS_LABELS = { pending: 'Pendiente', processing: 'Procesando', ready_for_pickup: 'Listo para envío', rider_assigned: 'Asignado a Rider', on_the_way: 'En camino', delivered: 'Entregado', cancelled: 'Cancelado' };
+                    return (
+                      <tr key={o.id} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-3 px-3 font-bold text-[#00A8E8]">#{o.id}</td>
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-[#2F3A40]">{o.customer_name || '—'}</p>
+                        </td>
+                        <td className="py-3 px-3 text-sm text-gray-600">{o.store_name || '—'}</td>
+                        <td className="py-3 px-3 text-right font-bold text-[#2F3A40]">{formatPrice(o.total_amount)}</td>
+                        <td className="py-3 px-3 text-right font-bold text-gray-500">{formatPrice(o.delivery_fee)}</td>
+                        <td className="py-3 px-3 text-sm">
+                          {o.rider_name ? (
+                            <span className="font-bold text-[#2F3A40]">{o.rider_name}</span>
+                          ) : (
+                            <span className="text-gray-300 italic">Sin asignar</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {o.rider_id ? (() => {
+                            const rCfg = { pending: { label: '⏳ Pendiente', cls: 'bg-yellow-100 text-yellow-700' }, accepted: { label: '✅ Aceptado', cls: 'bg-green-100 text-green-700' }, rejected: { label: '❌ Rechazado', cls: 'bg-red-100 text-red-700' } };
+                            const rc = rCfg[o.rider_response] || rCfg.pending;
+                            return (
+                              <div>
+                                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${rc.cls}`}>{rc.label}</span>
+                                {o.estimated_minutes > 0 && o.rider_response === 'accepted' && (
+                                  <p className="text-xs text-blue-600 font-bold mt-1">~{o.estimated_minutes} min</p>
+                                )}
+                              </div>
+                            );
+                          })() : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`text-xs font-bold px-2 py-1 rounded-lg ${STATUS_COLORS[o.status] || 'bg-gray-100 text-gray-600'}`}>
+                            {STATUS_LABELS[o.status] || o.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-xs text-gray-500">{new Date(o.created_at).toLocaleDateString('es-CL')}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1 justify-center">
+                            <select
+                              defaultValue={o.rider_id || ''}
+                              onChange={e => setAssigningOrder({ orderId: o.id, riderId: e.target.value })}
+                              className="text-xs px-2 py-1 border rounded-lg w-32"
+                            >
+                              <option value="">— Rider —</option>
+                              {approvedRiders.map(r => (
+                                <option key={r.id} value={r.id}>
+                                  {r.name} {r.is_online ? '🟢' : '⚪'}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={async () => {
+                                const target = assigningOrder?.orderId === o.id ? assigningOrder : null;
+                                if (!target) return;
+                                try {
+                                  await assignRiderToOrder(o.id, parseInt(target.riderId) || 0);
+                                  setAssigningOrder(null);
+                                  loadData();
+                                  if (window.PG?.toast) window.PG.toast('Rider asignado correctamente', 'success');
+                                } catch (err) {
+                                  if (window.PG?.toast) window.PG.toast(err.response?.data?.message || 'Error al asignar rider', 'error');
+                                }
+                              }}
+                              className="p-1 rounded-lg bg-green-500 hover:bg-green-600 text-white"
+                              title="Asignar rider"
+                            >
+                              <Check size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <PaginationControls currentPage={deliveryPage} totalItems={deliveryOrders.length} onPageChange={setDeliveryPage} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== FINANZAS ==================== */}
+      {tab === 'finance' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">💰 Finanzas y Comisiones</h3>
+            <div className="flex items-center gap-3">
+              <input type="date" value={financeFrom} onChange={e => setFinanceFrom(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm" />
+              <span className="text-gray-400 text-sm">—</span>
+              <input type="date" value={financeTo} onChange={e => setFinanceTo(e.target.value)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm" />
+              <button onClick={() => loadData()} className="px-4 py-2 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]">Filtrar</button>
+              <button onClick={async () => {
+                try {
+                  const { data } = await getAdminFinanceExport({ from: financeFrom || undefined, to: financeTo || undefined });
+                  const rows = data?.data || [];
+                  if (!rows.length) { if (window.PG?.toast) window.PG.toast('Sin datos para exportar', 'warning'); return; }
+                  const headers = Object.keys(rows[0]);
+                  const csv = [headers.join(','), ...rows.map(r => headers.map(h => `"${(r[h] ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a'); a.href = url; a.download = `PetsGo_Finanzas_${financeFrom || 'inicio'}_${financeTo || 'hoy'}.csv`; a.click();
+                  URL.revokeObjectURL(url);
+                } catch { if (window.PG?.toast) window.PG.toast('Error exportando', 'error'); }
+              }} className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold bg-[#22C55E] text-white hover:bg-[#16a34a]"><Download size={14} /> Exportar CSV</button>
+            </div>
+          </div>
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : financeData ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="petsgo-card p-6 border-l-4 border-[#00A8E8]"><div className="flex items-center gap-3 mb-3"><DollarSign size={20} className="text-[#00A8E8]" /><span className="text-sm text-gray-400 font-bold">Ventas Totales</span></div><p className="text-3xl font-black text-[#2F3A40]">{formatPrice(financeData.total_sales)}</p></div>
+              <div className="petsgo-card p-6 border-l-4 border-[#FFC400]"><div className="flex items-center gap-3 mb-3"><TrendingUp size={20} className="text-[#FFC400]" /><span className="text-sm text-gray-400 font-bold">Comisiones PetsGo</span></div><p className="text-3xl font-black text-[#2F3A40]">{formatPrice(financeData.total_commission)}</p></div>
+              <div className="petsgo-card p-6 border-l-4 border-[#22C55E]"><div className="flex items-center gap-3 mb-3"><Truck size={20} className="text-[#22C55E]" /><span className="text-sm text-gray-400 font-bold">Delivery Fees</span></div><p className="text-3xl font-black text-[#2F3A40]">{formatPrice(financeData.total_delivery_fees)}</p></div>
+              <div className="petsgo-card p-6 border-l-4 border-[#8B5CF6]"><div className="flex items-center gap-3 mb-3"><ShoppingBag size={20} className="text-[#8B5CF6]" /><span className="text-sm text-gray-400 font-bold">Pedidos Entregados</span></div><p className="text-3xl font-black text-[#2F3A40]">{financeData.delivered_orders}</p></div>
+            </div>
+          ) : <p className="text-gray-400">No se pudieron cargar datos financieros</p>}
+        </div>
+      )}
+
+      {/* ==================== CUPONES ==================== */}
+      {tab === 'coupons' && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-black text-[#2F3A40]">🏷️ Cupones <span className="text-gray-400 font-medium">({adminCoupons.length})</span></h3>
+            <button onClick={() => { setCouponForm({ code: '', description: '', discount_type: 'percentage', discount_value: '', min_purchase: '', usage_limit: '', per_user_limit: '', valid_until: '' }); setShowCouponForm(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]"><Plus size={16} /> Crear Cupón</button>
+          </div>
+          {showCouponForm && (
+            <div className="petsgo-card p-6 mb-6 border-2 border-[#00A8E8] bg-blue-50/30">
+              <h4 className="font-black text-[#2F3A40] mb-4">Nuevo Cupón</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Código *</label><input type="text" value={couponForm.code} onChange={e => setCouponForm({ ...couponForm, code: e.target.value.toUpperCase() })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="DESCUENTO20" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Tipo</label><select value={couponForm.discount_type} onChange={e => setCouponForm({ ...couponForm, discount_type: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"><option value="percentage">Porcentaje (%)</option><option value="fixed">Monto Fijo ($)</option></select></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Valor *</label><input type="number" value={couponForm.discount_value} onChange={e => setCouponForm({ ...couponForm, discount_value: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder={couponForm.discount_type === 'percentage' ? '20' : '5000'} /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Mínimo compra</label><input type="number" value={couponForm.min_purchase} onChange={e => setCouponForm({ ...couponForm, min_purchase: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="10000" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Límite usos total</label><input type="number" value={couponForm.usage_limit} onChange={e => setCouponForm({ ...couponForm, usage_limit: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="100" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Límite por usuario</label><input type="number" value={couponForm.per_user_limit} onChange={e => setCouponForm({ ...couponForm, per_user_limit: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="1" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Fecha expiración</label><input type="datetime-local" value={couponForm.valid_until} onChange={e => setCouponForm({ ...couponForm, valid_until: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                <div className="md:col-span-2"><label className="block text-xs font-bold text-gray-500 mb-1">Descripción</label><input type="text" value={couponForm.description} onChange={e => setCouponForm({ ...couponForm, description: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="Descuento campaña verano" /></div>
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button onClick={() => setShowCouponForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-xl font-bold">Cancelar</button>
+                <button onClick={async () => {
+                  if (!couponForm.code || !couponForm.discount_value) { if (window.PG?.toast) window.PG.toast('Código y valor son obligatorios', 'warning'); return; }
+                  try { await createAdminCoupon(couponForm); setShowCouponForm(false); loadData(); if (window.PG?.toast) window.PG.toast('Cupón creado', 'success'); }
+                  catch (err) { if (window.PG?.toast) window.PG.toast(err.response?.data?.message || 'Error', 'error'); }
+                }} className="px-5 py-2 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]"><Save size={14} className="inline mr-1" /> Crear Cupón</button>
+              </div>
+            </div>
+          )}
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : adminCoupons.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><Tag size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay cupones</p></div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="border-b border-gray-200">
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Código</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Tipo</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Valor</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Usos</th>
+                  <th className="text-center py-3 px-4 font-bold text-gray-400 text-xs uppercase">Estado</th>
+                  <th className="text-left py-3 px-4 font-bold text-gray-400 text-xs uppercase">Expira</th>
+                  <th className="text-right py-3 px-4 font-bold text-gray-400 text-xs uppercase">Acciones</th>
+                </tr></thead>
+                <tbody>
+                  {adminCoupons.map(c => (
+                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-3 px-4 font-bold text-[#00A8E8]">{c.code}</td>
+                      <td className="py-3 px-4 text-xs text-gray-600">{c.discount_type === 'percentage' ? 'Porcentaje' : 'Monto Fijo'}</td>
+                      <td className="py-3 px-4 text-right font-bold text-[#2F3A40]">{c.discount_type === 'percentage' ? `${c.discount_value}%` : formatPrice(c.discount_value)}</td>
+                      <td className="py-3 px-4 text-right text-gray-600">{c.usage_count}/{c.usage_limit || '∞'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <button onClick={async () => { try { await updateAdminCoupon(c.id, { is_active: parseInt(c.is_active) ? 0 : 1 }); loadData(); } catch {} }}
+                          className={`text-xs font-bold px-3 py-1 rounded-full ${parseInt(c.is_active) ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                          {parseInt(c.is_active) ? '✅ Activo' : '❌ Inactivo'}
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 text-xs text-gray-500">{c.valid_until ? new Date(c.valid_until).toLocaleDateString('es-CL') : 'Sin expiración'}</td>
+                      <td className="py-3 px-4 text-right">
+                        <button onClick={async () => { if (!confirm(`¿Eliminar cupón "${c.code}"?`)) return; try { await deleteAdminCoupon(c.id); loadData(); } catch {} }}
+                          className="text-gray-400 hover:text-red-500 p-1"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== SOPORTE / TICKETS ==================== */}
+      {tab === 'tickets' && (
+        <div>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h3 className="text-lg font-black text-[#2F3A40]">🎫 Tickets de Soporte <span className="text-gray-400 font-medium">({adminTickets.length})</span></h3>
+            <div className="flex items-center gap-3">
+              <select value={ticketStatusFilter} onChange={e => { setTicketStatusFilter(e.target.value); setTicketPage(1); }}
+                className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm">
+                <option value="">Todos</option>
+                <option value="abierto">Abierto</option>
+                <option value="en_proceso">En proceso</option>
+                <option value="resuelto">Resuelto</option>
+                <option value="cerrado">Cerrado</option>
+              </select>
+              <button onClick={() => loadData()} className="p-2.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-gray-500"><RefreshCw size={16} /></button>
+            </div>
+          </div>
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : adminTickets.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><MessageSquare size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay tickets</p></div>
+          ) : (
+            <div className="space-y-3">
+              {adminTickets.slice((ticketPage - 1) * ITEMS_PER_PAGE, ticketPage * ITEMS_PER_PAGE).map(t => {
+                const STATUS_C = { abierto: 'bg-yellow-100 text-yellow-600', en_proceso: 'bg-blue-100 text-blue-600', resuelto: 'bg-green-100 text-green-600', cerrado: 'bg-gray-100 text-gray-600' };
+                const PRIORITY_C = { alta: 'text-red-500', media: 'text-yellow-500', baja: 'text-gray-400' };
+                return (
+                  <div key={t.id} className="petsgo-card p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold text-gray-400">#{t.ticket_number}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${STATUS_C[t.status] || 'bg-gray-100 text-gray-600'}`}>{t.status}</span>
+                          <span className={`text-xs font-bold ${PRIORITY_C[t.priority] || ''}`}>● {t.priority}</span>
+                        </div>
+                        <p className="font-bold text-[#2F3A40]">{t.subject}</p>
+                        <p className="text-xs text-gray-400">{t.user_name} ({t.user_email}) · {t.category} · {t.replies_count} respuestas · {new Date(t.created_at).toLocaleDateString('es-CL')}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <select value={t.status} onChange={async (e) => { try { await updateAdminTicket(t.id, { status: e.target.value }); loadData(); } catch {} }}
+                          className="text-xs px-2 py-1 border rounded-lg">
+                          <option value="abierto">Abierto</option>
+                          <option value="en_proceso">En proceso</option>
+                          <option value="resuelto">Resuelto</option>
+                          <option value="cerrado">Cerrado</option>
+                        </select>
+                        <button onClick={() => { setReplyingTicket(replyingTicket === t.id ? null : t.id); setTicketReplyMsg(''); }}
+                          className="px-3 py-1 text-xs font-bold rounded-lg bg-[#00A8E8] text-white hover:bg-[#0090c7]">Responder</button>
+                      </div>
+                    </div>
+                    {replyingTicket === t.id && (
+                      <div className="mt-3 flex gap-2">
+                        <input type="text" value={ticketReplyMsg} onChange={e => setTicketReplyMsg(e.target.value)} placeholder="Escribe tu respuesta..."
+                          className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-sm" />
+                        <button onClick={async () => {
+                          if (!ticketReplyMsg.trim()) return;
+                          try { await replyAdminTicket(t.id, ticketReplyMsg); setReplyingTicket(null); setTicketReplyMsg(''); loadData(); if (window.PG?.toast) window.PG.toast('Respuesta enviada', 'success'); }
+                          catch { if (window.PG?.toast) window.PG.toast('Error', 'error'); }
+                        }} className="px-4 py-2 rounded-xl text-sm font-bold bg-[#22C55E] text-white hover:bg-[#16a34a]">Enviar</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <PaginationControls currentPage={ticketPage} totalItems={adminTickets.length} onPageChange={setTicketPage} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== PLANES ==================== */}
+      {tab === 'plans' && (
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-black text-[#2F3A40]">📋 Planes de Suscripción <span className="text-gray-400 font-medium">({adminPlans.length})</span></h3>
+            <button onClick={() => { setPlanForm({ plan_name: '', monthly_price: '', features: '' }); setEditingPlan(null); setShowPlanForm(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]"><Plus size={16} /> Crear Plan</button>
+          </div>
+          {showPlanForm && (
+            <div className="petsgo-card p-6 mb-6 border-2 border-[#00A8E8] bg-blue-50/30">
+              <h4 className="font-black text-[#2F3A40] mb-4">{editingPlan ? 'Editar Plan' : 'Nuevo Plan'}</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Nombre *</label><input type="text" value={planForm.plan_name} onChange={e => setPlanForm({ ...planForm, plan_name: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="Pro" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Precio mensual (CLP) *</label><input type="number" value={planForm.monthly_price} onChange={e => setPlanForm({ ...planForm, monthly_price: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="59990" /></div>
+                <div><label className="block text-xs font-bold text-gray-500 mb-1">Features (separar con coma)</label><input type="text" value={planForm.features} onChange={e => setPlanForm({ ...planForm, features: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" placeholder="50 productos, Soporte prioritario" /></div>
+              </div>
+              <div className="flex justify-end gap-3 mt-4">
+                <button onClick={() => setShowPlanForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-xl font-bold">Cancelar</button>
+                <button onClick={async () => {
+                  if (!planForm.plan_name) { if (window.PG?.toast) window.PG.toast('Nombre es obligatorio', 'warning'); return; }
+                  const payload = { plan_name: planForm.plan_name, monthly_price: parseFloat(planForm.monthly_price) || 0, features: planForm.features.split(',').map(f => f.trim()).filter(Boolean) };
+                  try {
+                    if (editingPlan) { await updateAdminPlan(editingPlan, payload); }
+                    else { await createAdminPlan(payload); }
+                    setShowPlanForm(false); loadData(); if (window.PG?.toast) window.PG.toast(editingPlan ? 'Plan actualizado' : 'Plan creado', 'success');
+                  } catch (err) { if (window.PG?.toast) window.PG.toast(err.response?.data?.message || 'Error', 'error'); }
+                }} className="px-5 py-2 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7]"><Save size={14} className="inline mr-1" /> {editingPlan ? 'Actualizar' : 'Crear'}</button>
+              </div>
+            </div>
+          )}
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : adminPlans.length === 0 ? (
+            <div className="text-center py-16 petsgo-card"><Layers size={48} className="mx-auto text-gray-300 mb-4" /><p className="text-gray-400 font-bold">No hay planes</p></div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {adminPlans.map(p => {
+                let features = [];
+                try { features = typeof p.features_json === 'string' ? JSON.parse(p.features_json) : (p.features_json || []); } catch { features = []; }
+                return (
+                  <div key={p.id} className="petsgo-card p-6 border-t-4 border-[#00A8E8]">
+                    <h4 className="text-lg font-black text-[#2F3A40] mb-1">{p.plan_name}</h4>
+                    <p className="text-2xl font-black text-[#00A8E8] mb-3">{formatPrice(p.monthly_price)}<span className="text-sm text-gray-400 font-medium">/mes</span></p>
+                    {Array.isArray(features) && features.length > 0 && <ul className="text-sm text-gray-600 space-y-1 mb-3">{features.map((f, i) => <li key={i}>✓ {f}</li>)}</ul>}
+                    <p className="text-xs text-gray-400">{p.vendor_count || 0} tiendas usando este plan</p>
+                    <button onClick={() => { setPlanForm({ plan_name: p.plan_name, monthly_price: p.monthly_price, features: (Array.isArray(features) ? features : []).join(', ') }); setEditingPlan(p.id); setShowPlanForm(true); }}
+                      className="mt-3 text-xs font-bold text-[#00A8E8] hover:underline flex items-center gap-1"><Edit3 size={12} /> Editar Plan</button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== CONFIGURACIÓN ==================== */}
+      {tab === 'settings' && (
+        <div>
+          <h3 className="text-lg font-black text-[#2F3A40] mb-6">⚙️ Configuración General</h3>
+          {loading ? <div className="petsgo-card p-8 animate-pulse"><div className="h-4 bg-gray-200 rounded w-full mb-3" /></div> : (
+            <div className="space-y-6">
+              <div className="petsgo-card p-6">
+                <h4 className="font-black text-[#2F3A40] mb-4">💱 General</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Moneda</label><select value={adminSettings.currency || 'CLP'} onChange={e => setAdminSettings({ ...adminSettings, currency: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"><option value="CLP">CLP (Peso Chileno)</option><option value="USD">USD</option></select></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Comisión global (%)</label><input type="number" value={adminSettings.default_commission || ''} onChange={e => setAdminSettings({ ...adminSettings, default_commission: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Corte delivery (%)</label><input type="number" value={adminSettings.default_delivery_fee_cut || ''} onChange={e => setAdminSettings({ ...adminSettings, default_delivery_fee_cut: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                </div>
+              </div>
+              <div className="petsgo-card p-6">
+                <h4 className="font-black text-[#2F3A40] mb-4">💳 Pasarelas de Pago</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Transbank Ambiente</label><select value={adminSettings.transbank_environment || 'integration'} onChange={e => setAdminSettings({ ...adminSettings, transbank_environment: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm"><option value="integration">Integración (sandbox)</option><option value="production">Producción</option></select></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">Transbank Commerce Code</label><input type="text" value={adminSettings.transbank_commerce_code || ''} onChange={e => setAdminSettings({ ...adminSettings, transbank_commerce_code: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">MercadoPago Access Token</label><input type="password" value={adminSettings.mercadopago_access_token || ''} onChange={e => setAdminSettings({ ...adminSettings, mercadopago_access_token: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                  <div><label className="block text-xs font-bold text-gray-500 mb-1">MercadoPago Public Key</label><input type="text" value={adminSettings.mercadopago_public_key || ''} onChange={e => setAdminSettings({ ...adminSettings, mercadopago_public_key: e.target.value })} className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm" /></div>
+                </div>
+              </div>
+              <div className="petsgo-card p-6">
+                <h4 className="font-black text-[#2F3A40] mb-4">🔧 Modo Mantenimiento</h4>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  {adminSettings.maintenance_mode === '1' ? <ToggleRight size={28} className="text-red-500" /> : <ToggleLeft size={28} className="text-gray-400" />}
+                  <span className="font-bold text-sm text-[#2F3A40]">{adminSettings.maintenance_mode === '1' ? 'ACTIVADO — Sitio en mantenimiento' : 'Desactivado — Sitio operando normalmente'}</span>
+                  <input type="checkbox" className="hidden" checked={adminSettings.maintenance_mode === '1'} onChange={e => setAdminSettings({ ...adminSettings, maintenance_mode: e.target.checked ? '1' : '0' })} />
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={async () => {
+                  try { await updateAdminSettings(adminSettings); if (window.PG?.toast) window.PG.toast('Configuración guardada', 'success'); }
+                  catch { if (window.PG?.toast) window.PG.toast('Error guardando', 'error'); }
+                }} className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold bg-[#00A8E8] text-white hover:bg-[#0090c7] shadow-lg"><Save size={16} /> Guardar Configuración</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

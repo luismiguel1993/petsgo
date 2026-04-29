@@ -16,6 +16,11 @@
 | AD-002 | Acceso a `/admin` sin sesión | Sin sesión | 1. Navegar a `/admin` | Redirige a `/login` | Alta |
 | AD-003 | Cliente no puede acceder a `/admin` | Sesión cliente | 1. Navegar a `/admin` | Redirige o muestra acceso denegado | Alta |
 | AD-004 | Admin puede navegar wp-admin normalmente | Admin | 1. Ir a `/wp-admin/` | Panel WordPress carga sin conflicto con token frontend | Alta |
+| AD-005 | wp-login.php muestra branding PetsGo | Sin sesión | 1. Ir a `/wp-login.php` | Fondo oscuro con gradiente (dark → #1a2228), logo PetsGo (220×80px) centrado, subtítulo "PetsGo · Panel de Administración", formulario con bordes redondeados (16px) y barra de color superior (degradado primary → secondary), botón "Iniciar sesión" azul (#00A8E8) ancho completo | Alta |
+| AD-006 | Logo no se recorta en pantalla de notebook | Viewport height ≤ 700px (ej. laptop 1366×768) | 1. Abrir `/wp-login.php` en viewport corto | Logo se reduce a 180×60px, contenido se alinea desde arriba (no centrado vertical) con padding-top 20px, subtítulo se reduce a 11px, página permite scroll vertical si es necesario (overflow-y: auto) | Alta |
+| AD-007 | wp-login.php responsive en mobile (≤ 480px) | Viewport ≤ 480px | 1. Abrir `/wp-login.php` en mobile | Logo 180×60px, formulario con márgenes laterales de 12px, sin scroll horizontal | Media |
+| AD-008 | Formulario de login wp-admin funcional | Sin sesión | 1. Ir a `/wp-login.php` 2. Ingresar usuario y contraseña de admin 3. Click "Iniciar sesión" | Overlay animado con logo y texto "Verificando credenciales…", redirección exitosa a wp-admin | Alta |
+| AD-009 | Links de wp-login.php funcionan | Sin sesión | 1. Verificar links "¿Olvidaste tu contraseña?" y "← Ir a PetsGo Marketplace" | Links visibles con color rgba(255,255,255,0.65), hover cambia a amarillo (#FFC400), navegan correctamente | Media |
 
 ---
 

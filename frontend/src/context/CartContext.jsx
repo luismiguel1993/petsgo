@@ -5,7 +5,12 @@ const CartContext = createContext(null);
 export const useCart = () => useContext(CartContext);
 
 export const CartProvider = ({ children }) => {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('petsgo_cart');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [appliedCoupon, setAppliedCoupon] = useState(null); // { code, discount_type, discount_value, discount, vendor_id, description }
   const onCartOpenRef = useRef(null);
 
@@ -48,6 +53,11 @@ export const CartProvider = ({ children }) => {
       })
     );
   };
+
+  // Sincronizar carrito con localStorage en cada cambio (OBS-CC-009)
+  React.useEffect(() => {
+    localStorage.setItem('petsgo_cart', JSON.stringify(items));
+  }, [items]);
 
   const clearCart = () => { setItems([]); setAppliedCoupon(null); };
 

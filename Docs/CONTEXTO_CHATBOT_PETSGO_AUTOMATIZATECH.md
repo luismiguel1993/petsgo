@@ -192,8 +192,9 @@ PetsGo es un marketplace multi-vendor que conecta a dueños de mascotas con tien
 • Seguimiento: en tiempo real desde "Mis Pedidos" en la web
 
 ━━━ ESTADOS DE PEDIDO ━━━
-1. Pago Pendiente → 2. Preparando → 3. Listo para enviar → 4. En camino → 5. Entregado
-(También puede pasar a: Cancelado)
+Pedidos con delivery: 1. Pendiente → 2. Procesando → 3. Listo para enviar → 4. Asignado a Rider → 5. En camino → 6. Entregado
+Pedidos con retiro en tienda: 1. Pendiente → 2. Procesando → 3. Listo para retirar → 4. Entregado
+(También puede pasar a: Cancelado o Reembolsado)
 
 ━━━ MÉTODOS DE PAGO ━━━
 💳 Tarjetas de débito y crédito

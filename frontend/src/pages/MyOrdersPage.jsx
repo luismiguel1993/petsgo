@@ -4,15 +4,27 @@ import { Package, Clock, CheckCircle2, Truck, MapPin, Store, PawPrint, FileText,
 import { getMyOrders, submitReview, getOrderReviewStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import InfoGuideButton from '../components/InfoGuideButton';
+import { useToast } from '../components/Toast';
 
 const STATUS_CONFIG = {
   pending: { label: 'Pendiente', color: '#FFC400', bg: '#fff8e1', icon: Clock },
   payment_pending: { label: 'Pago Pendiente', color: '#FFC400', bg: '#fff8e1', icon: Clock },
-  preparing: { label: 'Preparando', color: '#00A8E8', bg: '#e0f7fa', icon: Package },
+  processing: { label: 'Preparando', color: '#00A8E8', bg: '#e0f7fa', icon: Package },
   ready_for_pickup: { label: 'Listo para enviar', color: '#8B5CF6', bg: '#ede9fe', icon: Package },
+  rider_assigned: { label: 'Asignado a Rider', color: '#0EA5E9', bg: '#e0f2fe', icon: Truck },
   in_transit: { label: 'En camino', color: '#F97316', bg: '#fff7ed', icon: Truck },
+  on_the_way: { label: 'En camino', color: '#F97316', bg: '#fff7ed', icon: Truck },
   delivered: { label: 'Entregado', color: '#22C55E', bg: '#f0fdf4', icon: CheckCircle2 },
   cancelled: { label: 'Cancelado', color: '#EF4444', bg: '#fef2f2', icon: Package },
+  refunded: { label: 'Reembolsado', color: '#6B7280', bg: '#f3f4f6', icon: Package },
+};
+
+const getStatusLabel = (status, deliveryMethod) => {
+  if (status === 'ready_for_pickup') {
+    return deliveryMethod === 'pickup' ? 'Listo para retirar' : 'Listo para enviar';
+  }
+  if (status === 'rider_assigned') return 'Asignado a Rider';
+  return STATUS_CONFIG[status]?.label || status;
 };
 
 const cardStyle = {
@@ -40,6 +52,7 @@ const groupIntoPurchases = (orders) => {
 const MyOrdersPage = () => {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -112,7 +125,7 @@ const MyOrdersPage = () => {
       setReviewModal(null);
     } catch (err) {
       const msg = err.response?.data?.message || 'Error al enviar valoración';
-      alert(msg);
+      toast(msg, 'error');
     } finally {
       setReviewSubmitting(false);
     }
@@ -126,7 +139,10 @@ const MyOrdersPage = () => {
   });
 
   // Apply filter then group
-  const filteredOrders = filter === 'all' ? orders : orders.filter((o) => o.status === filter);
+  const filteredOrders = filter === 'all' ? orders : orders.filter((o) => {
+    if (filter === 'in_transit') return o.status === 'in_transit' || o.status === 'on_the_way';
+    return o.status === filter;
+  });
   const purchases = groupIntoPurchases(filteredOrders);
 
   const togglePurchase = (key) => {
@@ -160,10 +176,12 @@ const MyOrdersPage = () => {
             <ul>
               <li><strong>🟡 Pago Pendiente:</strong> Tu pedido fue creado pero aún no se confirma el pago.</li>
               <li><strong>🟠 Pendiente:</strong> Pago confirmado, la tienda está por prepararlo.</li>
-              <li><strong>🟣 Preparando:</strong> La tienda está preparando tu pedido.</li>
-              <li><strong>🟣 Listo para enviar:</strong> Tu pedido está empacado y espera al repartidor.</li>
-              <li><strong>🟠 En camino:</strong> Un rider está llevando tu pedido a tu dirección.</li>
+              <li><strong>� Preparando:</strong> La tienda está preparando tu pedido.</li>
+              <li><strong>🟣 Listo para enviar / retirar:</strong> Tu pedido está empacado. Si es envío espera al repartidor; si es retiro en tienda ya puedes pasar a buscarlo.</li>
+              <li><strong>🟠 En camino:</strong> Un rider está llevando tu pedido a tu dirección (solo envío a domicilio).</li>
               <li><strong>✅ Entregado:</strong> ¡Tu pedido fue entregado exitosamente!</li>
+              <li><strong>❌ Cancelado:</strong> El pedido fue cancelado.</li>
+              <li><strong>⬜ Reembolsado:</strong> Se realizó el reembolso del pedido.</li>
             </ul>
             <p><strong>Acciones disponibles:</strong></p>
             <ul>
@@ -183,7 +201,7 @@ const MyOrdersPage = () => {
           <button onClick={() => setFilter('all')} style={filterBtnStyle(filter === 'all')}>
             Todos
           </button>
-          {Object.entries(STATUS_CONFIG).filter(([k]) => k !== 'payment_pending').map(([key, val]) => (
+          {Object.entries(STATUS_CONFIG).filter(([k]) => k !== 'payment_pending' && k !== 'on_the_way').map(([key, val]) => (
             <button key={key} onClick={() => setFilter(key)} style={filterBtnStyle(filter === key)}>
               {val.label}
             </button>
@@ -221,6 +239,7 @@ const MyOrdersPage = () => {
               const isExpanded = expandedPurchases[purchase.key] !== false; // expanded by default
               const totalAmount = purchase.orders.reduce((s, o) => s + parseFloat(o.total_amount || 0), 0);
               const totalDelivery = purchase.orders.reduce((s, o) => s + parseFloat(o.delivery_fee || 0), 0);
+              const totalDiscount = purchase.orders.reduce((s, o) => s + parseFloat(o.discount_amount || 0), 0);
               const totalItems = purchase.orders.reduce((s, o) => s + (o.items?.reduce((si, i) => si + parseInt(i.quantity), 0) || 0), 0);
               const allPaid = purchase.orders.every(o => o.payment_status === 'paid');
               const mainMethod = purchase.orders[0]?.delivery_method;
@@ -261,8 +280,11 @@ const MyOrdersPage = () => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontWeight: 800, fontSize: '18px', color: '#00A8E8' }}>
-                            {formatPrice(totalAmount + totalDelivery)}
+                            {formatPrice(totalAmount + totalDelivery - totalDiscount)}
                           </div>
+                          {totalDiscount > 0 && (
+                            <span style={{ fontSize: '11px', fontWeight: 600, color: '#22C55E' }}>🏷️ -{formatPrice(totalDiscount)}</span>
+                          )}
                           {allPaid && (
                             <span style={{ fontSize: '11px', fontWeight: 700, color: '#22C55E' }}>✅ Pagado</span>
                           )}
@@ -304,10 +326,79 @@ const MyOrdersPage = () => {
                                   fontSize: '11px', fontWeight: 700,
                                 }}>
                                   <StatusIcon size={12} />
-                                  {status.label}
+                                  {getStatusLabel(order.status, order.delivery_method)}
                                 </div>
                               </div>
                             </div>
+
+                            {/* Order Timeline */}
+                            {(() => {
+                              const isPickup = order.delivery_method === 'pickup';
+                              const TIMELINE_STEPS = isPickup ? [
+                                { key: 'pending', label: 'Pedido creado', icon: Clock },
+                                { key: 'processing', label: 'Preparando', icon: Package },
+                                { key: 'ready_for_pickup', label: 'Listo para retirar', icon: Package },
+                                { key: 'delivered', label: 'Entregado', icon: CheckCircle2 },
+                              ] : [
+                                { key: 'pending', label: 'Pedido creado', icon: Clock },
+                                { key: 'processing', label: 'Preparando', icon: Package },
+                                { key: 'ready_for_pickup', label: 'Listo para enviar', icon: Package },
+                                { key: 'rider_assigned', label: 'Asignado a Rider', icon: Truck },
+                                { key: 'on_the_way', label: 'En camino', icon: Truck },
+                                { key: 'delivered', label: 'Entregado', icon: CheckCircle2 },
+                              ];
+                              const statusOrder = isPickup
+                                ? ['pending', 'payment_pending', 'processing', 'ready_for_pickup', 'delivered']
+                                : ['pending', 'payment_pending', 'processing', 'ready_for_pickup', 'rider_assigned', 'on_the_way', 'delivered'];
+                              const cancelled = order.status === 'cancelled';
+                              const currentIdx = statusOrder.indexOf(order.status);
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0', margin: '12px 0 10px', overflow: 'hidden' }}>
+                                  {TIMELINE_STEPS.map((step, i) => {
+                                    const stepIdx = statusOrder.indexOf(step.key);
+                                    const isActive = !cancelled && currentIdx >= stepIdx;
+                                    const isCurrent = !cancelled && order.status === step.key;
+                                    const StepIcon = step.icon;
+                                    return (
+                                      <React.Fragment key={step.key}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 auto', minWidth: '52px' }}>
+                                          <div style={{
+                                            width: '24px', height: '24px', borderRadius: '50%',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            background: cancelled ? '#fecaca' : isActive ? '#00A8E8' : '#e5e7eb',
+                                            boxShadow: isCurrent ? '0 0 0 3px rgba(0,168,232,0.25)' : 'none',
+                                            transition: 'all 0.3s',
+                                          }}>
+                                            <StepIcon size={12} color={cancelled ? '#ef4444' : isActive ? '#fff' : '#9ca3af'} />
+                                          </div>
+                                          <span style={{
+                                            fontSize: '9px', fontWeight: isCurrent ? 800 : 600, marginTop: '3px',
+                                            color: cancelled ? '#ef4444' : isActive ? '#00A8E8' : '#9ca3af',
+                                            textAlign: 'center', lineHeight: '1.1', maxWidth: '60px',
+                                          }}>{step.label}</span>
+                                        </div>
+                                        {i < TIMELINE_STEPS.length - 1 && (
+                                          <div style={{
+                                            flex: '1', height: '2px', minWidth: '12px',
+                                            background: !cancelled && currentIdx > stepIdx ? '#00A8E8' : '#e5e7eb',
+                                            borderRadius: '1px', marginTop: '-12px',
+                                            transition: 'background 0.3s',
+                                          }} />
+                                        )}
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                  {cancelled && (
+                                    <div style={{ marginLeft: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                      <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <X size={12} color="#fff" />
+                                      </div>
+                                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#ef4444', marginTop: '3px' }}>Cancelado</span>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
 
                             {/* Order items */}
                             {order.items && order.items.length > 0 && (
@@ -330,8 +421,11 @@ const MyOrdersPage = () => {
 
                             {/* Order footer */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '13px' }}>
-                              <div style={{ display: 'flex', gap: '16px', color: '#6b7280' }}>
+                              <div style={{ display: 'flex', gap: '16px', color: '#6b7280', flexWrap: 'wrap' }}>
                                 <span>Subtotal: <strong style={{ color: '#1f2937' }}>{formatPrice(order.total_amount)}</strong></span>
+                                {parseFloat(order.discount_amount || 0) > 0 && (
+                                  <span style={{ color: '#22C55E' }}>🏷️ Desc{order.coupon_code ? ` (${order.coupon_code})` : ''}: <strong>-{formatPrice(order.discount_amount)}</strong></span>
+                                )}
                                 <span>Envío: <strong style={{ color: '#1f2937' }}>{parseFloat(order.delivery_fee) > 0 ? formatPrice(order.delivery_fee) : 'Gratis'}</strong></span>
                               </div>
                               {/* Invoice download */}
@@ -363,6 +457,53 @@ const MyOrdersPage = () => {
                                 fontSize: '12px', color: '#ea580c', fontWeight: 600,
                               }}>
                                 <MapPin size={14} /> Tu pedido está en camino 🚚
+                              </div>
+                            )}
+
+                            {/* Rider info + estimated time for delivery orders */}
+                            {order.delivery_method === 'delivery' && order.rider_id && order.rider_response === 'accepted' && (
+                              <div style={{
+                                marginTop: '10px', background: '#f0fdf4', borderRadius: '12px',
+                                padding: '12px 16px', border: '1px solid #bbf7d0',
+                                display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+                              }}>
+                                <div style={{
+                                  width: 36, height: 36, borderRadius: '50%', background: '#22C55E',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                }}>
+                                  <Truck size={18} color="#fff" />
+                                </div>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ fontSize: '13px', fontWeight: 700, color: '#166534', margin: 0 }}>
+                                    🚴 {order.rider_name || 'Rider asignado'}
+                                  </p>
+                                  <p style={{ fontSize: '11px', color: '#15803d', margin: '2px 0 0' }}>
+                                    Tu rider aceptó el pedido y va en camino a recogerlo
+                                  </p>
+                                </div>
+                                {order.estimated_minutes > 0 && (
+                                  <div style={{
+                                    background: '#fff', borderRadius: '10px', padding: '6px 14px',
+                                    border: '1px solid #bbf7d0', textAlign: 'center',
+                                  }}>
+                                    <p style={{ fontSize: '18px', fontWeight: 900, color: '#00A8E8', margin: 0 }}>
+                                      ~{order.estimated_minutes}
+                                    </p>
+                                    <p style={{ fontSize: '10px', color: '#6b7280', margin: 0, fontWeight: 600 }}>minutos</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Rider pending — waiting for acceptance */}
+                            {order.delivery_method === 'delivery' && order.rider_id && order.rider_response === 'pending' && !['delivered','cancelled','refunded'].includes(order.status) && (
+                              <div style={{
+                                marginTop: '10px', background: '#fffbeb', borderRadius: '10px',
+                                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px',
+                                fontSize: '12px', color: '#92400e', fontWeight: 600,
+                                border: '1px solid #fde68a',
+                              }}>
+                                <Clock size={14} /> Se asignó un rider a tu pedido, esperando confirmación...
                               </div>
                             )}
 

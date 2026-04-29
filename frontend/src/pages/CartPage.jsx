@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, ShoppingCart, ArrowLeft, Truck, Shield, Store, MapPin, Tag, X, CheckCircle, Package, CreditCard, Home, Building2, Building, Search, ChevronDown } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSite } from '../context/SiteContext';
-import { createOrder, validateCoupon, calculateDeliveryFee, getProductDetail } from '../services/api';
+import { createOrder, validateCoupon, calculateDeliveryFee, getProductDetail, getMyAddresses, sendPurchaseConfirmation } from '../services/api';
+import { useToast } from '../components/Toast';
 import CHILE_REGIONS from '../data/chileRegions';
 import { getProductImage } from '../utils/productImages';
 
@@ -190,6 +191,7 @@ const CartPage = () => {
   const { isAuthenticated, user } = useAuth();
   const site = useSite();
   const navigate = useNavigate();
+  const toast = useToast();
   const deliveryDisabled = site.module_delivery === false;
   const [deliveryMethod, setDeliveryMethod] = useState(deliveryDisabled ? 'pickup' : 'delivery');
   const [ordering, setOrdering] = useState(false);
@@ -197,6 +199,7 @@ const CartPage = () => {
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
+  const [customerNote, setCustomerNote] = useState('');
   const [orderConfirm, setOrderConfirm] = useState(null);
 
   // ── Detailed address state ──
@@ -211,20 +214,48 @@ const CartPage = () => {
   const suggestionsRef = useRef(null);
   const searchTimerRef = useRef(null);
 
+  // ── Saved addresses from profile ──
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null); // null = manual entry
+  const [showAddressSelector, setShowAddressSelector] = useState(false);
+
   // ── Shipping cost state ──
   const [calculatedShipping, setCalculatedShipping] = useState(null); // null = not calculated yet
   const [shippingLoading, setShippingLoading] = useState(false);
   const [deliveryDistanceKm, setDeliveryDistanceKm] = useState(0);
 
-  const isTestUser = user?.email?.toLowerCase() === 'lmgm.0303@gmail.com';
+  const testEmails = (import.meta.env.VITE_TEST_BYPASS_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+  const isTestUser = import.meta.env.DEV && testEmails.includes(user?.email?.toLowerCase());
   const freeShippingMin = site?.free_shipping_min || 39990;
 
   const formatPrice = (price) => `$${parseInt(price).toLocaleString('es-CL')}`;
 
   const isPickup = deliveryMethod === 'pickup';
-  const isFreeShipping = !isPickup && subtotal >= freeShippingMin;
-  const shippingCost = isPickup ? 0 : (isFreeShipping ? 0 : (calculatedShipping ?? (site?.delivery_standard_cost || 2990)));
-  const total = subtotal - discountAmount + shippingCost;
+
+  // ── Per-vendor shipping calculation ──
+  const byVendorCart = useMemo(() => {
+    const grouped = {};
+    items.forEach(i => {
+      const vid = i.vendor_id || 0;
+      if (!grouped[vid]) grouped[vid] = { items: [], subtotal: 0, store_name: i.store_name || i.brand || 'Tienda' };
+      grouped[vid].items.push(i);
+      grouped[vid].subtotal += parseFloat(i.price) * i.quantity;
+    });
+    return grouped;
+  }, [items]);
+
+  const vendorShippingMap = useMemo(() => {
+    if (isPickup) return {};
+    const map = {};
+    const baseFee = calculatedShipping ?? (site?.delivery_standard_cost || 2990);
+    Object.entries(byVendorCart).forEach(([vid, v]) => {
+      map[vid] = v.subtotal >= freeShippingMin ? 0 : baseFee;
+    });
+    return map;
+  }, [byVendorCart, freeShippingMin, isPickup, calculatedShipping, site]);
+
+  const totalShipping = isPickup ? 0 : Object.values(vendorShippingMap).reduce((s, f) => s + f, 0);
+  const total = subtotal - discountAmount + totalShipping;
 
   // Comunas for selected region
   const selectedRegion = CHILE_REGIONS.find(r => r.name === addressRegion);
@@ -287,9 +318,50 @@ const CartPage = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ── Load saved addresses from profile ──
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getMyAddresses().then(res => {
+      const addrs = Array.isArray(res.data) ? res.data : [];
+      setSavedAddresses(addrs);
+      // Auto-select default address
+      const def = addrs.find(a => a.isDefault);
+      if (def) {
+        setSelectedAddressId(def.id);
+        setAddressRegion(def.region);
+        setAddressComuna(def.comuna);
+        setAddressStreet(def.streetAddress);
+        setAddressDetail(def.detail || '');
+        setAddressType(def.addressType || 'casa');
+        if (def.lat && def.lng) calculateShipping(def.lat, def.lng);
+      }
+    }).catch(() => {});
+  }, [isAuthenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const selectSavedAddress = (addr) => {
+    setSelectedAddressId(addr.id);
+    setAddressRegion(addr.region);
+    setAddressComuna(addr.comuna);
+    setAddressStreet(addr.streetAddress);
+    setAddressDetail(addr.detail || '');
+    setAddressType(addr.addressType || 'casa');
+    setShowAddressSelector(false);
+    if (addr.lat && addr.lng) calculateShipping(addr.lat, addr.lng);
+  };
+
+  const switchToManualAddress = () => {
+    setSelectedAddressId(null);
+    setAddressRegion('');
+    setAddressComuna('');
+    setAddressStreet('');
+    setAddressDetail('');
+    setAddressType('casa');
+    setCalculatedShipping(null);
+    setShowAddressSelector(false);
+  };
+
   // ── Calculate shipping fee from API ──
   const calculateShipping = async (lat, lon) => {
-    if (isFreeShipping) { setCalculatedShipping(0); return; }
     setShippingLoading(true);
     try {
       // Approximate distance: PetsGo HQ in Santiago center (-33.4489, -70.6693)
@@ -312,9 +384,11 @@ const CartPage = () => {
     if (isPickup) { setCalculatedShipping(null); setDeliveryDistanceKm(0); }
   }, [isPickup]);
 
-  // Recalculate free shipping when subtotal changes
+  // Recalculate when subtotal changes
   useEffect(() => {
-    if (!isPickup && subtotal >= freeShippingMin) setCalculatedShipping(0);
+    if (!isPickup && calculatedShipping === 0 && Object.values(vendorShippingMap).some(f => f > 0)) {
+      // Some vendors need shipping — don't override
+    }
   }, [subtotal, freeShippingMin, isPickup]);
 
   const vendorIds = [...new Set(items.map(i => i.vendor_id).filter(Boolean))];
@@ -541,6 +615,88 @@ const CartPage = () => {
                   <MapPin size={14} /> Dirección de envío
                 </label>
 
+                {/* ── Saved Address Selector ── */}
+                {savedAddresses.length > 0 && selectedAddressId && (
+                  <div style={{ marginBottom: '12px' }}>
+                    {/* Selected address summary */}
+                    {(() => {
+                      const sel = savedAddresses.find(a => a.id === selectedAddressId);
+                      if (!sel) return null;
+                      const TypeIcon = { casa: Home, departamento: Building2, oficina: Building }[sel.addressType] || Home;
+                      return (
+                        <div style={{
+                          background: '#f0fdf4', border: '2px solid #22c55e', borderRadius: '12px',
+                          padding: '12px 14px', display: 'flex', alignItems: 'center', gap: '12px',
+                        }}>
+                          <TypeIcon size={18} color="#16a34a" />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontWeight: 700, fontSize: '13px', color: '#2F3A40', margin: 0 }}>
+                              {sel.alias || 'Dirección guardada'}
+                              {sel.isDefault && <span style={{ fontSize: '10px', color: '#16a34a', marginLeft: '6px' }}>⭐ Predeterminada</span>}
+                            </p>
+                            <p style={{ fontSize: '12px', color: '#4b5563', margin: '2px 0 0' }}>
+                              {sel.streetAddress}{sel.detail ? `, ${sel.detail}` : ''} — {sel.comuna}, {sel.region}
+                            </p>
+                          </div>
+                          <button onClick={() => setShowAddressSelector(!showAddressSelector)} style={{
+                            background: '#fff', border: '1.5px solid #d1d5db', borderRadius: '8px',
+                            padding: '6px 12px', fontSize: '11px', fontWeight: 700, color: '#00A8E8',
+                            cursor: 'pointer', whiteSpace: 'nowrap', fontFamily: 'Poppins, sans-serif',
+                          }}>
+                            Cambiar
+                          </button>
+                        </div>
+                      );
+                    })()}
+                    {/* Address picker dropdown */}
+                    {showAddressSelector && (
+                      <div style={{
+                        marginTop: '8px', background: '#fff', border: '1.5px solid #e5e7eb', borderRadius: '12px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.1)', overflow: 'hidden',
+                      }}>
+                        {savedAddresses.map(addr => {
+                          const AIcon = { casa: Home, departamento: Building2, oficina: Building }[addr.addressType] || Home;
+                          return (
+                            <button key={addr.id} onClick={() => selectSavedAddress(addr)} style={{
+                              width: '100%', padding: '10px 14px', border: 'none',
+                              background: addr.id === selectedAddressId ? '#f0faff' : '#fff',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                              borderBottom: '1px solid #f3f4f6', textAlign: 'left', fontFamily: 'Poppins, sans-serif',
+                              transition: 'background 0.15s',
+                            }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#f0faff'}
+                              onMouseLeave={e => e.currentTarget.style.background = addr.id === selectedAddressId ? '#f0faff' : '#fff'}>
+                              <AIcon size={14} color="#0077b6" />
+                              <div style={{ flex: 1 }}>
+                                <span style={{ fontWeight: 700, fontSize: '12px', color: '#2F3A40' }}>
+                                  {addr.alias || 'Sin nombre'} {addr.isDefault ? '⭐' : ''}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#6b7280', display: 'block' }}>
+                                  {addr.streetAddress}, {addr.comuna}
+                                </span>
+                              </div>
+                              {addr.id === selectedAddressId && <CheckCircle size={16} color="#00A8E8" />}
+                            </button>
+                          );
+                        })}
+                        <button onClick={switchToManualAddress} style={{
+                          width: '100%', padding: '10px 14px', border: 'none', background: '#fff',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                          fontFamily: 'Poppins, sans-serif', fontSize: '12px', fontWeight: 700, color: '#00A8E8',
+                        }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0faff'}
+                          onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
+                          <Plus size={14} /> Ingresar nueva dirección
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Manual address form — show when no saved address selected */}
+                {(!selectedAddressId || savedAddresses.length === 0) && (
+                  <>
+
                 {/* Tipo de dirección */}
                 <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
                   {[
@@ -666,19 +822,49 @@ const CartPage = () => {
                   onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
                 />
 
-                {/* Shipping info badges */}
-                {isFreeShipping && (
+                {/* Back to saved addresses link */}
+                {savedAddresses.length > 0 && (
+                  <button onClick={() => {
+                    const def = savedAddresses.find(a => a.isDefault) || savedAddresses[0];
+                    if (def) selectSavedAddress(def);
+                  }} style={{
+                    marginTop: '8px', background: 'none', border: 'none', color: '#00A8E8',
+                    fontSize: '12px', fontWeight: 600, cursor: 'pointer', padding: 0, fontFamily: 'Poppins, sans-serif',
+                  }}>
+                    ← Usar dirección guardada
+                  </button>
+                )}
+
+                  </>
+                )}
+
+                {/* Shipping info badges — per vendor */}
+                {!isPickup && Object.keys(byVendorCart).length > 1 && (
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {Object.entries(byVendorCart).map(([vid, v]) => {
+                      const fee = vendorShippingMap[vid] ?? 0;
+                      const isFree = fee === 0;
+                      return (
+                        <div key={vid} style={{ padding: '6px 10px', background: isFree ? '#F0FDF4' : '#FFF7ED', borderRadius: '6px', fontSize: '11px', color: isFree ? '#16a34a' : '#c2410c', fontWeight: 500, border: `1px solid ${isFree ? '#bbf7d0' : '#fed7aa'}`, display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{v.store_name}</span>
+                          <span style={{ fontWeight: 700 }}>{isFree ? '¡Gratis!' : formatPrice(fee)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {!isPickup && Object.keys(byVendorCart).length <= 1 && totalShipping === 0 && subtotal > 0 && (
                   <div style={{ marginTop: '8px', padding: '8px 12px', background: '#F0FDF4', borderRadius: '8px', fontSize: '12px', color: '#16a34a', fontWeight: 600, border: '1px solid #bbf7d0' }}>
                     🎉 ¡Envío GRATIS! Tu compra supera {formatPrice(freeShippingMin)}
                   </div>
                 )}
-                {!isFreeShipping && calculatedShipping !== null && calculatedShipping > 0 && (
+                {!isPickup && totalShipping > 0 && Object.keys(byVendorCart).length <= 1 && calculatedShipping !== null && calculatedShipping > 0 && (
                   <div style={{ marginTop: '8px', padding: '8px 12px', background: '#f0faff', borderRadius: '8px', fontSize: '12px', color: '#0077b6', fontWeight: 500, border: '1px solid #d0ecf9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>🚚 Costo envío calculado ({deliveryDistanceKm} km)</span>
                     <span style={{ fontWeight: 700 }}>{formatPrice(calculatedShipping)}</span>
                   </div>
                 )}
-                {!isFreeShipping && subtotal > 0 && (
+                {!isPickup && totalShipping > 0 && Object.keys(byVendorCart).length <= 1 && subtotal > 0 && subtotal < freeShippingMin && (
                   <div style={{ marginTop: '6px', fontSize: '11px', color: '#9ca3af' }}>
                     💡 Agrega {formatPrice(freeShippingMin - subtotal)} más para envío gratis
                   </div>
@@ -751,10 +937,28 @@ const CartPage = () => {
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: '#6b7280' }}>Envío</span>
-                <span style={{ color: shippingCost === 0 ? '#16a34a' : '#1f2937', fontWeight: shippingCost === 0 ? 700 : 500 }}>
-                  {shippingCost === 0 ? '¡Gratis!' : formatPrice(shippingCost)}
+                <span style={{ color: totalShipping === 0 ? '#16a34a' : '#1f2937', fontWeight: totalShipping === 0 ? 700 : 500 }}>
+                  {totalShipping === 0 ? '¡Gratis!' : formatPrice(totalShipping)}
                 </span>
               </div>
+            </div>
+
+            {/* Notas del pedido (opcional) */}
+            <div style={{ marginTop: '4px' }}>
+              <p style={{ fontSize: '13px', fontWeight: 700, color: '#374151', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                📝 Notas del pedido <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span>
+              </p>
+              <textarea
+                value={customerNote}
+                onChange={e => setCustomerNote(e.target.value)}
+                placeholder="Ej: Tocar timbre, dejar con conserje, horario preferido..."
+                maxLength={500}
+                rows={2}
+                style={{ width: '100%', padding: '10px 14px', background: '#f9fafb', borderRadius: '10px', border: '1.5px solid #e5e7eb', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box', transition: 'border 0.2s' }}
+                onFocus={e => e.target.style.borderColor = '#00A8E8'}
+                onBlur={e => e.target.style.borderColor = '#e5e7eb'}
+              />
+              <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px', textAlign: 'right' }}>{customerNote.length}/500</p>
             </div>
 
             {/* Divider */}
@@ -860,7 +1064,7 @@ const CartPage = () => {
                     const savedItems = [...items];
                     const savedSubtotal = subtotal;
                     const savedDiscount = discountAmount;
-                    const savedShipping = shippingCost;
+                    const savedShipping = totalShipping;
                     const savedTotal = total;
                     const savedMethod = deliveryMethod;
                     const savedCoupon = appliedCoupon;
@@ -870,13 +1074,16 @@ const CartPage = () => {
                     const purchaseGroup = crypto.randomUUID ? crypto.randomUUID() : `pg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
                     for (const [vendorId, vendorItems] of Object.entries(byVendor)) {
+                      // Small delay between orders to allow backend email processing
+                      if (orderResults.length > 0) await new Promise(r => setTimeout(r, 1500));
                       const vendorTotal = vendorItems.reduce((s, i) => s + parseFloat(i.price) * i.quantity, 0);
+                      const vendorFee = vendorShippingMap[vendorId] ?? 0;
                       const orderData = {
                         vendor_id: parseInt(vendorId),
                         items: vendorItems.map(i => ({ product_id: i.id, quantity: i.quantity, price: parseFloat(i.price) })),
                         total: vendorTotal,
                         delivery_method: deliveryMethod,
-                        delivery_fee: shippingCost,
+                        delivery_fee: vendorFee,
                         delivery_distance_km: deliveryDistanceKm || 0,
                         shipping_address: isPickup ? '' : fullShippingAddress,
                         shipping_region: isPickup ? '' : addressRegion,
@@ -886,6 +1093,7 @@ const CartPage = () => {
                         coupon_code: savedCoupon?.code || '',
                         payment_method: savedPayment,
                         purchase_group: purchaseGroup,
+                        customer_note: customerNote.trim() || '',
                       };
                       const { data } = await createOrder(orderData);
                       orderResults.push({
@@ -900,6 +1108,9 @@ const CartPage = () => {
                         payment_method: data.payment_method || savedPayment,
                       });
                     }
+
+                    // Send consolidated confirmation email (1 email with all orders + all invoices)
+                    try { await sendPurchaseConfirmation(purchaseGroup); } catch(e) { console.error('Error enviando email de confirmación:', e); }
 
                     clearCart();
                     setOrderConfirm({
@@ -918,7 +1129,7 @@ const CartPage = () => {
                   } catch (err) {
                     console.error('Error creando orden:', err);
                     const apiMsg = err?.response?.data?.message || err?.message || 'Error desconocido';
-                    alert(`Error al procesar tu pedido: ${apiMsg}`);
+                    toast(`Error al procesar tu pedido: ${apiMsg}`, 'error');
                   } finally { setOrdering(false); }
                 }}
                 style={{

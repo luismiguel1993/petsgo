@@ -42,10 +42,11 @@ PetsGo conecta tres actores principales:
 ### 🚴 Riders (Repartidores)
 - Se registran con sus datos personales y documentos
 - Verifican su email y suben documentación (carnet, licencia, etc.)
-- Una vez aprobados, reciben pedidos para entregar
-- Marcan el estado del despacho en tiempo real
+- Una vez aprobados, pueden tomar pedidos disponibles o recibir asignaciones del admin/tienda
+- Aceptan el pedido → recogen en tienda → marcan "En camino" → marcan "Entregado"
 - Reciben pagos semanales por sus entregas
 - Pueden trabajar en bicicleta, scooter, moto, auto o a pie
+- Toggle de disponibilidad online/offline en su dashboard
 
 ---
 
@@ -70,7 +71,7 @@ PetsGo conecta tres actores principales:
 |---|---|
 | **Panel de vendedor** | Dashboard con métricas de ventas, pedidos e inventario |
 | **Gestión de productos** | Agregar, editar, eliminar productos con fotos y stock |
-| **Gestión de pedidos** | Ver y procesar pedidos (preparando → listo → en camino → entregado) |
+| **Gestión de pedidos** | Ver y procesar pedidos (pendiente → procesando → listo para enviar → asignado a rider → en camino → entregado) |
 | **Cupones de descuento** | Crear cupones de porcentaje o monto fijo para tus clientes |
 | **Estadísticas** | Ver tus ventas diarias, semanales y mensuales |
 

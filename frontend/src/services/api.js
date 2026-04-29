@@ -136,6 +136,30 @@ export const changePassword = (currentPassword, newPassword) =>
   api.post('/profile/change-password', { currentPassword, newPassword });
 
 // ==========================================
+// DIRECCIONES DEL USUARIO (max 3)
+// ==========================================
+
+/** Obtener direcciones guardadas */
+export const getMyAddresses = () =>
+  api.get('/my-addresses');
+
+/** Crear dirección */
+export const createAddress = (data) =>
+  api.post('/my-addresses', data);
+
+/** Actualizar dirección */
+export const updateAddress = (id, data) =>
+  api.put(`/my-addresses/${id}`, data);
+
+/** Eliminar dirección */
+export const deleteAddress = (id) =>
+  api.delete(`/my-addresses/${id}`);
+
+/** Establecer dirección predeterminada */
+export const setDefaultAddress = (id) =>
+  api.put(`/my-addresses/${id}/default`);
+
+// ==========================================
 // MASCOTAS
 // ==========================================
 
@@ -169,6 +193,10 @@ export const uploadPetPhoto = (file) => {
 /** Crear pedido */
 export const createOrder = (orderData) =>
   api.post('/orders', orderData);
+
+/** Enviar email consolidado de compra */
+export const sendPurchaseConfirmation = (purchaseGroup) =>
+  api.post('/orders/send-purchase-confirmation', { purchase_group: purchaseGroup });
 
 /** Mis pedidos */
 export const getMyOrders = () =>
@@ -232,9 +260,27 @@ export const deleteVendorCoupon = (id) =>
 export const getRiderDeliveries = () =>
   api.get('/rider/deliveries');
 
+/** Entregas disponibles (sin asignar, listas para tomar) */
+export const getAvailableDeliveries = () =>
+  api.get('/rider/deliveries/available');
+
+/** Rider toma un pedido disponible (self-assign) */
+export const claimDelivery = (orderId) =>
+  api.post(`/rider/deliveries/${orderId}/claim`);
+
 /** Actualizar estado de entrega */
 export const updateDeliveryStatus = (orderId, status) =>
   api.put(`/rider/deliveries/${orderId}/status`, { status });
+
+/** Subir fotos de evidencia de entrega (1-3 fotos) */
+export const uploadDeliveryEvidence = (orderId, formData) =>
+  api.post(`/rider/deliveries/${orderId}/evidence`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+/** Rider acepta o rechaza una entrega asignada */
+export const respondDeliveryAssignment = (orderId, response) =>
+  api.put(`/rider/deliveries/${orderId}/respond`, { response });
 
 /** Documentos del rider */
 export const getRiderDocuments = () =>
@@ -249,6 +295,10 @@ export const uploadRiderDocument = (formData) =>
 /** Estado del rider */
 export const getRiderStatus = () =>
   api.get('/rider/status');
+
+/** Toggle disponibilidad del rider (online/offline) */
+export const toggleRiderAvailability = (isOnline) =>
+  api.put('/rider/availability', { is_online: isOnline });
 
 /** Perfil completo del rider */
 export const getRiderProfile = () =>
@@ -370,6 +420,133 @@ export const getModuleToggles = () =>
 
 export const updateModuleToggles = (modules) =>
   api.put('/admin/module-toggles', modules);
+
+// ==========================================
+// ADMIN: Users Management
+// ==========================================
+
+export const getAdminUsers = (params = {}) =>
+  api.get('/admin/users', { params });
+
+export const createAdminUser = (data) =>
+  api.post('/admin/users', data);
+
+export const updateAdminUser = (id, data) =>
+  api.put(`/admin/users/${id}`, data);
+
+export const deleteAdminUser = (id) =>
+  api.delete(`/admin/users/${id}`);
+
+// ==========================================
+// ADMIN: Orders Management
+// ==========================================
+
+export const getAdminOrders = (params = {}) =>
+  api.get('/admin/orders', { params });
+
+export const updateAdminOrderStatus = (id, status) =>
+  api.put(`/admin/orders/${id}/status`, { status });
+
+export const assignRiderToOrder = (orderId, riderId) =>
+  api.put(`/admin/orders/${orderId}/assign-rider`, { rider_id: riderId });
+
+// ==========================================
+// ADMIN: All Products (across vendors)
+// ==========================================
+
+export const getAdminAllProducts = (params = {}) =>
+  api.get('/admin/products', { params });
+
+export const toggleAdminAnyProduct = (id) =>
+  api.put(`/admin/products/${id}/toggle`);
+
+export const deleteAdminAnyProduct = (id) =>
+  api.delete(`/admin/products/${id}`);
+
+// ==========================================
+// ADMIN: Categories CRUD
+// ==========================================
+
+export const createAdminCategory = (data) =>
+  api.post('/admin/categories', data);
+
+export const updateAdminCategory = (id, data) =>
+  api.put(`/admin/categories/${id}`, data);
+
+export const deleteAdminCategory = (id) =>
+  api.delete(`/admin/categories/${id}`);
+
+// ==========================================
+// ADMIN: Finance
+// ==========================================
+
+export const getAdminFinance = (params = {}) =>
+  api.get('/admin/finance', { params });
+
+export const getAdminFinanceExport = (params = {}) =>
+  api.get('/admin/finance/export', { params });
+
+// ==========================================
+// ADMIN: Coupons CRUD
+// ==========================================
+
+export const getAdminCoupons = () =>
+  api.get('/admin/coupons');
+
+export const createAdminCoupon = (data) =>
+  api.post('/admin/coupons', data);
+
+export const updateAdminCoupon = (id, data) =>
+  api.put(`/admin/coupons/${id}`, data);
+
+export const deleteAdminCoupon = (id) =>
+  api.delete(`/admin/coupons/${id}`);
+
+// ==========================================
+// ADMIN: Tickets/Support
+// ==========================================
+
+export const getAdminTickets = (params = {}) =>
+  api.get('/admin/tickets', { params });
+
+export const updateAdminTicket = (id, data) =>
+  api.put(`/admin/tickets/${id}`, data);
+
+export const replyAdminTicket = (id, message, isInternal = false) =>
+  api.post(`/admin/tickets/${id}/reply`, { message, is_internal: isInternal ? 1 : 0 });
+
+// ==========================================
+// ADMIN: Plans
+// ==========================================
+
+export const getAdminPlans = () =>
+  api.get('/admin/plans');
+
+export const createAdminPlan = (data) =>
+  api.post('/admin/plans', data);
+
+export const updateAdminPlan = (id, data) =>
+  api.put(`/admin/plans/${id}`, data);
+
+// ==========================================
+// ADMIN: Settings
+// ==========================================
+
+export const getAdminSettings = () =>
+  api.get('/admin/settings');
+
+export const updateAdminSettings = (data) =>
+  api.put('/admin/settings', data);
+
+// ==========================================
+// ADMIN: Vendor/Rider Status
+// ==========================================
+
+export const updateAdminVendorStatus = (id, status, reason = '') =>
+  api.put(`/admin/vendors/${id}/status`, { status, reason });
+
+export const updateAdminRiderStatus = (id, status, reason = '') =>
+  api.put(`/admin/riders/${id}/status`, { status, reason });
 
 // ==========================================
 // VENDOR LEADS

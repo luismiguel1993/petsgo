@@ -27,6 +27,7 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [localSearch, setLocalSearch] = useState(searchTerm);
   const [searchError, setSearchError] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [selectedComuna, setSelectedComuna] = useState('Santiago Centro');
   const [comunaFilter, setComunaFilter] = useState('');
@@ -392,12 +393,45 @@ const Header = ({ onSearch, searchTerm = '', onCartToggle }) => {
                 </Link>
               )}
 
+              {/* Buscar en Móvil (ícono) */}
+              {!isRider() && (
+              <button
+                onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+                className="md:hidden p-2 hover:bg-gray-100 rounded-full"
+                title="Buscar"
+              >
+                <Search size={22} className="text-[#2F3A40]" />
+              </button>
+              )}
+
               {/* Menú Móvil */}
               <button onClick={() => setMenuOpen(!menuOpen)} className="md:hidden p-2 hover:bg-gray-100 rounded-full">
                 {menuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
             </div>
           </div>
+
+          {/* Buscador Móvil desplegable */}
+          {!isRider() && mobileSearchOpen && (
+            <div className="md:hidden px-4 pb-3">
+              <div className="relative" style={{ marginBottom: searchError ? '18px' : '0' }}>
+                <input
+                  type="text"
+                  value={localSearch}
+                  onChange={handleSearchChange}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder={searchError ? 'Ingresa un término de búsqueda' : '¿Qué estás buscando?'}
+                  className={`w-full h-11 bg-gray-50 border rounded-xl pl-10 pr-12 text-sm ${searchError ? 'border-red-400 placeholder-red-400' : 'border-gray-200 placeholder-gray-400'}`}
+                  style={{ fontFamily: 'Poppins, sans-serif' }}
+                  autoFocus
+                />
+                {searchError && <span className="absolute left-10 text-xs text-red-500 font-medium" style={{ fontFamily: 'Poppins, sans-serif', bottom: '-18px' }}>⚠ Escribe algo para buscar</span>}
+                <button onClick={handleSearchSubmit} className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-[#00A8E8] hover:bg-[#0090c7] text-white rounded-lg flex items-center justify-center transition-colors">
+                  <Search size={18} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Navegación Categorías Desktop — Oculto para riders */}
           {!isRider() && (

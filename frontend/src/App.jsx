@@ -170,6 +170,7 @@ function App() {
           <Route path="/productos" element={activeRider ? <Navigate to="/rider" /> : <Navigate to="/categoria/Todos" replace />} />
           <Route path="/producto/:id" element={activeRider ? <Navigate to="/rider" /> : <ProductDetailPage />} />
           <Route path="/carrito" element={activeRider ? <Navigate to="/rider" /> : <CartPage />} />
+          <Route path="/checkout" element={<Navigate to="/carrito" replace />} />
           <Route path="/planes" element={activeRider ? <Navigate to="/rider" /> : <PlansPage />} />
           <Route path="/centro-de-ayuda" element={<HelpCenterPage />} />
           <Route path="/terminos-y-condiciones" element={<LegalPage slug="terminos-y-condiciones" />} />

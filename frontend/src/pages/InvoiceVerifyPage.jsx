@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { CheckCircle, XCircle, Loader2, Store, User, Calendar, DollarSign, FileText, ShieldCheck, Download } from 'lucide-react';
+import { useToast } from '../components/Toast';
 
 const API_URL = import.meta.env.VITE_API_URL || '/wp-json/petsgo/v1';
 
 const InvoiceVerifyPage = () => {
   const { token } = useParams();
+  const toast = useToast();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -13,6 +15,11 @@ const InvoiceVerifyPage = () => {
   const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
+    if (!token) {
+      setError('El enlace no contiene un token de verificación válido.');
+      setLoading(false);
+      return;
+    }
     const verify = async () => {
       try {
         const res = await fetch(`${API_URL}/invoice/validate/${token}`);
@@ -50,7 +57,7 @@ const InvoiceVerifyPage = () => {
       URL.revokeObjectURL(url);
       setDownloadCount(prev => prev + 1);
     } catch {
-      alert('No se pudo descargar la boleta.');
+      toast('No se pudo descargar la boleta.', 'error');
     } finally {
       setDownloading(false);
     }

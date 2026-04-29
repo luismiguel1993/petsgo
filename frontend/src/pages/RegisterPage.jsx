@@ -18,7 +18,9 @@ const RegisterPage = () => {
     first_name: '', last_name: '', email: '', password: '', confirmPassword: '',
     id_type: 'rut', id_number: '', phone: '', birth_date: '',
     region: '', comuna: '',
+    address_street: '', address_detail: '', address_alias: '',
   });
+  const [showAddressFields, setShowAddressFields] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -153,14 +155,20 @@ const RegisterPage = () => {
 
     setLoading(true);
     try {
-      const data = await register({
+      const payload = {
         first_name: form.first_name, last_name: form.last_name,
         email: form.email, password: form.password,
         id_type: form.id_type, id_number: form.id_number,
         phone: buildFullPhone(form.phone), birth_date: form.birth_date,
         region: form.region, comuna: form.comuna,
         accept_terms: true,
-      });
+      };
+      if (form.address_street.trim()) {
+        payload.address_street = form.address_street.trim();
+        payload.address_detail = form.address_detail.trim();
+        payload.address_alias = form.address_alias.trim() || 'Mi Casa';
+      }
+      const data = await register(payload);
       setShowSuccessModal(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Error al registrar. Intenta nuevamente.');
@@ -289,6 +297,31 @@ const RegisterPage = () => {
                   {getComunas(form.region).map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
+            </div>
+
+            {/* Dirección (opcional) */}
+            <div style={{ border: '1.5px dashed #e5e7eb', borderRadius: '12px', padding: '12px 14px', background: '#fafbfc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setShowAddressFields(!showAddressFields)}>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: '#2F3A40' }}>📍 Agregar dirección de despacho <span style={{ fontWeight: 400, color: '#9ca3af' }}>(opcional)</span></span>
+                <ChevronDown size={16} style={{ color: '#9ca3af', transition: 'transform 0.2s', transform: showAddressFields ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+              </div>
+              {showAddressFields && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                  <div>
+                    <label style={labelStyle}>Alias</label>
+                    <input value={form.address_alias} onChange={handleChange('address_alias')} placeholder="Ej: Mi Casa, Oficina" style={inputStyle} maxLength={50} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Calle / Dirección</label>
+                    <input value={form.address_street} onChange={handleChange('address_street')} placeholder="Av. Providencia 1234" style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Depto / Piso / Referencia</label>
+                    <input value={form.address_detail} onChange={handleChange('address_detail')} placeholder="Depto 302, Torre B" style={inputStyle} maxLength={255} />
+                  </div>
+                  <p style={{ fontSize: '11px', color: '#9ca3af', margin: 0 }}>Se guardará como dirección predeterminada. Usa la región y comuna seleccionadas arriba.</p>
+                </div>
+              )}
             </div>
 
             {/* Contraseña */}

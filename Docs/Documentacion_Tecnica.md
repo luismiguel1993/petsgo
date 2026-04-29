@@ -15,8 +15,13 @@ El esquema extiende WordPress con tablas personalizadas. Prefijo: `wp_petsgo_`.
 
 - **wp_petsgo_vendors**: Almacena información fiscal y de perfil de las tiendas.
 - **wp_petsgo_inventory**: Catálogo de productos con stock y precio. Relacionado con `vendors`.
-- **wp_petsgo_orders**: Pedidos transaccionales. Relaciona `customer`, `vendor`, y `rider`.
+- **wp_petsgo_orders**: Pedidos transaccionales. Relaciona `customer`, `vendor`, y `rider`. Incluye campos de asignación: `rider_response`, `rider_assigned_at`, `rider_responded_at`, `estimated_minutes`, `delivery_method`.
 - **wp_petsgo_subscriptions**: Planes de pago para vendedores (SaaS).
+
+### Flujo de estados de pedido
+- **Delivery:** `pending` → `processing` → `ready_for_pickup` → `rider_assigned` → `on_the_way` → `delivered`
+- **Retiro en tienda:** `pending` → `processing` → `ready_for_pickup` → `delivered`
+- También: `cancelled`, `refunded`
 
 ## 3. API REST Endpoints
 La API se encuentra en el namespace `/wp-json/petsgo/v1/`.

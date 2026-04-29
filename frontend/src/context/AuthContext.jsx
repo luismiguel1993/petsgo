@@ -59,6 +59,8 @@ export const AuthProvider = ({ children }) => {
     };
     localStorage.setItem('petsgo_token', data.token);
     localStorage.setItem('petsgo_user', JSON.stringify(userData));
+    // Limpiar chat de invitado al hacer login (BUG-CH-043)
+    localStorage.removeItem('petsgo_guest_chat');
     setUser(userData);
     return userData;
   };

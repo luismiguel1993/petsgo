@@ -1,26 +1,33 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Navigate } from 'react-router-dom';
 import {
-  Truck, Package, MapPin, CheckCircle2, Navigation, Upload, Star, Shield,
+  Truck, Package, MapPin, CheckCircle2, Navigation, Star, Shield,
   AlertTriangle, DollarSign, User, CreditCard, TrendingUp, Clock, Calendar,
-  ChevronRight, Banknote, Wallet, Eye, EyeOff, Save, RefreshCw,
+  ChevronRight, Banknote, Wallet, Eye, EyeOff, Save, RefreshCw, ExternalLink,
+  Camera, X, ImagePlus,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
-  getRiderDeliveries, updateDeliveryStatus, getRiderDocuments, uploadRiderDocument,
+  getRiderDeliveries, updateDeliveryStatus, respondDeliveryAssignment, getRiderDocuments, uploadRiderDocument,
   getRiderRatings, getRiderStatus, getRiderProfile, updateRiderProfile, getRiderEarnings,
-  getRiderStats,
+  getRiderStats, changePassword, toggleRiderAvailability, getAvailableDeliveries, claimDelivery,
+  uploadDeliveryEvidence,
 } from '../services/api';
 import { Download, BarChart3 } from 'lucide-react';
 import huellaPng from '../assets/huella.png';
 import InfoGuideButton from '../components/InfoGuideButton';
+import { useToast } from '../components/Toast';
+import FileUploadBox from '../components/FileUploadBox';
 import { REGIONES, getComunas, formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName, validateRut, formatRut } from '../utils/chile';
 
 /* ───── constants ───── */
 const STATUS_CONFIG = {
-  ready_for_pickup: { label: 'Recoger', color: '#8B5CF6', next: 'in_transit', action: 'Iniciar Entrega' },
-  in_transit:       { label: 'En camino', color: '#F97316', next: 'delivered', action: 'Marcar Entregado' },
-  delivered:        { label: 'Entregado', color: '#22C55E', next: null, action: null },
+  pending:            { label: 'Pendiente', color: '#F59E0B', next: null, action: null },
+  processing:         { label: 'Procesando', color: '#3B82F6', next: null, action: null },
+  ready_for_pickup:   { label: 'Recoger', color: '#8B5CF6', next: 'in_transit', action: 'Iniciar Entrega' },
+  rider_assigned:     { label: 'Asignado', color: '#0EA5E9', next: 'in_transit', action: 'Iniciar Entrega' },
+  in_transit:         { label: 'En camino', color: '#F97316', next: 'delivered', action: 'Marcar Entregado' },
+  delivered:          { label: 'Entregado', color: '#22C55E', next: null, action: null },
 };
 
 const DOC_TYPES = {
@@ -49,11 +56,7 @@ const ACCOUNT_TYPES = [
   { value: 'ahorro',    label: 'Cuenta de Ahorro' },
 ];
 
-const DEMO_DELIVERIES = [
-  { id: 1051, status: 'ready_for_pickup', store_name: 'PetShop Las Condes', customer_name: 'María López', address: 'Av. Las Condes 5678, Depto 302', total_amount: 52990, delivery_fee: 2990, created_at: '2026-02-10T08:30:00Z' },
-  { id: 1052, status: 'in_transit', store_name: 'La Huella Store', customer_name: 'Carlos Muñoz', address: 'Calle Sucre 1234, Providencia', total_amount: 38990, delivery_fee: 2990, created_at: '2026-02-10T09:15:00Z' },
-  { id: 1048, status: 'delivered', store_name: 'Mundo Animal Centro', customer_name: 'Ana Torres', address: 'Av. Matta 890, Santiago', total_amount: 91980, delivery_fee: 2990, created_at: '2026-02-09T14:00:00Z' },
-];
+
 
 /* ───── helpers ───── */
 const fmt = (v) => `$${parseInt(v || 0).toLocaleString('es-CL')}`;
@@ -71,7 +74,7 @@ const StatBox = ({ label, value, sub, color, icon: Icon }) => (
       {Icon && <div style={{ width: 36, height: 36, borderRadius: 10, background: color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon size={18} color={color} /></div>}
       <div>
         <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase' }}>{label}</span>
-        <p style={{ fontSize: 22, fontWeight: 900, color: color || '#2F3A40', margin: '2px 0 0' }}>{value}</p>
+        <p style={{ fontSize: 20, fontWeight: 900, color: color || '#2F3A40', margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</p>
         {sub && <span style={{ fontSize: 11, color: '#9ca3af' }}>{sub}</span>}
       </div>
     </div>
@@ -81,6 +84,7 @@ const StatBox = ({ label, value, sub, color, icon: Icon }) => (
 /* ============================================================ */
 const RiderDashboard = () => {
   const { isAuthenticated, isRider, isAdmin, user, loading: authLoading } = useAuth();
+  const toast = useToast();
   const [tab, setTab] = useState('home');
   const [loading, setLoading] = useState(true);
 
@@ -97,16 +101,31 @@ const RiderDashboard = () => {
   const [profileMsg, setProfileMsg] = useState('');
   const [showAccount, setShowAccount] = useState(false);
 
+  /* ── password change ── */
+  const [showPassSection, setShowPassSection] = useState(false);
+  const [passForm, setPassForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [savingPass, setSavingPass] = useState(false);
+  const [passMsg, setPassMsg] = useState('');
+
   /* ── deliveries ── */
   const [deliveries, setDeliveries] = useState([]);
+  const [availableOrders, setAvailableOrders] = useState([]);
+  const [claimingOrder, setClaimingOrder] = useState(null);
   const [filter, setFilter] = useState('active');
+
+  /* ── evidence modal ── */
+  const [evidenceModal, setEvidenceModal] = useState(null); // orderId when open
+  const [evidencePhotos, setEvidencePhotos] = useState([]); // [{file, preview}]
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
 
   /* ── documents ── */
   const [documents, setDocuments] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState('');
-  const fileInputRef = useRef(null);
-  const [selectedDocType, setSelectedDocType] = useState('');
+
+  /* ── availability ── */
+  const [isOnline, setIsOnline] = useState(false);
+  const [togglingOnline, setTogglingOnline] = useState(false);
 
   /* ── ratings ── */
   const [ratings, setRatings] = useState([]);
@@ -141,6 +160,7 @@ const RiderDashboard = () => {
       setAvgRating(data.average_rating);
       setIdType(data.id_type || '');
       setIdNumber(data.id_number || '');
+      setIsOnline(!!data.is_online);
       setExpiryAlerts(data.expiry_alerts || []);
       if (data.rider_status === 'pending_docs' || data.rider_status === 'suspended') setTab('documents');
     } catch { /* keep defaults */ }
@@ -168,10 +188,16 @@ const RiderDashboard = () => {
     setLoading(true);
     try {
       const { data } = await getRiderDeliveries();
-      const d = Array.isArray(data) ? data : [];
-      setDeliveries(d.length > 0 ? d : DEMO_DELIVERIES);
-    } catch { setDeliveries(DEMO_DELIVERIES); }
+      setDeliveries(Array.isArray(data) ? data : []);
+    } catch { setDeliveries([]); }
     finally { setLoading(false); }
+  }, []);
+
+  const loadAvailableOrders = useCallback(async () => {
+    try {
+      const { data } = await getAvailableDeliveries();
+      setAvailableOrders(Array.isArray(data) ? data : []);
+    } catch { setAvailableOrders([]); }
   }, []);
 
   const loadDocuments = useCallback(async () => {
@@ -210,49 +236,148 @@ const RiderDashboard = () => {
     loadProfile();
   }, [loadStatus, loadProfile]);
 
-  /* ── Forzar tab documentos cuando pending_docs ── */
+  /* ── Forzar tab documentos cuando pending_docs (permite perfil) ── */
   useEffect(() => {
-    if (riderStatus === 'pending_docs' && tab !== 'documents') {
+    if (riderStatus === 'pending_docs' && tab !== 'documents' && tab !== 'profile') {
       setTab('documents');
     }
   }, [riderStatus, tab]);
 
   /* ── tab-based loading ── */
   useEffect(() => {
-    if (tab === 'home' && riderStatus === 'approved') { loadDeliveries(); loadEarnings(); }
-    else if (tab === 'deliveries' && riderStatus === 'approved') loadDeliveries();
+    if (tab === 'home' && riderStatus === 'approved') { loadDeliveries(); loadEarnings(); if (isOnline) loadAvailableOrders(); }
+    else if (tab === 'deliveries' && riderStatus === 'approved') { loadDeliveries(); if (isOnline) loadAvailableOrders(); }
     else if (tab === 'documents') loadDocuments();
     else if (tab === 'ratings' && riderStatus === 'approved') loadRatings();
     else if (tab === 'earnings' && riderStatus === 'approved') loadEarnings();
     else if (tab === 'profile') loadProfile();
-  }, [tab, riderStatus, loadDeliveries, loadDocuments, loadRatings, loadEarnings, loadProfile]);
+  }, [tab, riderStatus, isOnline, loadDeliveries, loadAvailableOrders, loadDocuments, loadRatings, loadEarnings, loadProfile]);
 
   /* ── auth guard ── */
   if (authLoading) return null;
   if (!isAuthenticated || (!isRider() && !isAdmin())) return <Navigate to="/login" />;
 
   /* ────────────── handlers ────────────── */
+  const [updatingStatus, setUpdatingStatus] = useState(null);
+
   const handleStatusUpdate = async (orderId, newStatus) => {
-    try { await updateDeliveryStatus(orderId, newStatus); loadDeliveries(); }
-    catch { alert('Error actualizando estado de entrega'); }
+    if (updatingStatus) return;
+    // For delivered, open evidence modal instead
+    if (newStatus === 'delivered') {
+      setEvidencePhotos([]);
+      setEvidenceModal(orderId);
+      return;
+    }
+    setUpdatingStatus(orderId);
+    try {
+      await updateDeliveryStatus(orderId, newStatus);
+      const labels = { in_transit: '🚀 ¡Entrega iniciada!', delivered: '✅ ¡Pedido entregado!' };
+      toast(labels[newStatus] || 'Estado actualizado', 'success');
+      setDeliveries(prev => prev.map(d => d.id === orderId ? { ...d, status: newStatus } : d));
+      setTimeout(() => loadDeliveries(), 800);
+    } catch (err) {
+      toast(err.response?.data?.message || 'Error actualizando estado de entrega', 'error');
+    } finally { setUpdatingStatus(null); }
   };
 
-  const handleDocUpload = async (docType) => {
-    if (!fileInputRef.current?.files?.[0]) return;
-    setUploading(true); setUploadMsg('');
+  const handleEvidencePhotoAdd = (e) => {
+    const files = Array.from(e.target.files);
+    const remaining = 3 - evidencePhotos.length;
+    const toAdd = files.slice(0, remaining);
+    const newPhotos = toAdd.map(file => ({ file, preview: URL.createObjectURL(file) }));
+    setEvidencePhotos(prev => [...prev, ...newPhotos]);
+    e.target.value = '';
+  };
+
+  const handleEvidencePhotoRemove = (index) => {
+    setEvidencePhotos(prev => {
+      const updated = [...prev];
+      URL.revokeObjectURL(updated[index].preview);
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  const handleEvidenceSubmit = async () => {
+    if (!evidenceModal || evidencePhotos.length === 0) return;
+    setUploadingEvidence(true);
     try {
+      // 1. Upload evidence photos
       const fd = new FormData();
-      fd.append('document', fileInputRef.current.files[0]);
-      fd.append('doc_type', docType);
-      if (vehicleType) fd.append('vehicle_type', vehicleType);
-      await uploadRiderDocument(fd);
-      setUploadMsg('✅ Documento subido exitosamente');
-      fileInputRef.current.value = '';
-      setSelectedDocType('');
-      await loadStatus(); loadDocuments();
+      evidencePhotos.forEach(p => fd.append('photos[]', p.file));
+      await uploadDeliveryEvidence(evidenceModal, fd);
+
+      // 2. Now mark as delivered
+      await updateDeliveryStatus(evidenceModal, 'delivered');
+      toast('✅ ¡Pedido entregado! Evidencia enviada al cliente y la tienda.', 'success');
+      setDeliveries(prev => prev.map(d => d.id === evidenceModal ? { ...d, status: 'delivered' } : d));
+      setTimeout(() => loadDeliveries(), 800);
+
+      // 3. Clean up
+      evidencePhotos.forEach(p => URL.revokeObjectURL(p.preview));
+      setEvidenceModal(null);
+      setEvidencePhotos([]);
     } catch (err) {
-      setUploadMsg('❌ ' + (err.response?.data?.message || 'Error al subir documento'));
-    } finally { setUploading(false); }
+      toast(err.response?.data?.message || 'Error al subir evidencia de entrega', 'error');
+    } finally { setUploadingEvidence(false); }
+  };
+
+  const [respondingOrder, setRespondingOrder] = useState(null);
+
+  const handleRespondDelivery = async (orderId, response) => {
+    setRespondingOrder(orderId);
+    try {
+      const { data } = await respondDeliveryAssignment(orderId, response);
+      toast(data.message, 'success');
+      if (response === 'rejected') {
+        // Remove rejected from list immediately
+        setDeliveries(prev => prev.filter(d => d.id !== orderId));
+      } else {
+        // Accepted: move from pending to active with rider_assigned status
+        setDeliveries(prev => prev.map(d => d.id === orderId ? { ...d, rider_response: 'accepted', status: 'rider_assigned' } : d));
+      }
+      // Refresh in background after a short delay to let backend commit
+      setTimeout(() => { loadDeliveries(); loadAvailableOrders(); }, 800);
+    } catch (err) {
+      toast(err.response?.data?.message || 'Error respondiendo entrega', 'error');
+    } finally { setRespondingOrder(null); }
+  };
+
+  const handleClaimDelivery = async (orderId) => {
+    setClaimingOrder(orderId);
+    try {
+      const { data } = await claimDelivery(orderId);
+      toast(data.message, 'success');
+      // Remove from available immediately
+      setAvailableOrders(prev => prev.filter(o => o.id !== orderId));
+      // Refresh deliveries in background after backend commits
+      setTimeout(() => { loadDeliveries(); loadAvailableOrders(); }, 800);
+    } catch (err) {
+      toast(err.response?.data?.message || 'Error al tomar pedido', 'error');
+    } finally { setClaimingOrder(null); }
+  };
+
+  const handleToggleOnline = async () => {
+    setTogglingOnline(true);
+    try {
+      const { data } = await toggleRiderAvailability(!isOnline);
+      setIsOnline(data.is_online);
+      toast(data.message, 'success');
+    } catch (err) {
+      toast(err.response?.data?.message || 'Error al cambiar disponibilidad', 'error');
+    } finally { setTogglingOnline(false); }
+  };
+
+  const handleDocUpload = async (docType, file) => {
+    if (!file) return;
+    setUploadMsg('');
+    const fd = new FormData();
+    fd.append('document', file);
+    fd.append('doc_type', docType);
+    if (vehicleType) fd.append('vehicle_type', vehicleType);
+    await uploadRiderDocument(fd);
+    toast('Documento subido exitosamente', 'success');
+    await loadStatus(); loadDocuments();
   };
 
   const handleSaveProfile = async () => {
@@ -289,8 +414,34 @@ const RiderDashboard = () => {
     } finally { setSavingProfile(false); }
   };
 
+  /* ── password validation ── */
+  const passChecks = {
+    length: passForm.newPassword.length >= 8,
+    upper: /[A-Z]/.test(passForm.newPassword),
+    lower: /[a-z]/.test(passForm.newPassword),
+    number: /[0-9]/.test(passForm.newPassword),
+    special: /[^A-Za-z0-9]/.test(passForm.newPassword),
+  };
+  const passStrength = Object.values(passChecks).filter(Boolean).length;
+
+  const handleChangePassword = async () => {
+    setPassMsg('');
+    if (passStrength < 5) { setPassMsg('❌ La nueva contraseña no cumple los requisitos'); return; }
+    if (passForm.newPassword !== passForm.confirmPassword) { setPassMsg('❌ Las contraseñas no coinciden'); return; }
+    setSavingPass(true);
+    try {
+      await changePassword(passForm.currentPassword, passForm.newPassword);
+      setPassMsg('✅ Contraseña actualizada correctamente');
+      setPassForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setShowPassSection(false);
+    } catch (err) {
+      setPassMsg('❌ ' + (err.response?.data?.message || 'Error al cambiar contraseña'));
+    } finally { setSavingPass(false); }
+  };
+
   /* ── derived ── */
-  const activeDeliveries = deliveries.filter((d) => d.status !== 'delivered');
+  const pendingAssignments = deliveries.filter((d) => d.rider_response === 'pending');
+  const activeDeliveries = deliveries.filter((d) => d.status !== 'delivered' && d.rider_response !== 'pending');
   const completedDeliveries = deliveries.filter((d) => d.status === 'delivered');
   const displayedDeliveries = filter === 'active' ? activeDeliveries : completedDeliveries;
   const needsMotorDocs = ['moto', 'auto', 'scooter'].includes(vehicleType);
@@ -356,7 +507,7 @@ const RiderDashboard = () => {
               <div style={{ width: 30, height: 30, borderRadius: '50%', margin: '0 auto 4px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, background: i <= ci ? '#F59E0B' : '#f3f4f6', color: i <= ci ? '#fff' : '#9ca3af', fontWeight: 900, boxShadow: i === ci ? '0 4px 12px rgba(245,158,11,0.3)' : 'none' }}>
                 {i < ci ? '✓' : s.icon}
               </div>
-              <span style={{ fontSize: 9, fontWeight: 700, color: i <= ci ? '#F59E0B' : '#9ca3af' }}>{s.label}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: i <= ci ? '#F59E0B' : '#9ca3af' }}>{s.label}</span>
             </div>
           </React.Fragment>
         ))}
@@ -365,10 +516,11 @@ const RiderDashboard = () => {
   };
 
   /* ═══════════════ DELIVERY CARD (reused) ═══════════════ */
-  const DeliveryCard = ({ delivery }) => {
+  const DeliveryCard = ({ delivery, isPending }) => {
     const cfg = STATUS_CONFIG[delivery.status] || { label: delivery.status, color: '#6B7280' };
+    const borderColor = isPending ? '#F59E0B' : cfg.color;
     return (
-      <Card style={{ border: `1px solid ${cfg.color}15` }}>
+      <Card style={{ border: isPending ? '2px solid #F59E0B' : `1px solid ${cfg.color}15`, background: isPending ? '#FFFBEB' : '#fff' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
           <div>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>Pedido #{delivery.id}</span>
@@ -376,21 +528,69 @@ const RiderDashboard = () => {
               <Package size={14} color="#9ca3af" /> {delivery.store_name || 'Tienda PetsGo'}
             </p>
           </div>
-          <span style={{ padding: '4px 12px', borderRadius: 50, fontSize: 11, fontWeight: 700, background: cfg.color + '15', color: cfg.color }}>{cfg.label}</span>
+          {isPending ? (
+            <span style={{ padding: '4px 12px', borderRadius: 50, fontSize: 11, fontWeight: 700, background: '#FEF3C7', color: '#D97706', border: '1px solid #FCD34D' }}>⏳ Nueva asignación</span>
+          ) : (
+            <span style={{ padding: '4px 12px', borderRadius: 50, fontSize: 11, fontWeight: 700, background: cfg.color + '15', color: cfg.color }}>{cfg.label}</span>
+          )}
         </div>
+        <p style={{ fontSize: 13, color: '#374151', fontWeight: 600, margin: '0 0 4px' }}>{delivery.customer_name}</p>
         {delivery.address && (
-          <p style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px' }}>
-            <MapPin size={14} color="#9ca3af" /> {delivery.address}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px', flexWrap: 'wrap' }}>
+            <p style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6, margin: 0, flex: '1 1 200px', minWidth: 0, wordBreak: 'break-word' }}>
+              <MapPin size={14} color="#9ca3af" style={{ flexShrink: 0 }} /> {delivery.address}
+            </p>
+            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(delivery.address)}&travelmode=driving`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir en Google Maps"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, background: '#EFF6FF', border: '1px solid #BFDBFE', cursor: 'pointer', textDecoration: 'none' }}
+              >
+                <span style={{ fontSize: 18 }}>🗺️</span>
+              </a>
+              <a
+                href={`https://waze.com/ul?q=${encodeURIComponent(delivery.address)}&navigate=yes`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Abrir en Waze"
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, background: '#F0FDF4', border: '1px solid #BBF7D0', cursor: 'pointer', textDecoration: 'none' }}
+              >
+                <span style={{ fontSize: 18 }}>📍</span>
+              </a>
+            </div>
+          </div>
+        )}
+        {delivery.delivery_distance_km > 0 && (
+          <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Navigation size={12} /> {parseFloat(delivery.delivery_distance_km).toFixed(1)} km de distancia
           </p>
         )}
-        <div style={{ display: 'flex', gap: 8, fontSize: 13, color: '#6b7280', marginBottom: cfg.next ? 12 : 0, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, fontSize: 13, color: '#6b7280', marginBottom: (isPending || (cfg.next && cfg.action)) ? 12 : 0, flexWrap: 'wrap' }}>
           <span>Total: <strong style={{ color: '#2F3A40' }}>{fmt(delivery.total_amount)}</strong></span>
-          <span>Delivery: <strong style={{ color: '#00A8E8' }}>{fmt(delivery.delivery_fee)}</strong></span>
+          <span>Tu ganancia: <strong style={{ color: '#22C55E' }}>{fmt(delivery.rider_earning || delivery.delivery_fee)}</strong></span>
           <span style={{ marginLeft: 'auto', fontSize: 11, color: '#b0b0b0' }}>{fmtDateTime(delivery.created_at)}</span>
         </div>
-        {cfg.next && cfg.action && (
-          <button onClick={() => handleStatusUpdate(delivery.id, cfg.next)} style={{ width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', color: '#fff', cursor: 'pointer', background: cfg.color, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6 }}>
-            {cfg.next === 'in_transit' ? <Navigation size={16} /> : <CheckCircle2 size={16} />} {cfg.action}
+        {delivery.estimated_minutes > 0 && delivery.rider_response === 'accepted' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 10, background: '#EFF6FF', marginBottom: 10 }}>
+            <Clock size={14} color="#3B82F6" />
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#1D4ED8' }}>Tiempo estimado: ~{delivery.estimated_minutes} min</span>
+          </div>
+        )}
+        {isPending && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => handleRespondDelivery(delivery.id, 'accepted')} disabled={respondingOrder === delivery.id} style={{ flex: 1, padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', color: '#fff', cursor: respondingOrder === delivery.id ? 'wait' : 'pointer', background: '#22C55E', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: respondingOrder === delivery.id ? 0.6 : 1 }}>
+              <CheckCircle2 size={16} /> {respondingOrder === delivery.id ? 'Procesando...' : 'Aceptar'}
+            </button>
+            <button onClick={() => handleRespondDelivery(delivery.id, 'rejected')} disabled={respondingOrder === delivery.id} style={{ flex: 1, padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13, border: 'none', color: '#fff', cursor: respondingOrder === delivery.id ? 'wait' : 'pointer', background: '#EF4444', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: respondingOrder === delivery.id ? 0.6 : 1 }}>
+              ✕ Rechazar
+            </button>
+          </div>
+        )}
+        {!isPending && cfg.next && cfg.action && (
+          <button onClick={() => handleStatusUpdate(delivery.id, cfg.next)} disabled={updatingStatus === delivery.id} style={{ width: '100%', padding: 14, borderRadius: 12, fontWeight: 700, fontSize: 14, border: 'none', color: '#fff', cursor: updatingStatus === delivery.id ? 'wait' : 'pointer', background: cfg.next === 'delivered' ? 'linear-gradient(135deg, #22C55E, #16A34A)' : `linear-gradient(135deg, ${cfg.color}, ${cfg.color}dd)`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 6, opacity: updatingStatus === delivery.id ? 0.6 : 1, boxShadow: `0 4px 12px ${cfg.color}40`, minHeight: 48 }}>
+            {cfg.next === 'in_transit' ? <Navigation size={18} /> : <CheckCircle2 size={18} />} {updatingStatus === delivery.id ? 'Actualizando...' : cfg.action}
           </button>
         )}
       </Card>
@@ -398,10 +598,82 @@ const RiderDashboard = () => {
   };
 
   /* ═══════════════════════════════════════════════
+     EVIDENCE MODAL
+  ═══════════════════════════════════════════════ */
+  const EvidenceModal = () => {
+    if (!evidenceModal) return null;
+    return (
+      <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', padding: 16 }} onClick={() => { if (!uploadingEvidence) { setEvidenceModal(null); evidencePhotos.forEach(p => URL.revokeObjectURL(p.preview)); setEvidencePhotos([]); } }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+          {/* Header */}
+          <div style={{ padding: '20px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#2F3A40' }}>📸 Evidencia de Entrega</h3>
+              <p style={{ margin: '4px 0 0', fontSize: 13, color: '#6b7280' }}>Pedido #{evidenceModal} — Sube 1 a 3 fotos</p>
+            </div>
+            <button onClick={() => { if (!uploadingEvidence) { setEvidenceModal(null); evidencePhotos.forEach(p => URL.revokeObjectURL(p.preview)); setEvidencePhotos([]); } }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
+              <X size={22} color="#9ca3af" />
+            </button>
+          </div>
+
+          {/* Info */}
+          <div style={{ margin: '16px 24px', padding: '12px 16px', borderRadius: 12, background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+            <p style={{ margin: 0, fontSize: 12, color: '#1E40AF', fontWeight: 600 }}>
+              📋 Toma fotos claras del paquete entregado en la dirección del cliente. Se enviarán como comprobante al cliente y la tienda.
+            </p>
+          </div>
+
+          {/* Photo grid */}
+          <div style={{ padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {evidencePhotos.map((photo, i) => (
+              <div key={i} style={{ position: 'relative', aspectRatio: '1', borderRadius: 12, overflow: 'hidden', border: '2px solid #E5E7EB' }}>
+                <img src={photo.preview} alt={`Evidencia ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {!uploadingEvidence && (
+                  <button onClick={() => handleEvidencePhotoRemove(i)} style={{ position: 'absolute', top: 4, right: 4, width: 24, height: 24, borderRadius: '50%', background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+            {evidencePhotos.length < 3 && !uploadingEvidence && (
+              <label style={{ aspectRatio: '1', borderRadius: 12, border: '2px dashed #D1D5DB', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: '#F9FAFB', transition: 'border-color 0.2s' }}>
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleEvidencePhotoAdd} style={{ display: 'none' }} />
+                <Camera size={28} color="#9ca3af" />
+                <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginTop: 4 }}>Agregar</span>
+              </label>
+            )}
+          </div>
+
+          {/* Counter */}
+          <p style={{ textAlign: 'center', fontSize: 12, color: evidencePhotos.length === 0 ? '#EF4444' : '#6b7280', fontWeight: 600, margin: '12px 0 0' }}>
+            {evidencePhotos.length}/3 fotos {evidencePhotos.length === 0 && '(mínimo 1)'}
+          </p>
+
+          {/* Actions */}
+          <div style={{ padding: '16px 24px 24px', display: 'flex', gap: 10 }}>
+            <button onClick={() => { if (!uploadingEvidence) { setEvidenceModal(null); evidencePhotos.forEach(p => URL.revokeObjectURL(p.preview)); setEvidencePhotos([]); } }} disabled={uploadingEvidence} style={{ flex: 1, padding: 14, borderRadius: 12, fontWeight: 700, fontSize: 14, border: '1px solid #E5E7EB', background: '#fff', color: '#374151', cursor: uploadingEvidence ? 'not-allowed' : 'pointer', opacity: uploadingEvidence ? 0.5 : 1 }}>
+              Cancelar
+            </button>
+            <button onClick={handleEvidenceSubmit} disabled={evidencePhotos.length === 0 || uploadingEvidence} style={{ flex: 2, padding: 14, borderRadius: 12, fontWeight: 700, fontSize: 14, border: 'none', color: '#fff', cursor: evidencePhotos.length === 0 || uploadingEvidence ? 'not-allowed' : 'pointer', background: evidencePhotos.length === 0 ? '#D1D5DB' : 'linear-gradient(135deg, #22C55E, #16A34A)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: uploadingEvidence ? 0.7 : 1, boxShadow: evidencePhotos.length > 0 ? '0 4px 12px rgba(34,197,94,0.4)' : 'none' }}>
+              {uploadingEvidence ? (
+                <><RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} /> Subiendo...</>
+              ) : (
+                <><CheckCircle2 size={16} /> Confirmar Entrega</>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ═══════════════════════════════════════════════
      RENDER
   ═══════════════════════════════════════════════ */
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '32px 16px' }}>
+    <div style={{ maxWidth: 960, margin: '0 auto', padding: '16px 16px' }}>
+      {/* Evidence Modal */}
+      <EvidenceModal />
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
         <div style={{ width: 48, height: 48, background: '#F97316', borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -435,7 +707,22 @@ const RiderDashboard = () => {
       {/* pending_docs: solo Documentos | pending_review: Docs + Perfil | approved: todos */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24, flexWrap: 'wrap' }}>
         {isApproved && tabBtn('home', '🏠', 'Inicio')}
-        {isApproved && tabBtn('deliveries', '📦', 'Entregas')}
+        {isApproved && (
+          <button onClick={() => setTab('deliveries')} style={{
+            padding: '10px 18px', borderRadius: 12, fontWeight: 700, fontSize: 13,
+            border: 'none', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', position: 'relative',
+            background: tab === 'deliveries' ? '#F97316' : '#fff',
+            color: tab === 'deliveries' ? '#fff' : '#6b7280',
+            boxShadow: tab === 'deliveries' ? '0 4px 12px rgba(249,115,22,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+          }}>
+            📦 Entregas
+            {pendingAssignments.length > 0 && (
+              <span style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 50, background: '#EF4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', border: '2px solid #fff', animation: 'pulse 1.5s infinite' }}>
+                {pendingAssignments.length}
+              </span>
+            )}
+          </button>
+        )}
         {isApproved && tabBtn('earnings', '💰', 'Ganancias')}
         {isApproved && tabBtn('stats', '📊', 'Estadísticas')}
         {tabBtn('documents', '📋', 'Documentos')}
@@ -476,6 +763,55 @@ const RiderDashboard = () => {
               <p><strong>Entregas activas:</strong><br/>Aquí verás los pedidos que estás entregando actualmente. Usa los botones de estado para avanzar cada entrega.</p>
             </InfoGuideButton>
           </div>
+
+          {/* ── Availability Toggle ── */}
+          <Card style={{ marginBottom: 20, border: isOnline ? '2px solid #22C55E' : '2px solid #e5e7eb', background: isOnline ? '#f0fdf4' : '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 12, background: isOnline ? '#22C55E18' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Navigation size={22} color={isOnline ? '#22C55E' : '#9ca3af'} />
+                </div>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: isOnline ? '#16a34a' : '#6b7280' }}>
+                    {isOnline ? '🟢 Estoy disponible' : '⚫ No disponible'}
+                  </span>
+                  <p style={{ fontSize: 12, color: '#9ca3af', margin: '2px 0 0' }}>
+                    {isOnline ? 'Puedes recibir pedidos de entrega' : 'Activa para aparecer en el sistema de entregas'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleToggleOnline}
+                disabled={togglingOnline}
+                style={{
+                  position: 'relative',
+                  width: 56,
+                  height: 30,
+                  borderRadius: 15,
+                  border: 'none',
+                  background: isOnline ? '#22C55E' : '#d1d5db',
+                  cursor: togglingOnline ? 'wait' : 'pointer',
+                  transition: 'background 0.3s ease',
+                  flexShrink: 0,
+                  opacity: togglingOnline ? 0.6 : 1,
+                }}
+                aria-label={isOnline ? 'Desactivar disponibilidad' : 'Activar disponibilidad'}
+              >
+                <div style={{
+                  position: 'absolute',
+                  top: 3,
+                  left: isOnline ? 29 : 3,
+                  width: 24,
+                  height: 24,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                  transition: 'left 0.3s ease',
+                }} />
+              </button>
+            </div>
+          </Card>
+
           {/* Quick stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
             <StatBox label="Esta semana" value={fmt(earnings?.currentWeek?.earned || profile?.weekEarned || 0)} sub={`${earnings?.currentWeek?.deliveries || profile?.weekDeliveries || 0} entregas`} color="#F97316" icon={TrendingUp} />
@@ -592,9 +928,28 @@ const RiderDashboard = () => {
               <p><strong>Cómo funciona:</strong><br/>Cada entrega muestra la dirección de recogida, dirección de destino y monto de la comisión. Usa los botones de acción para avanzar el estado.</p>
             </InfoGuideButton>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+
+          {/* Offline warning */}
+          {!isOnline && (
+            <Card style={{ marginBottom: 16, border: '1px solid #FDBA74', background: '#FFF7ED' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <AlertTriangle size={20} color="#F97316" />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ color: '#9A3412', fontSize: 14 }}>Estás offline</strong>
+                  <p style={{ fontSize: 12, color: '#C2410C', margin: '2px 0 0' }}>Activa tu disponibilidad para recibir nuevos pedidos.</p>
+                </div>
+                <button onClick={handleToggleOnline} disabled={togglingOnline} style={{ padding: '8px 18px', borderRadius: 10, background: '#22C55E', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13, opacity: togglingOnline ? 0.6 : 1 }}>
+                  Activar
+                </button>
+              </div>
+            </Card>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 12, marginBottom: 20 }}>
             {[
-              { label: 'Pendientes', value: activeDeliveries.length, color: '#F97316' },
+              ...(isOnline ? [{ label: 'Disponibles', value: availableOrders.length, color: '#00A8E8' }] : []),
+              { label: 'Nuevas', value: pendingAssignments.length, color: '#F59E0B' },
+              { label: 'Activas', value: activeDeliveries.length, color: '#F97316' },
               { label: 'Completadas', value: completedDeliveries.length, color: '#22C55E' },
               { label: 'Total', value: deliveries.length, color: '#2F3A40' },
             ].map((s, i) => (
@@ -604,6 +959,91 @@ const RiderDashboard = () => {
               </Card>
             ))}
           </div>
+
+          {/* ── Available orders (self-pick) ── */}
+          {isOnline && availableOrders.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#00A8E8' }}>📦 Pedidos Disponibles ({availableOrders.length})</span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#00A8E8', animation: 'pulse 1.5s infinite' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {availableOrders.map((order) => (
+                  <Card key={`avail-${order.id}`} style={{ border: '2px solid #00A8E8', background: '#f0f9ff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af' }}>Pedido #{order.id}</span>
+                        <p style={{ fontWeight: 700, color: '#2F3A40', margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+                          <Package size={14} color="#9ca3af" /> {order.store_name || 'Tienda PetsGo'}
+                        </p>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {order.same_comuna && <span style={{ padding: '3px 10px', borderRadius: 50, fontSize: 10, fontWeight: 700, background: '#DCFCE7', color: '#166534' }}>📍 Misma comuna</span>}
+                        {!order.same_comuna && order.same_region && <span style={{ padding: '3px 10px', borderRadius: 50, fontSize: 10, fontWeight: 700, background: '#FEF3C7', color: '#92400e' }}>📍 Misma región</span>}
+                        <span style={{ padding: '3px 10px', borderRadius: 50, fontSize: 10, fontWeight: 700, background: '#E0F2FE', color: '#0369a1' }}>Disponible</span>
+                      </div>
+                    </div>
+                    {order.shipping_address && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '0 0 6px', flexWrap: 'wrap' }}>
+                        <p style={{ fontSize: 13, color: '#6b7280', display: 'flex', alignItems: 'center', gap: 6, margin: 0, flex: '1 1 200px', minWidth: 0, wordBreak: 'break-word' }}>
+                          <MapPin size={14} color="#9ca3af" style={{ flexShrink: 0 }} /> {order.shipping_address}
+                        </p>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.shipping_address)}&travelmode=driving`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Abrir en Google Maps"
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, background: '#EFF6FF', border: '1px solid #BFDBFE', cursor: 'pointer', textDecoration: 'none' }}
+                          >
+                            <span style={{ fontSize: 18 }}>🗺️</span>
+                          </a>
+                          <a
+                            href={`https://waze.com/ul?q=${encodeURIComponent(order.shipping_address)}&navigate=yes`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Abrir en Waze"
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44, borderRadius: 12, background: '#F0FDF4', border: '1px solid #BBF7D0', cursor: 'pointer', textDecoration: 'none' }}
+                          >
+                            <span style={{ fontSize: 18 }}>📍</span>
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    {order.delivery_distance_km > 0 && (
+                      <p style={{ fontSize: 12, color: '#9ca3af', margin: '0 0 6px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <Navigation size={12} /> {parseFloat(order.delivery_distance_km).toFixed(1)} km
+                      </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, fontSize: 13, color: '#6b7280', marginBottom: 12, flexWrap: 'wrap' }}>
+                      <span>Total: <strong style={{ color: '#2F3A40' }}>{fmt(order.total_amount)}</strong></span>
+                      <span>Tu ganancia: <strong style={{ color: '#22C55E' }}>{fmt(order.rider_earning || order.delivery_fee)}</strong></span>
+                    </div>
+                    <button
+                      onClick={() => handleClaimDelivery(order.id)}
+                      disabled={claimingOrder === order.id}
+                      style={{ width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 14, border: 'none', color: '#fff', cursor: claimingOrder === order.id ? 'wait' : 'pointer', background: 'linear-gradient(135deg, #00A8E8, #0077B6)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: claimingOrder === order.id ? 0.6 : 1, boxShadow: '0 4px 12px rgba(0,168,232,0.3)' }}
+                    >
+                      <CheckCircle2 size={16} /> {claimingOrder === order.id ? 'Tomando pedido...' : '🏍️ Tomar Pedido'}
+                    </button>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Pending assignments section ── */}
+          {pendingAssignments.length > 0 && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#D97706' }}>🔔 Nuevas Asignaciones ({pendingAssignments.length})</span>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#F59E0B', animation: 'pulse 1.5s infinite' }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {pendingAssignments.map((d) => <DeliveryCard key={d.id} delivery={d} isPending />)}
+              </div>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
             <button onClick={() => setFilter('active')} style={{ padding: '10px 20px', borderRadius: 12, fontSize: 13, fontWeight: 700, border: 'none', cursor: 'pointer', background: filter === 'active' ? '#F97316' : '#fff', color: filter === 'active' ? '#fff' : '#6b7280', boxShadow: filter === 'active' ? '0 4px 12px rgba(249,115,22,0.3)' : '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -619,11 +1059,11 @@ const RiderDashboard = () => {
           ) : displayedDeliveries.length === 0 ? (
             <Card style={{ textAlign: 'center', padding: 60 }}>
               <Truck size={48} color="#d1d5db" style={{ marginBottom: 12 }} />
-              <p style={{ color: '#9ca3af', fontWeight: 700 }}>{filter === 'active' ? 'No tienes entregas pendientes' : 'No hay entregas completadas'}</p>
+              <p style={{ color: '#9ca3af', fontWeight: 700 }}>{filter === 'active' ? 'No tienes entregas activas' : 'No hay entregas completadas'}</p>
             </Card>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {displayedDeliveries.map((d) => <DeliveryCard key={d.id} delivery={d} />)}
+              {displayedDeliveries.map((d) => <DeliveryCard key={d.id} delivery={d} isPending={false} />)}
             </div>
           )}
         </>
@@ -973,23 +1413,16 @@ const RiderDashboard = () => {
                         </div>
                       )}
                       {canUp && (docStatus === 'missing' || docStatus === 'rejected') && (
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                          {selectedDocType === key ? (
-                            <>
-                              <input ref={fileInputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ flex: 1, fontSize: 13, minWidth: 150 }} />
-                              <button onClick={() => handleDocUpload(key)} disabled={uploading} style={{ padding: '8px 20px', borderRadius: 10, background: '#F97316', color: '#fff', fontWeight: 700, border: 'none', cursor: 'pointer', fontSize: 13, opacity: uploading ? 0.6 : 1 }}>
-                                {uploading ? '⏳ Subiendo...' : '📤 Subir'}
-                              </button>
-                              <button onClick={() => setSelectedDocType('')} style={{ padding: '8px 12px', borderRadius: 10, background: '#f3f4f6', border: 'none', cursor: 'pointer', fontSize: 13 }}>✕</button>
-                            </>
-                          ) : (
-                            <button onClick={() => setSelectedDocType(key)} style={{ padding: '10px 20px', borderRadius: 10, background: '#FFF7ED', color: '#F97316', fontWeight: 700, border: '1px solid #F97316', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <Upload size={14} /> {docStatus === 'rejected' ? 'Subir nuevo documento' : 'Subir documento'}
-                            </button>
-                          )}
-                        </div>
+                        <FileUploadBox
+                          onUpload={(file) => handleDocUpload(key, file)}
+                          accept=".jpg,.jpeg,.png,.webp,.pdf"
+                          maxSizeMB={5}
+                          label={docStatus === 'rejected' ? 'Subir nuevo documento' : dt.description}
+                          hint="JPG, PNG, WebP o PDF — Máx 5MB"
+                          existingUrl={doc?.file_url && docStatus !== 'rejected' ? doc.file_url : ''}
+                        />
                       )}
-                      {doc?.file_url && docStatus !== 'rejected' && (
+                      {doc?.file_url && docStatus !== 'rejected' && !canUp && (
                         <a href={doc.file_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: '#00A8E8', fontWeight: 600, textDecoration: 'none', marginTop: 8, display: 'inline-block' }}>📎 Ver documento subido</a>
                       )}
                     </Card>
@@ -997,7 +1430,7 @@ const RiderDashboard = () => {
                 })}
               </div>
               {uploadMsg && (
-                <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: uploadMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: uploadMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>{uploadMsg}</div>
+                <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: '#fce4ec', fontSize: 13, fontWeight: 600, color: '#c62828' }}>{uploadMsg}</div>
               )}
               {riderStatus === 'pending_docs' && missingDocs.length > 0 && (
                 <div style={{ marginTop: 16, background: '#FFF7ED', border: '1px solid #FDBA74', borderRadius: 12, padding: '14px 18px', fontSize: 13, color: '#9A3412' }}>
@@ -1199,8 +1632,8 @@ const RiderDashboard = () => {
                     onChange={e => setProfileForm({ ...profileForm, bankAccountNumber: e.target.value })}
                     style={{ width: '100%', padding: '10px 38px 10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }}
                     placeholder="Ej: 000123456789" />
-                  <button onClick={() => setShowAccount(!showAccount)} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}>
-                    {showAccount ? <EyeOff size={16} color="#9ca3af" /> : <Eye size={16} color="#9ca3af" />}
+                  <button onClick={() => setShowAccount(!showAccount)} style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 8, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    {showAccount ? <EyeOff size={18} color="#9ca3af" /> : <Eye size={18} color="#9ca3af" />}
                   </button>
                 </div>
               </div>
@@ -1260,6 +1693,63 @@ const RiderDashboard = () => {
           {profileMsg && (
             <div style={{ marginTop: 12, padding: '10px 16px', borderRadius: 10, background: profileMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: profileMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>{profileMsg}</div>
           )}
+
+          {/* ── Cambiar Contraseña ── */}
+          <Card style={{ marginTop: 16 }}>
+            <div style={{ borderTop: 'none' }}>
+              <button onClick={() => { setShowPassSection(!showPassSection); setPassMsg(''); }}
+                style={{ background: 'none', border: 'none', color: '#00A8E8', fontWeight: 700, fontSize: 14, cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                🔐 {showPassSection ? 'Ocultar' : 'Cambiar contraseña'}
+              </button>
+              {showPassSection && (
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Contraseña actual</label>
+                    <input type="password" value={passForm.currentPassword}
+                      onChange={e => setPassForm(p => ({ ...p, currentPassword: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Nueva contraseña</label>
+                    <div style={{ position: 'relative' }}>
+                      <input type={showNewPass ? 'text' : 'password'} value={passForm.newPassword}
+                        onChange={e => setPassForm(p => ({ ...p, newPassword: e.target.value }))}
+                        style={{ width: '100%', padding: '10px 38px 10px 14px', borderRadius: 10, border: '1px solid #e5e7eb', fontSize: 14, boxSizing: 'border-box' }} />
+                      <button type="button" onClick={() => setShowNewPass(!showNewPass)}
+                        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: 8, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    {passForm.newPassword && (
+                      <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
+                        {[['length','8+ caracteres'],['upper','Mayúscula'],['lower','Minúscula'],['number','Número'],['special','Especial (!@#)']].map(([k,l]) => (
+                          <span key={k} style={{ fontSize: 11, color: passChecks[k] ? '#16a34a' : '#9ca3af' }}>
+                            {passChecks[k] ? '✓' : '✗'} {l}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', display: 'block', marginBottom: 4 }}>Confirmar nueva contraseña</label>
+                    <input type="password" value={passForm.confirmPassword}
+                      onChange={e => setPassForm(p => ({ ...p, confirmPassword: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: `1px solid ${passForm.confirmPassword ? (passForm.newPassword === passForm.confirmPassword ? '#16a34a' : '#dc2626') : '#e5e7eb'}`, fontSize: 14, boxSizing: 'border-box' }} />
+                  </div>
+                  <button onClick={handleChangePassword} disabled={savingPass} style={{
+                    width: '100%', padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 14,
+                    border: 'none', cursor: 'pointer', color: '#fff',
+                    background: savingPass ? '#9ca3af' : '#00A8E8',
+                  }}>
+                    {savingPass ? 'Guardando...' : 'Cambiar Contraseña'}
+                  </button>
+                  {passMsg && (
+                    <div style={{ padding: '10px 16px', borderRadius: 10, background: passMsg.startsWith('✅') ? '#e8f5e9' : '#fce4ec', fontSize: 13, fontWeight: 600, color: passMsg.startsWith('✅') ? '#2e7d32' : '#c62828' }}>{passMsg}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </Card>
         </>
       )}
     </div>
@@ -1429,7 +1919,7 @@ const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName,
             </>
           )}
           <button onClick={exportPDF} disabled={!stats || loading}
-            style={{ marginLeft: 'auto', padding: '7px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: stats ? 1 : 0.5 }}>
+            style={{ marginLeft: 'auto', padding: '7px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, background: '#22C55E', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: stats ? 1 : 0.5, flex: '0 0 auto' }}>
             <Download size={14} /> Exportar PDF
           </button>
         </div>
@@ -1488,7 +1978,7 @@ const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName,
                     const pct = (parseFloat(w.earned) / maxE) * 100;
                     return (
                       <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ width: 140, fontSize: 11, fontWeight: 600, color: '#6b7280', flexShrink: 0 }}>
+                        <span style={{ width: 110, fontSize: 11, fontWeight: 600, color: '#6b7280', flexShrink: 0 }}>
                           {fmtDate(w.week_start)} — {fmtDate(w.week_end)}
                         </span>
                         <div style={{ flex: 1, background: '#f3f4f6', borderRadius: 6, height: 24, overflow: 'hidden' }}>
@@ -1509,8 +1999,8 @@ const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName,
           {stats.monthly?.length > 0 && (
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ fontWeight: 800, color: '#2F3A40', margin: '0 0 12px', fontSize: 14 }}>📅 Desglose Mensual</h4>
-              <Card style={{ padding: 0, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <Card style={{ padding: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 340 }}>
                   <thead>
                     <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
                       <th style={{ textAlign: 'left', padding: '10px 14px', fontWeight: 700, color: '#6b7280', fontSize: 11, textTransform: 'uppercase' }}>Mes</th>
@@ -1545,10 +2035,10 @@ const RiderStatsTab = ({ stats, loading, range, customFrom, customTo, riderName,
                 {stats.daily.map((d, i) => {
                   const dayName = new Date(d.day + 'T12:00:00').toLocaleDateString('es-CL', { weekday: 'short', day: 'numeric' });
                   return (
-                    <Card key={i} style={{ flex: '1 1 80px', textAlign: 'center', padding: '10px 8px', minWidth: 70 }}>
-                      <p style={{ fontWeight: 900, color: '#F97316', margin: 0, fontSize: 16 }}>{fmt(d.earned)}</p>
-                      <span style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600 }}>{dayName}</span>
-                      <span style={{ fontSize: 10, color: '#d1d5db', display: 'block' }}>{d.deliveries} ent.</span>
+                    <Card key={i} style={{ flex: '1 1 80px', textAlign: 'center', padding: '10px 6px', minWidth: 64 }}>
+                      <p style={{ fontWeight: 900, color: '#F97316', margin: 0, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fmt(d.earned)}</p>
+                      <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{dayName}</span>
+                      <span style={{ fontSize: 11, color: '#d1d5db', display: 'block' }}>{d.deliveries} ent.</span>
                     </Card>
                   );
                 })}

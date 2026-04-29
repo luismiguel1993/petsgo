@@ -27,7 +27,7 @@ const VendorsPage = () => {
           ...v,
           rating: (4 + Math.random()).toFixed(1),
           time: `${15 + i * 5}-${25 + i * 5} min`,
-          img: DEMO_VENDORS[i % DEMO_VENDORS.length].img
+          img: v.invoice_logo_url || v.logo_url || DEMO_VENDORS[i % DEMO_VENDORS.length].img
         }));
         setVendors(realVendors?.length > 0 ? realVendors : DEMO_VENDORS);
       } catch {
@@ -83,10 +83,10 @@ const VendorsPage = () => {
               onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.12)'; e.currentTarget.style.transform = 'translateY(-4px)'; }}
               onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.06)'; e.currentTarget.style.transform = 'translateY(0)'; }}
             >
-              <div style={{ position: 'relative', marginBottom: '14px', overflow: 'hidden', borderRadius: '12px' }}>
+              <div style={{ position: 'relative', marginBottom: '14px', overflow: 'hidden', borderRadius: '12px', background: vendor.invoice_logo_url ? '#fff' : '#f3f4f6' }}>
                 <img 
                   src={vendor.img || vendor.logo_url} 
-                  style={{ height: '180px', width: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }}
+                  style={{ height: '180px', width: '100%', objectFit: vendor.invoice_logo_url ? 'contain' : 'cover', padding: vendor.invoice_logo_url ? '16px' : '0', transition: 'transform 0.5s ease' }}
                   alt={vendor.store_name} 
                 />
                 <div style={{

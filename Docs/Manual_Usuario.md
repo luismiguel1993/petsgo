@@ -25,8 +25,9 @@ Este manual define los procesos operativos para cada rol en la plataforma.
 ### Procesar Pedidos:
 1. Recibirás una notificación en "Pedidos Pendientes".
 2. Empaca el producto.
-3. Cambia el estado a "Listo para retiro".
-4. El sistema notificará a un Rider automáticamente.
+3. Cambia el estado a "Listo para enviar".
+4. Asigna un Rider desde el panel de Delivery (o el admin lo hará).
+5. El Rider acepta y el estado cambia a "Asignado a Rider".
 
 ## 3. Cliente (User)
 **Acceso**: Web Principal o App Móvil
@@ -43,13 +44,14 @@ Este manual define los procesos operativos para cada rol en la plataforma.
 3. El bot sugerirá productos con stock real.
 
 ## 4. Delivery (Rider)
-**Acceso**: App de Rider
+**Acceso**: Dashboard Rider (`/rider`)
 
 ### Entrega de Pedidos:
-1. Acepta una solicitud de despacho cercana.
-2. Ve a la tienda (dirección en pantalla) y muestra el ID de la orden.
-3. Recoge el paquete y marca "En camino".
-4. Al entregar al cliente, marca "Entregado" para liberar tu pago.
+1. Activa tu disponibilidad (toggle Online/Offline en tu dashboard).
+2. Acepta una asignación del admin o toma un pedido disponible con "Tomar Pedido".
+3. El estado del pedido cambia a "Asignado a Rider".
+4. Ve a la tienda (dirección en pantalla). Presiona "Iniciar Entrega" → estado pasa a "En camino".
+5. Al entregar al cliente, marca "Entregado" para liberar tu pago.
 
 ## 5. Soporte (Moderador)
 **Acceso**: Panel de Administración (Restringido)

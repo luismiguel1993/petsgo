@@ -11,6 +11,7 @@ import {
   getVendorCoupons, saveVendorCoupon, deleteVendorCoupon,
 } from '../services/api';
 import InfoGuideButton from '../components/InfoGuideButton';
+import { useToast } from '../components/Toast';
 
 const STATUS_CONFIG = {
   payment_pending: { label: 'Pago Pendiente', color: '#FFC400', next: 'preparing' },
@@ -41,6 +42,7 @@ const DEMO_VENDOR_ORDERS = [
 
 const VendorDashboard = () => {
   const { isAuthenticated, isVendor, isAdmin, loading: authLoading } = useAuth();
+  const toast = useToast();
   const [tab, setTab] = useState('dashboard');
   const [stats, setStats] = useState(null);
   const [inventory, setInventory] = useState([]);
@@ -145,7 +147,7 @@ const VendorDashboard = () => {
       setFormData(emptyProduct);
       loadData();
     } catch (err) {
-      alert(err.response?.data?.message || 'Error guardando producto');
+      toast(err.response?.data?.message || 'Error guardando producto', 'error');
     }
   };
 
@@ -167,7 +169,7 @@ const VendorDashboard = () => {
       await deleteProduct(id);
       loadData();
     } catch (err) {
-      alert('Error eliminando producto');
+      toast('Error eliminando producto', 'error');
     }
   };
 
@@ -176,7 +178,7 @@ const VendorDashboard = () => {
       await updateOrderStatus(orderId, newStatus);
       loadData();
     } catch (err) {
-      alert('Error actualizando estado');
+      toast('Error actualizando estado', 'error');
     }
   };
 
@@ -590,7 +592,7 @@ const VendorDashboard = () => {
                   setCouponForm(emptyCoupon);
                   loadData();
                 } catch (err) {
-                  alert(err.response?.data?.message || 'Error guardando cupón');
+                  toast(err.response?.data?.message || 'Error guardando cupón', 'error');
                 }
               }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -775,7 +777,7 @@ const VendorDashboard = () => {
                         <button onClick={async () => {
                           if (!confirm(`¿Eliminar cupón "${c.code}"?`)) return;
                           try { await deleteVendorCoupon(c.id); loadData(); }
-                          catch { alert('Error eliminando cupón'); }
+                          catch { toast('Error eliminando cupón', 'error'); }
                         }} className="text-gray-400 hover:text-red-500" title="Eliminar">
                           <Trash2 size={16} />
                         </button>

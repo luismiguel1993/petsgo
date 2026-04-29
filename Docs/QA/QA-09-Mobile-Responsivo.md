@@ -98,6 +98,17 @@
 | ID | Caso de Uso | Precondición | Pasos | Resultado Esperado | Prioridad |
 |---|---|---|---|---|---|
 | MB-140 | Footer en columna en mobile | Mobile | 1. Hacer scroll al footer | Columnas del footer apiladas verticalmente | Media |
+
+---
+
+## 9. WP-LOGIN (PANEL ADMIN) EN DISTINTOS VIEWPORTS
+
+| ID | Caso de Uso | Precondición | Pasos | Resultado Esperado | Prioridad |
+|---|---|---|---|---|---|
+| MB-160 | wp-login.php en laptop (1366×768) | Viewport 1366×768 | 1. Abrir `/wp-login.php` | Logo PetsGo visible completo (180×60px por media query max-height:700px), subtítulo 11px, contenido alineado arriba con padding-top 20px, formulario sin recortes, scroll vertical disponible | Alta |
+| MB-161 | wp-login.php en desktop (1920×1080) | Viewport 1920×1080 | 1. Abrir `/wp-login.php` | Logo 220×80px centrado vertical y horizontal, formulario con bordes redondeados, todo visible sin scroll | Alta |
+| MB-162 | wp-login.php en mobile (375×812) | iPhone SE viewport | 1. Abrir `/wp-login.php` | Logo 180×60px, formulario con padding reducido y márgenes 12px, sin overflow horizontal | Alta |
+| MB-163 | wp-login.php en tablet (768×1024) | iPad viewport | 1. Abrir `/wp-login.php` | Logo 220×80px centrado, formulario ancho 320px max, todo proporcionado | Media |
 | MB-141 | Links del footer navegan correctamente y hacen scroll-to-top | Mobile | 1. Click en link del footer | Navega a página destino Y hace scroll al top | Alta |
 | MB-142 | Redes sociales del footer clicables | Mobile | 1. Click en ícono social | Abre el link en nueva pestaña | Media |
 

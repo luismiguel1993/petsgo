@@ -291,12 +291,23 @@ const chatCSS = `
       bottom: 0 !important;
       width: 100% !important;
       height: 100% !important;
-      max-height: 100% !important;
+      max-height: none !important;
       border-radius: 0 !important;
     }
     .pgchat-window.pgchat-left {
       left: 0 !important;
       right: 0 !important;
+    }
+    .pgchat-input-area {
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    }
+    .pgchat-input {
+      font-size: 16px !important;
+    }
+    .pgchat-send-btn {
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
     }
   }
 
@@ -943,6 +954,29 @@ const BotChatOverlay = ({ cartOpen = false }) => {
     return () => clearInterval(interval);
   }, [isOpen]);
 
+  // Handle mobile virtual keyboard — adjust chat height to visible viewport
+  useEffect(() => {
+    if (!isOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      const chatWindow = document.querySelector('.pgchat-window');
+      if (chatWindow && window.innerWidth <= 600) {
+        chatWindow.style.height = `${vv.height}px`;
+        chatWindow.style.maxHeight = `${vv.height}px`;
+      }
+    };
+    handleResize();
+    vv.addEventListener('resize', handleResize);
+    vv.addEventListener('scroll', handleResize);
+    return () => {
+      vv.removeEventListener('resize', handleResize);
+      vv.removeEventListener('scroll', handleResize);
+      const chatWindow = document.querySelector('.pgchat-window');
+      if (chatWindow) { chatWindow.style.height = ''; chatWindow.style.maxHeight = ''; }
+    };
+  }, [isOpen]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isOpen]);
@@ -1122,6 +1156,8 @@ const BotChatOverlay = ({ cartOpen = false }) => {
                 <input
                   className="pgchat-input"
                   type="text"
+                  inputMode="text"
+                  autoComplete="off"
                   placeholder={isLoading ? 'PetBot está pensando...' : 'Escribe tu mensaje...'}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}

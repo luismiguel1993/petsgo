@@ -87,9 +87,9 @@ flowchart LR
         Q04["QA-04\nPedidos · 23 casos"]
         Q05["QA-05\nVendor · 44 casos"]
         Q06["QA-06\nRider · 38 casos"]
-        Q07["QA-07\nAdmin · 66 casos"]
+        Q07["QA-07\nAdmin · 71 casos"]
         Q08["QA-08\nChatbot · 44 casos"]
-        Q09["QA-09\nMobile · 43 casos"]
+        Q09["QA-09\nMobile · 47 casos"]
         Q10["QA-10\nValoraciones · 50 casos"]
         Q11["QA-11\nTienda PetsGo · 58 casos"]
         Q01 --> Q02 --> Q03 --> Q04
@@ -170,12 +170,12 @@ sequenceDiagram
 | QA-04 | Pedidos, Boletas Electrónicas, Verificación QR | 23 | [QA-04-Pedidos-Boletas.md](QA-04-Pedidos-Boletas.md) |
 | QA-05 | Dashboard del Vendor (4 tabs + planes) | 44 | [QA-05-Dashboard-Vendor.md](QA-05-Dashboard-Vendor.md) |
 | QA-06 | Dashboard del Rider (registro + entregas) | 38 | [QA-06-Dashboard-Rider.md](QA-06-Dashboard-Rider.md) |
-| QA-07 | Panel de Administrador (11 secciones) | 66 | [QA-07-Panel-Admin.md](QA-07-Panel-Admin.md) |
+| QA-07 | Panel de Administrador (11 secciones) | 71 | [QA-07-Panel-Admin.md](QA-07-Panel-Admin.md) |
 | QA-08 | Chatbot IA, Multi-Conversación, Soporte/Tickets | 44 | [QA-08-Chatbot-Soporte.md](QA-08-Chatbot-Soporte.md) |
-| QA-09 | Mobile y Diseño Responsivo | 43 | [QA-09-Mobile-Responsivo.md](QA-09-Mobile-Responsivo.md) |
+| QA-09 | Mobile y Diseño Responsivo | 47 | [QA-09-Mobile-Responsivo.md](QA-09-Mobile-Responsivo.md) |
 | QA-10 | Valoraciones y Reseñas (Productos + Tiendas) | 50 | [QA-10-Valoraciones-Resenas.md](QA-10-Valoraciones-Resenas.md) |
 | QA-11 | Tienda PetsGo (Admin como Vendedor) | 58 | [QA-11-Tienda-PetsGo-Admin.md](QA-11-Tienda-PetsGo-Admin.md) |
-| **TOTAL** | | **~499 casos de prueba** | |
+| **TOTAL** | | **~508 casos de prueba** | |
 
 ---
 

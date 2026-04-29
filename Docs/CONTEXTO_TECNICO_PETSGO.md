@@ -170,8 +170,8 @@ PetsGoDev/
 | 2 | `wp_petsgo_vendors` | Tiendas | user_id, store_name, rut, sales_commission, status |
 | 3 | `wp_petsgo_inventory` | Productos | vendor_id, product_name, price, stock, category |
 | 4 | `wp_petsgo_categories` | Categorías | name, slug, emoji, sort_order, is_active |
-| 5 | `wp_petsgo_user_profiles` | Perfiles extendidos | user_id, id_type, id_number, phone, region, comuna |
-| 6 | `wp_petsgo_orders` | Pedidos | customer_id, vendor_id, rider_id, total_amount, status, commission splits |
+| 5 | `wp_petsgo_user_profiles` | Perfiles extendidos | user_id, id_type, id_number, phone, region, comuna, is_online, last_online, vehicle_type |
+| 6 | `wp_petsgo_orders` | Pedidos | customer_id, vendor_id, rider_id, rider_response, rider_assigned_at, rider_responded_at, estimated_minutes, total_amount, status, delivery_method, commission splits |
 | 7 | `wp_petsgo_order_items` | Items por pedido | order_id, product_id, quantity, unit_price, subtotal |
 | 8 | `wp_petsgo_invoices` | Boletas/Facturas | order_id, invoice_number, qr_token, pdf_path |
 | 9 | `wp_petsgo_rider_documents` | Documentos rider | rider_id, doc_type, file_url, status, admin_notes, **expiry_date**, expiry_notified_30/15/1 |
@@ -284,8 +284,12 @@ Namespace: `/wp-json/petsgo/v1`
 | GET | `/rider/documents` | Mis documentos |
 | POST | `/rider/documents/upload` | Subir documento |
 | GET | `/rider/status` | Mi estado actual |
-| GET | `/rider/deliveries` | Entregas asignadas |
-| PUT | `/rider/deliveries/{id}/status` | Actualizar estado entrega |
+| GET | `/rider/deliveries` | Entregas asignadas al rider |
+| GET | `/rider/deliveries/available` | Pedidos disponibles para tomar (sin rider asignado) |
+| POST | `/rider/deliveries/{id}/claim` | Rider toma un pedido disponible (auto-asignación atómica) |
+| PUT | `/rider/deliveries/{id}/status` | Actualizar estado entrega (rider_assigned→in_transit→delivered) |
+| POST | `/rider/deliveries/{id}/respond` | Aceptar/rechazar asignación del admin |
+| POST | `/rider/toggle-availability` | Activar/desactivar disponibilidad online |
 | GET/PUT | `/rider/profile` | Perfil + datos bancarios |
 | GET | `/rider/earnings` | Ganancias y pagos |
 | GET | `/rider/ratings` | Mis valoraciones |
@@ -422,9 +426,41 @@ Frontend (BotChatOverlay.jsx)
 
 ## 13. FLUJO DE PEDIDOS
 
-### Estados
-`payment_pending` → `pending` → `preparing` → `ready` → `in_transit` → `delivered`  
-También: `cancelled`
+### Estados (delivery — entrega a domicilio)
+`pending` → `processing` → `ready_for_pickup` → `rider_assigned` → `on_the_way` → `delivered`  
+También: `cancelled`, `refunded`
+
+### Estados (pickup — retiro en tienda)
+`pending` → `processing` → `ready_for_pickup` → `delivered`  
+También: `cancelled`, `refunded`
+
+### Descripción de cada estado
+| Estado | Label | Color | Descripción |
+|---|---|---|---|
+| `pending` | Pendiente | `#f59e0b` | Pedido recibido, pendiente de preparación |
+| `processing` | Procesando | `#3b82f6` | Tienda preparando el pedido |
+| `ready_for_pickup` | Listo para enviar/retirar | `#8b5cf6` | Empacado y listo |
+| `rider_assigned` | Asignado a Rider | `#0EA5E9` | Rider aceptó, pendiente de recoger (solo delivery) |
+| `on_the_way` | En camino | `#f97316` | Rider recogió y va en ruta |
+| `delivered` | Entregado | `#22c55e` | Entregado exitosamente |
+| `cancelled` | Cancelado | `#ef4444` | Pedido cancelado |
+| `refunded` | Reembolsado | `#6b7280` | Dinero devuelto al cliente |
+
+### Asignación de Rider (solo pedidos `delivery_method='delivery'`)
+
+**Dos vías de asignación:**
+1. **Admin/Vendor asigna**: Desde el panel Delivery → modal con búsqueda de riders → selección manual o aleatoria ponderada. Estado del pedido pasa a `rider_response='pending'` hasta que el rider acepte.
+2. **Rider auto-asigna**: Desde su dashboard ve pedidos disponibles (sin rider asignado) → click "Tomar Pedido" → asignación atómica con `WHERE rider_id IS NULL` para evitar duplicidad → estado cambia a `rider_assigned` inmediatamente.
+
+**Protección anti-duplicidad:** El UPDATE SQL usa `WHERE rider_id IS NULL` como condición atómica. Si 100 riders intentan tomar el mismo pedido, solo el primero lo obtiene (`affected_rows=1`), los demás reciben HTTP 409 "Otro rider ya tomó este pedido".
+
+**Respuesta del rider a asignación del admin:**
+- `accepted` → estado cambia a `rider_assigned`, se calcula tiempo estimado
+- `rejected` → se limpia `rider_id=NULL`, admin/vendor puede reasignar
+
+**Transiciones permitidas por el rider:**
+- `rider_assigned` → `in_transit` ("Iniciar Entrega")
+- `in_transit` → `delivered` ("Marcar Entregado")
 
 ### Splits de comisión
 - `sales_commission` — % del total para PetsGo (default 10%)

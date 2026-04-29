@@ -69,6 +69,7 @@ const ProductDetailPage = () => {
   // Siempre cargar datos frescos desde la API (incluso con stateProduct como preview)
   useEffect(() => {
     if (!id) return;
+    window.scrollTo({ top: 0, behavior: 'instant' });
     if (!stateProduct) setLoading(true);
     getProductDetail(id).then(res => {
       const p = res.data?.data || res.data;
@@ -347,17 +348,18 @@ const ProductDetailPage = () => {
           {/* Vendor / Tienda */}
           {(product.store_name || product.brand) && (() => {
             const vendorLink = product.vendor_id ? `/tienda/${product.vendor_id}` : null;
-            const vendorState = { vendor: { id: product.vendor_id, store_name: product.store_name, logo_url: product.logo_url } };
+            const vendorState = { vendor: { id: product.vendor_id, store_name: product.store_name, logo_url: product.logo_url, invoice_logo_url: product.invoice_logo_url } };
+            const vendorLogo = product.invoice_logo_url || product.logo_url;
             const vendorContent = (
               <>
                 <div style={{
                   width: '42px', height: '42px', borderRadius: '12px', flexShrink: 0,
-                  background: product.logo_url ? '#fff' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
+                  background: vendorLogo ? '#fff' : 'linear-gradient(135deg, #00A8E8, #0077b6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   overflow: 'hidden', border: '1px solid #e2e8f0',
                 }}>
-                  {product.logo_url ? (
-                    <img src={product.logo_url} alt={product.store_name || product.brand} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  {vendorLogo ? (
+                    <img src={vendorLogo} alt={product.store_name || product.brand} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '3px' }} />
                   ) : (
                     <Store size={20} color="#fff" />
                   )}

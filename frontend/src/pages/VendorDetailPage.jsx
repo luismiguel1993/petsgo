@@ -171,11 +171,12 @@ const VendorDetailPage = () => {
         }}>
           <div className="vd-header-inner" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <div style={{
-              width: '56px', height: '56px', background: 'rgba(255,255,255,0.2)',
+              width: '56px', height: '56px', background: (vendor.invoice_logo_url || vendor.logo_url) ? '#fff' : 'rgba(255,255,255,0.2)',
               borderRadius: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              overflow: 'hidden',
             }}>
-              {vendor.logo_url ? (
-                <img src={vendor.logo_url} alt={vendor.store_name} style={{ width: '100%', height: '100%', borderRadius: '14px', objectFit: 'cover' }} />
+              {(vendor.invoice_logo_url || vendor.logo_url) ? (
+                <img src={vendor.invoice_logo_url || vendor.logo_url} alt={vendor.store_name} style={{ width: '100%', height: '100%', borderRadius: '14px', objectFit: 'contain', padding: '4px' }} />
               ) : (
                 <Store size={26} color="#fff" />
               )}

@@ -66,6 +66,8 @@ class PetsGo_Core {
         add_action('init', [$this, 'ensure_coupon_table_v2']);
         add_action('init', [$this, 'ensure_reviews_table']);
         add_action('init', [$this, 'ensure_petsgo_vendor']);
+        add_action('init', [$this, 'ensure_addresses_table']);
+        add_action('init', [$this, 'ensure_order_customer_note']);
         add_action('init', [$this, 'schedule_renewal_cron']);
         add_action('petsgo_check_renewals', [$this, 'process_renewal_reminders']);
         add_action('init', [$this, 'schedule_rider_doc_expiry_cron']);
@@ -80,9 +82,9 @@ class PetsGo_Core {
         $ajax_actions = [
             'petsgo_search_products', 'petsgo_save_product', 'petsgo_delete_product', 'petsgo_toggle_product',
             'petsgo_search_vendors', 'petsgo_save_vendor', 'petsgo_delete_vendor',
-            'petsgo_search_orders', 'petsgo_update_order_status',
+            'petsgo_search_orders', 'petsgo_update_order_status', 'petsgo_get_order_detail',
             'petsgo_search_users', 'petsgo_save_user', 'petsgo_delete_user',
-            'petsgo_search_riders', 'petsgo_save_rider_assignment',
+            'petsgo_search_riders', 'petsgo_save_rider_assignment', 'petsgo_get_riders_for_assignment',
             'petsgo_search_plans', 'petsgo_save_plan', 'petsgo_delete_plan',
             'petsgo_search_invoices', 'petsgo_generate_invoice', 'petsgo_download_invoice',
             'petsgo_search_audit_log',
@@ -124,6 +126,7 @@ class PetsGo_Core {
             'petsgo_toggle_user_status',
             'petsgo_verify_admin_password',
             'petsgo_toggle_module',
+            'petsgo_finance_vendor',
         ];
         foreach ($ajax_actions as $action) {
             add_action("wp_ajax_{$action}", [$this, $action]);
@@ -142,6 +145,9 @@ class PetsGo_Core {
 
         // ── Bloquear login WP (wp-login.php) para usuarios inactivos ──
         add_filter('wp_authenticate_user', [$this, 'block_inactive_wp_login'], 30, 2);
+
+        // ── Redirigir vendors al dashboard PetsGo tras login WP (OBS-VD-005) ──
+        add_filter('login_redirect', [$this, 'vendor_login_redirect'], 10, 3);
 
         // ── Seguridad: bloquear acceso al backend para riders y clientes ──
         add_action('admin_init', [$this, 'restrict_backend_access']);
@@ -274,6 +280,14 @@ class PetsGo_Core {
         return $user;
     }
 
+    /** Redirigir vendors al dashboard PetsGo tras login WP (OBS-VD-005) */
+    public function vendor_login_redirect($redirect_to, $requested_redirect_to, $user) {
+        if ($user instanceof \WP_User && in_array('petsgo_vendor', $user->roles, true)) {
+            return admin_url('admin.php?page=petsgo-dashboard');
+        }
+        return $redirect_to;
+    }
+
     /**
      * Agrega BCC soporte@petsgo.cl a TODOS los correos salientes.
      */
@@ -319,6 +333,7 @@ class PetsGo_Core {
             align-items: center;
             justify-content: center;
             min-height: 100vh;
+            overflow-y: auto;
         }
         /* Subtle pattern overlay */
         body.login::before {
@@ -348,9 +363,9 @@ class PetsGo_Core {
             background-size: contain !important;
             background-repeat: no-repeat !important;
             background-position: center !important;
-            width: 280px !important;
-            height: 100px !important;
-            margin-bottom: 16px !important;
+            width: 220px !important;
+            height: 80px !important;
+            margin-bottom: 10px !important;
         }
         /* Login box */
         #loginform,
@@ -430,9 +445,11 @@ class PetsGo_Core {
         }
         /* Wrapper */
         #login {
-            padding: 20px 0 !important;
+            padding: 16px 0 !important;
             z-index: 1;
             position: relative;
+            width: 320px !important;
+            max-width: 95vw;
         }
         /* Footer links */
         .login #nav,
@@ -494,12 +511,34 @@ class PetsGo_Core {
         /* Mobile responsive */
         @media screen and (max-width: 480px) {
             .login h1 a {
-                width: 220px !important;
-                height: 80px !important;
+                width: 180px !important;
+                height: 60px !important;
             }
             #loginform, .login form {
                 padding: 24px 18px 20px !important;
                 margin: 0 12px !important;
+            }
+        }
+        /* Laptop / short viewport */
+        @media screen and (max-height: 700px) {
+            body.login {
+                justify-content: flex-start !important;
+                padding-top: 20px !important;
+            }
+            #login {
+                padding: 10px 0 !important;
+            }
+            .login h1 a {
+                width: 180px !important;
+                height: 60px !important;
+                margin-bottom: 6px !important;
+            }
+            #login h1::after {
+                font-size: 11px !important;
+                margin-top: 4px !important;
+            }
+            #loginform, .login form {
+                padding: 22px 20px 18px !important;
             }
         }
         </style>
@@ -1059,6 +1098,283 @@ class PetsGo_Core {
     }
 
     /**
+     * Envía email de notificación al cliente cuando cambia el estado de su pedido.
+     * Se invoca desde los 3 handlers de cambio de estado (AJAX admin/vendor, REST rider, REST admin).
+     */
+    private function notify_order_status_change($order_id, $new_status, $old_status = '') {
+        global $wpdb;
+        $pfx = $wpdb->prefix;
+
+        // Obtener datos del pedido + cliente + tienda
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT o.*, v.store_name, u.display_name AS customer_name, u.user_email AS customer_email
+             FROM {$pfx}petsgo_orders o
+             JOIN {$pfx}petsgo_vendors v ON o.vendor_id = v.id
+             LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.id = %d", $order_id
+        ));
+        if (!$order || !$order->customer_email) return;
+
+        // No enviar si el estado no cambió
+        if ($old_status && $old_status === $new_status) return;
+
+        // Mapa de estados con emoji, color, título y descripción
+        $is_delivery = ($order->delivery_method ?? '') === 'delivery';
+        $status_map = [
+            'pending'          => ['emoji' => '🕐', 'color' => '#f59e0b', 'label' => 'Pendiente',           'desc' => 'Tu pedido ha sido recibido y está pendiente de confirmación por la tienda.'],
+            'processing'       => ['emoji' => '👨‍🍳', 'color' => '#3b82f6', 'label' => 'En Preparación',     'desc' => 'La tienda está preparando tu pedido. Te avisaremos cuando esté listo.'],
+            'ready_for_pickup' => ['emoji' => '📦', 'color' => '#8b5cf6',
+                'label' => $is_delivery ? 'Listo para Enviar' : 'Listo para Retiro',
+                'desc'  => $is_delivery ? 'Tu pedido ya está listo y empacado. Pronto será despachado por un rider.' : 'Tu pedido ya está listo y empacado. Puedes pasar a retirarlo a la tienda.'],
+            'rider_assigned'   => ['emoji' => '🏍️', 'color' => '#0EA5E9', 'label' => 'Asignado a Rider',   'desc' => 'Un rider ha sido asignado a tu pedido y pronto lo recogerá para entregártelo.'],
+            'on_the_way'       => ['emoji' => '🚚', 'color' => '#f97316', 'label' => 'En Camino',           'desc' => 'Tu pedido va en camino. ¡Prepárate para recibirlo!'],
+            'in_transit'       => ['emoji' => '🚚', 'color' => '#f97316', 'label' => 'En Camino',           'desc' => 'Tu pedido va en camino. ¡Prepárate para recibirlo!'],
+            'delivered'        => ['emoji' => '✅', 'color' => '#22c55e', 'label' => 'Entregado',            'desc' => '¡Tu pedido ha sido entregado! Esperamos que lo disfrutes.'],
+            'cancelled'        => ['emoji' => '❌', 'color' => '#ef4444', 'label' => 'Cancelado',            'desc' => 'Tu pedido ha sido cancelado. Si tienes dudas, contáctanos.'],
+            'refunded'         => ['emoji' => '💰', 'color' => '#6b7280', 'label' => 'Reembolsado',         'desc' => 'Se ha procesado el reembolso de tu pedido. El monto será devuelto a tu medio de pago.'],
+        ];
+
+        $info = $status_map[$new_status] ?? ['emoji' => '📋', 'color' => '#6b7280', 'label' => ucfirst($new_status), 'desc' => 'El estado de tu pedido ha sido actualizado.'];
+        $customer_name = $order->customer_name ?: 'Cliente';
+        $store_name    = $order->store_name ?: 'Tienda';
+        $subtotal_productos = floatval($order->total_amount);
+        $delivery_fee       = floatval($order->delivery_fee ?? 0);
+        $discount_amount    = floatval($order->discount_amount ?? 0);
+        $grand_total        = $subtotal_productos + $delivery_fee - $discount_amount;
+
+        // Obtener items del pedido
+        $items = $wpdb->get_results($wpdb->prepare(
+            "SELECT product_name, quantity, unit_price, subtotal FROM {$pfx}petsgo_order_items WHERE order_id=%d ORDER BY id ASC", $order_id
+        ));
+        $items_rows = '';
+        foreach ($items as $item) {
+            $items_rows .= '
+            <tr>
+              <td style="padding:6px 12px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($item->product_name) . '</td>
+              <td style="padding:6px 12px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:center;">' . intval($item->quantity) . '</td>
+              <td style="padding:6px 12px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($item->subtotal, 0, ',', '.') . '</td>
+            </tr>';
+        }
+
+        $subject = 'PetsGo — ' . $info['emoji'] . ' Pedido #' . $order_id . ' ' . $info['label'];
+        $pretext = 'Tu pedido #' . $order_id . ' de ' . $store_name . ' está ' . mb_strtolower($info['label']);
+
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($customer_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">Te informamos que el estado de tu pedido ha cambiado:</p>
+
+      <!-- Status Badge -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-radius:12px;overflow:hidden;border:2px solid ' . esc_attr($info['color']) . ';">
+              <tr>
+                <td style="background-color:' . esc_attr($info['color']) . ';padding:14px 28px;text-align:center;">
+                  <span style="font-size:28px;line-height:1;">' . $info['emoji'] . '</span>
+                  <p style="color:#ffffff;font-size:18px;font-weight:700;margin:6px 0 0;letter-spacing:0.5px;">' . esc_html($info['label']) . '</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background-color:#ffffff;padding:12px 24px;text-align:center;">
+                  <p style="color:#555;font-size:13px;margin:0;line-height:1.5;">' . esc_html($info['desc']) . '</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Order Info -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:10px 14px;font-size:13px;font-weight:700;color:#333;">
+            🏪 ' . esc_html($store_name) . ' — <span style="color:#00A8E8;">Pedido #' . $order_id . '</span>
+          </td>
+        </tr>
+        <tr style="background-color:#00A8E8;">
+          <td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="padding:6px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;">Producto</td>
+                <td style="padding:6px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;text-align:center;width:50px;">Cant.</td>
+                <td style="padding:6px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:80px;">Subtotal</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">' . $items_rows . '
+            </table>
+          </td>
+        </tr>
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="padding:8px 12px;font-size:12px;color:#555;">Subtotal productos</td>
+                <td style="padding:8px 12px;font-size:12px;color:#333;text-align:right;font-weight:600;">$' . number_format($subtotal_productos, 0, ',', '.') . '</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        ' . ($discount_amount > 0 ? '<tr style="background-color:#f0fdf4;">
+          <td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="padding:8px 12px;font-size:12px;color:#22C55E;font-weight:600;">🏷️ Descuento' . (!empty($order->coupon_code) ? ' (' . esc_html($order->coupon_code) . ')' : '') . '</td>
+                <td style="padding:8px 12px;font-size:12px;color:#22C55E;text-align:right;font-weight:600;">-$' . number_format($discount_amount, 0, ',', '.') . '</td>
+              </tr>
+            </table>
+          </td>
+        </tr>' : '') . '
+        <tr style="background-color:#f8f9fa;">
+          <td style="padding:0;">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+              <tr>
+                <td style="padding:8px 12px;font-size:12px;color:#555;">🚚 Envío</td>
+                <td style="padding:8px 12px;font-size:12px;text-align:right;">' . ($delivery_fee > 0 ? '<span style="color:#c2410c;">$' . number_format($delivery_fee, 0, ',', '.') . '</span>' : '<span style="color:#16a34a;font-weight:700;">¡Gratis!</span>') . '</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:10px 14px;text-align:right;font-size:16px;font-weight:700;color:#00A8E8;">
+            Total: $' . number_format($grand_total, 0, ',', '.') . '
+          </td>
+        </tr>
+      </table>
+
+      <!-- CTA -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:20px 0;">
+        <tr>
+          <td align="center">
+            <a href="' . esc_url(home_url('/mis-pedidos')) . '" style="display:inline-block;background-color:#00A8E8;color:#ffffff;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;letter-spacing:0.3px;">
+              Ver Mis Pedidos
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificación automática de PetsGo.<br>
+        Se envió a <span style="color:#888;">' . esc_html($order->customer_email) . '</span> por ser el correo de tu cuenta.
+      </p>';
+
+        $body = $this->email_wrap($inner, $pretext);
+
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $this->pg_setting('company_name','PetsGo') . ' <' . $this->pg_setting('company_from_email','notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name','PetsGo') . ' Soporte <' . $this->pg_setting('company_email','contacto@petsgo.cl') . '>',
+            'List-Unsubscribe: <mailto:' . $this->pg_setting('company_email','contacto@petsgo.cl') . '?subject=Desuscribir%20notificaciones%20pedidos>',
+            'X-Mailer: PetsGo/1.0',
+        ];
+
+        wp_mail($order->customer_email, $subject, $body, $headers);
+        $this->audit('order_status_email', 'order', $order_id, $info['label'] . ' — Email a ' . $order->customer_email);
+    }
+
+    /**
+     * Notifica al cliente que un rider aceptó su pedido, con tiempo estimado.
+     */
+    private function notify_rider_accepted($order, $rider_user, $estimated_minutes) {
+        global $wpdb;
+        $customer = get_userdata($order->customer_id);
+        if (!$customer || !$customer->user_email) return;
+
+        $store = $wpdb->get_row($wpdb->prepare(
+            "SELECT store_name FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $order->vendor_id
+        ));
+        $store_name = $store->store_name ?? 'Tienda PetsGo';
+        $rider_name = $rider_user->display_name ?? 'Tu rider';
+        $customer_name = $customer->display_name ?? 'Cliente';
+        $vehicle_meta = get_user_meta($rider_user->ID, 'petsgo_vehicle_type', true);
+        if (!$vehicle_meta) {
+            $prof = $wpdb->get_row($wpdb->prepare("SELECT vehicle_type FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $rider_user->ID));
+            $vehicle_meta = $prof->vehicle_type ?? '';
+        }
+        $vehicle_icons = ['bicicleta'=>'🚲','scooter'=>'🛵','moto'=>'🏍️','auto'=>'🚗','a_pie'=>'🚶'];
+        $vehicle_emoji = $vehicle_icons[$vehicle_meta] ?? '🚴';
+
+        $subject = 'PetsGo — 🚴 ¡Tu rider va en camino! Pedido #' . $order->id;
+        $pretext = 'Un rider aceptó tu pedido #' . $order->id . ' y llegará en ~' . intval($estimated_minutes) . ' minutos.';
+
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($customer_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">¡Buenas noticias! Un rider ha aceptado tu pedido y está preparándose para recogerlo.</p>
+
+      <!-- Rider Card -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-radius:16px;overflow:hidden;border:2px solid #22C55E;max-width:380px;width:100%;">
+              <tr>
+                <td style="background:#f0fdf4;padding:20px 24px;text-align:center;">
+                  <p style="font-size:36px;margin:0 0 8px;">' . $vehicle_emoji . '</p>
+                  <p style="font-size:18px;font-weight:700;color:#166534;margin:0 0 4px;">' . esc_html($rider_name) . '</p>
+                  <p style="font-size:13px;color:#15803d;margin:0;">Tu rider asignado</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="background:#fff;padding:16px 24px;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                    <tr>
+                      <td style="padding:6px 0;font-size:13px;color:#6b7280;">Pedido:</td>
+                      <td style="padding:6px 0;font-size:13px;color:#1f2937;font-weight:700;text-align:right;">#' . intval($order->id) . '</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:13px;color:#6b7280;">Tienda:</td>
+                      <td style="padding:6px 0;font-size:13px;color:#1f2937;font-weight:700;text-align:right;">' . esc_html($store_name) . '</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:13px;color:#6b7280;">Tiempo estimado:</td>
+                      <td style="padding:6px 0;font-size:16px;color:#00A8E8;font-weight:800;text-align:right;">~' . intval($estimated_minutes) . ' min</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#555;font-size:13px;line-height:1.7;margin:0 0 20px;text-align:center;">
+        El rider recogerá tu pedido en la tienda y luego lo llevará a tu dirección.<br>
+        <strong>¡Prepárate para recibirlo!</strong> 🐾
+      </p>
+
+      <!-- CTA -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:20px 0;">
+        <tr>
+          <td align="center">
+            <a href="' . esc_url(home_url('/mis-pedidos')) . '" style="display:inline-block;background-color:#00A8E8;color:#ffffff;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;">
+              Ver Mi Pedido
+            </a>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificación automática de PetsGo.<br>
+        Se envió a <span style="color:#888;">' . esc_html($customer->user_email) . '</span> por ser el correo de tu cuenta.
+      </p>';
+
+        $body = $this->email_wrap($inner, $pretext);
+
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $this->pg_setting('company_name','PetsGo') . ' <' . $this->pg_setting('company_from_email','notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name','PetsGo') . ' Soporte <' . $this->pg_setting('company_email','contacto@petsgo.cl') . '>',
+            'List-Unsubscribe: <mailto:' . $this->pg_setting('company_email','contacto@petsgo.cl') . '?subject=Desuscribir%20notificaciones%20pedidos>',
+            'X-Mailer: PetsGo/1.0',
+        ];
+
+        @wp_mail($customer->user_email, $subject, $body, $headers);
+        $this->audit('rider_accepted_email', 'order', $order->id, "Rider {$rider_user->ID} ({$rider_name}) — ~{$estimated_minutes} min — Email a {$customer->user_email}");
+    }
+
+    /**
      * Logo URL pública para correos
      */
     private function get_email_logo_url() {
@@ -1296,7 +1612,7 @@ class PetsGo_Core {
         </tr>
         <tr>
           <td style="padding:12px 18px;font-size:13px;font-weight:600;color:#555;border-top:1px solid #f0f0f0;">Fecha alerta</td>
-          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . date('d/m/Y H:i') . ' hrs</td>
+          <td style="padding:12px 18px;font-size:13px;color:#666;border-top:1px solid #f0f0f0;">' . current_time('d/m/Y H:i') . ' hrs</td>
         </tr>
       </table>
 
@@ -1455,6 +1771,9 @@ class PetsGo_Core {
         // Delivery — admin y vendor (vendor ve solo sus entregas)
         add_submenu_page('petsgo-dashboard', 'Delivery', 'Delivery', $cap_vendor, 'petsgo-delivery', [$this, 'page_delivery']);
 
+        // Finanzas — admin y vendor (vendor ve solo las suyas)
+        add_submenu_page('petsgo-dashboard', 'Finanzas', '💰 Finanzas', $cap_vendor, 'petsgo-finance', [$this, 'page_finance']);
+
         // Planes — solo admin
         add_submenu_page('petsgo-dashboard', 'Planes', 'Planes', $cap_admin, 'petsgo-plans', [$this, 'page_plans']);
 
@@ -1538,8 +1857,10 @@ class PetsGo_Core {
         .petsgo-badge{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600}
         .petsgo-badge.active,.petsgo-badge.delivered{background:#d4edda;color:#155724}
         .petsgo-badge.pending,.petsgo-badge.payment_pending{background:#fff3cd;color:#856404}
-        .petsgo-badge.processing,.petsgo-badge.in_transit{background:#cce5ff;color:#004085}
-        .petsgo-badge.cancelled{background:#f8d7da;color:#721c24}
+        .petsgo-badge.processing,.petsgo-badge.in_transit,.petsgo-badge.on_the_way{background:#cce5ff;color:#004085}
+        .petsgo-badge.ready_for_pickup{background:#e0f2fe;color:#0369a1}
+        .petsgo-badge.rider_assigned{background:#e0f2fe;color:#0369a1;border:1px solid #7dd3fc}
+        .petsgo-badge.cancelled,.petsgo-badge.refunded{background:#f8d7da;color:#721c24}
         .petsgo-badge.inactive{background:#e2e3e5;color:#383d41}
         .petsgo-btn{display:inline-block;padding:6px 16px;border-radius:6px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer;border:none;transition:.2s}
         .petsgo-btn-primary{background:#00A8E8;color:#fff}.petsgo-btn-primary:hover{background:#0090c7;color:#fff}
@@ -1670,7 +1991,28 @@ class PetsGo_Core {
             .petsgo-img-slot{width:120px;height:120px}
             .petsgo-btn{padding:8px 12px;font-size:12px}
         }
-        @media(max-width:400px){.petsgo-wrap h1{font-size:16px}.petsgo-table th,.petsgo-table td{padding:6px 8px;font-size:11px}}
+        /* ── Ticket Stats Grid ── */
+        .tk-stats-grid{grid-template-columns:repeat(5,1fr)}
+        @media(max-width:900px){.tk-stats-grid{grid-template-columns:repeat(3,1fr)}}
+        @media(max-width:600px){
+            .tk-stats-grid{grid-template-columns:repeat(2,1fr)}
+            /* Ticket detail modal  */
+            #tk-modal>div{padding:16px!important;width:100%!important;max-width:100%!important;border-radius:8px!important}
+            #tk-detail table{font-size:12px}
+            #tk-detail table td{padding:5px 8px!important;word-break:break-word;white-space:normal!important}
+            #tk-reply-form{flex-direction:column}
+            #tk-reply-form textarea{min-width:0!important;width:100%!important}
+            #tk-file-preview img{max-width:160px!important;max-height:120px!important}
+            /* New Ticket modal */
+            .tk-new-grid{grid-template-columns:1fr!important}
+            #tk-new-modal>div{padding:16px!important;width:100%!important;max-width:100%!important;border-radius:8px!important}
+        }
+        @media(max-width:400px){
+            .petsgo-wrap h1{font-size:16px}
+            .petsgo-table th,.petsgo-table td{padding:6px 8px;font-size:11px}
+            .tk-stats-grid{grid-template-columns:1fr}
+            #tk-modal>div,#tk-new-modal>div{padding:12px!important}
+        }
         /* ── Info Guide Button ── */
         .pg-info-guide-btn{border:none;background:none;cursor:pointer;padding:2px;opacity:0.4;transition:opacity 0.2s;line-height:0;vertical-align:middle;margin-left:6px}
         .pg-info-guide-btn:hover{opacity:1}
@@ -1707,9 +2049,9 @@ class PetsGo_Core {
             myVendorId: <?php echo $this->get_my_vendor_id(); ?>,
             statusEs: {
                 'pending':'Pendiente','payment_pending':'Pago Pendiente','preparing':'Preparando',
-                'ready':'Listo','in_transit':'En Tránsito','delivered':'Entregado','cancelled':'Cancelado',
+                'ready':'Listo','ready_for_pickup':'Listo para retiro','rider_assigned':'Asignado a Rider','in_transit':'En Tránsito','on_the_way':'En camino','delivered':'Entregado','cancelled':'Cancelado',
                 'processing':'Procesando','active':'Activo','inactive':'Inactivo','completed':'Completado',
-                'unassigned':'Sin Asignar'
+                'unassigned':'Sin Asignar','refunded':'Reembolsado'
             },
             sEs: function(s){ return PG.statusEs[(s||'').toLowerCase()]||(s||'').replace(/_/g,' '); },
             esc: function(s){ return jQuery('<span>').text(s||'').html(); },
@@ -1722,8 +2064,12 @@ class PetsGo_Core {
                     if(cb) cb({success:false,data:'Error de conexi\u00f3n ('+xhr.status+')'});
                 });
             },
-            badge: function(status){
+            badge: function(status, deliveryMethod){
                 var label = PG.sEs(status);
+                if(status==='ready_for_pickup' && deliveryMethod){
+                    label = deliveryMethod==='pickup' ? 'Listo para retirar' : 'Listo para enviar';
+                }
+                if(status==='rider_assigned') label = '🏍️ Asignado a Rider';
                 return '<span class="petsgo-badge ' + (status||'') + '">' + label + '</span>';
             },
             fdate: function(s){
@@ -1998,7 +2344,7 @@ class PetsGo_Core {
             $has_analytics = in_array($vendor_plan, ['pro','enterprise']);
             $vendor_sub_end = $vr->subscription_end ?? '';
             // Auto-deactivate if subscription expired
-            if ($vr && $vr->subscription_end && $vr->subscription_end < date('Y-m-d') && $vr->status === 'active') {
+            if ($vr && $vr->subscription_end && $vr->subscription_end < current_time('Y-m-d') && $vr->status === 'active') {
                 $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['status' => 'inactive'], ['id' => $vid]);
                 $vr->status = 'inactive';
             }
@@ -2083,7 +2429,7 @@ class PetsGo_Core {
 
         <?php if ($is_rider): ?>
             <h1>🚴 Panel Delivery — <?php echo esc_html(wp_get_current_user()->display_name); ?></h1>
-            <p class="dash-sub">Resumen de tu actividad · <?php echo date('d-m-Y H:i'); ?></p>
+            <p class="dash-sub">Resumen de tu actividad · <?php echo current_time('d-m-Y H:i'); ?></p>
             <div class="pg-kpi-grid">
                 <div class="pg-kpi"><div class="ki" style="background:#e3f5fc">📦</div><div class="kv"><?php echo $r_assigned; ?></div><div class="kl">Asignados</div></div>
                 <div class="pg-kpi"><div class="ki" style="background:#fff3cd">🚚</div><div class="kv"><?php echo $r_transit; ?></div><div class="kl">En Tránsito</div></div>
@@ -2252,7 +2598,7 @@ class PetsGo_Core {
             var hasAnalytics=<?php echo $has_analytics?'true':'false'; ?>;
             var isAdmin=PG.isAdmin;
             var charts={};
-            var statusColors={'delivered':'#28a745','pending':'#FFC400','in_transit':'#00A8E8','cancelled':'#dc3545','payment_pending':'#fd7e14','preparing':'#6f42c1','ready':'#17a2b8'};
+            var statusColors={'delivered':'#28a745','pending':'#FFC400','in_transit':'#00A8E8','cancelled':'#dc3545','payment_pending':'#fd7e14','preparing':'#6f42c1','ready':'#17a2b8','rider_assigned':'#0EA5E9','on_the_way':'#F97316'};
             var chartColors=['#00A8E8','#FFC400','#28a745','#dc3545','#6f42c1','#fd7e14','#17a2b8','#e83e8c'];
 
             // Initialize checklist widgets
@@ -2432,7 +2778,7 @@ class PetsGo_Core {
                         h+='<td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td>';
                         if(isAdmin) h+='<td>'+PG.esc(o.store_name||'N/A')+'</td>';
                         h+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.petsgo_commission)+'</td>';
-                        h+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td></tr>';
+                        h+='<td>'+PG.badge(o.status,o.delivery_method)+'</td><td>'+PG.fdate(o.created_at)+'</td></tr>';
                     });
                     h+='</tbody></table></div>';
                 }
@@ -3346,11 +3692,11 @@ class PetsGo_Core {
         $is_admin = $this->is_admin();
         $vid = $this->get_my_vendor_id();
         $vendors = $is_admin ? $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name") : [];
-        $statuses = ['pending'=>'Pendiente','processing'=>'Procesando','in_transit'=>'En Tránsito','delivered'=>'Entregado','cancelled'=>'Cancelado'];
+        $statuses = ['pending'=>'Pendiente','processing'=>'Procesando','ready_for_pickup'=>'Listo para retiro','rider_assigned'=>'Asignado a Rider','on_the_way'=>'En camino','delivered'=>'Entregado','cancelled'=>'Cancelado','refunded'=>'Reembolsado'];
         ?>
         <div class="wrap petsgo-wrap">
             <h1>📦 Pedidos (<span id="po-total">...</span>) <button class="pg-info-guide-btn" data-guide="orders" title="Guía"><svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#F97316' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/></svg></button></h1>
-            <script>PG.regGuide('orders','📦','Pedidos','<h4>📦 Gestión de Pedidos</h4><p><strong>¿Qué es?</strong><br>Todos los pedidos del marketplace. Permite ver detalles, cambiar estados y generar boletas.</p><p><strong>Estados del pedido:</strong></p><ul><li><strong>🟡 Pago pendiente:</strong> Esperando confirmación de pago.</li><li><strong>🟠 Pendiente:</strong> Pago confirmado, tienda debe preparar.</li><li><strong>🟣 Preparando:</strong> La tienda está preparando el pedido.</li><li><strong>🟢 Listo:</strong> Preparado, esperando rider o retiro.</li><li><strong>🔵 En tránsito:</strong> Rider en ruta hacia el cliente.</li><li><strong>✅ Entregado:</strong> Entregado exitosamente.</li></ul><p><strong>Acciones:</strong></p><ul><li><strong>Cambiar estado:</strong> Avanza el pedido al siguiente estado.</li><li><strong>Generar boleta:</strong> Botón 🧾 para crear la boleta electrónica.</li><li><strong>Filtros:</strong> Por estado, tienda, fecha o búsqueda.</li></ul>','#F97316');</script>
+            <script>PG.regGuide('orders','📦','Pedidos','<h4>📦 Gestión de Pedidos</h4><p><strong>¿Qué es?</strong><br>Todos los pedidos del marketplace. Permite ver detalles, cambiar estados y generar boletas.</p><p><strong>Estados del pedido:</strong></p><ul><li><strong>🟡 Pago pendiente:</strong> Esperando confirmación de pago.</li><li><strong>🟠 Pendiente:</strong> Pago confirmado, tienda debe preparar.</li><li><strong>🟣 Preparando:</strong> La tienda está preparando el pedido.</li><li><strong>🟢 Listo:</strong> Preparado, esperando rider o retiro.</li><li><strong>🔵 En tránsito:</strong> Rider en ruta hacia el cliente.</li><li><strong>✅ Entregado:</strong> Entregado exitosamente.</li></ul><p><strong>Acciones:</strong></p><ul><li><strong>Cambiar estado:</strong> Avanza el pedido al siguiente estado.</li><li><strong>Generar boleta:</strong> Botón 🧾 para crear la boleta electrónica.</li><li><strong>Filtros:</strong> Por estado, tienda, fecha o búsqueda por cliente.</li><li><strong>Rango de fechas:</strong> Usa los campos Desde/Hasta para filtrar pedidos por período.</li></ul>','#F97316');</script>
             <?php if (!$is_admin && $vid): ?><div class="petsgo-info-bar">📌 Estás viendo solo los pedidos de tu tienda.</div><?php endif; ?>
             <div class="petsgo-search-bar">
                 <input type="text" id="po-search" placeholder="🔍 Buscar por cliente..." autocomplete="off">
@@ -3365,9 +3711,52 @@ class PetsGo_Core {
                 <button type="button" class="petsgo-btn petsgo-btn-primary petsgo-btn-sm" id="po-btn-search">🔍 Buscar</button>
                 <span class="petsgo-loader" id="po-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
+            <div class="po-date-bar">
+                <label>📅 Desde:</label>
+                <input type="date" id="po-date-from">
+                <label>Hasta:</label>
+                <input type="date" id="po-date-to">
+                <button type="button" class="petsgo-btn petsgo-btn-sm" id="po-btn-clear-dates" style="font-size:12px;background:#f3f4f6;color:#555;border:1px solid #d1d5db;" title="Limpiar fechas">✕ Limpiar</button>
+                <span class="po-date-error" id="po-date-error"></span>
+                <span style="flex:1;"></span>
+                <button type="button" class="petsgo-btn petsgo-btn-sm" id="po-btn-export-csv" style="font-size:12px;background:#22C55E;color:#fff;border:none;font-weight:600;" title="Exportar pedidos a CSV">📥 Exportar CSV</button>
+            </div>
             <div class="petsgo-table-wrap">
-            <table class="petsgo-table"><thead id="po-thead"><tr><th>#</th><th>Cliente</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th>Total</th><th>Comisión</th><th>Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Cambiar</th><?php endif; ?></tr></thead>
+            <table class="petsgo-table"><thead id="po-thead"><tr><th>#</th><th>Cliente</th><?php if($is_admin): ?><th>Tienda</th><?php endif; ?><th>Total</th><th>Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr></thead>
             <tbody id="po-body"><tr><td colspan="10" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
+            </div>
+        </div>
+        <!-- Order Detail Modal -->
+        <style>
+        .po-date-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 16px;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;}
+        .po-date-bar label{font-size:13px;font-weight:600;color:#555;white-space:nowrap;}
+        .po-date-bar input[type=date]{padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:140px;}
+        .po-date-bar .po-date-error{color:#EF4444;font-size:12px;font-weight:600;display:none;}
+        @media(max-width:600px){
+            .po-date-bar{flex-direction:column;align-items:stretch;}
+            .po-date-bar label{margin-bottom:-4px;}
+            .po-date-bar input[type=date]{width:100%;min-width:auto;}
+            .po-date-bar button{width:100%;}
+            .po-date-bar span[style*="flex:1"]{display:none;}
+            #po-detail-modal{padding:10px 0!important;}
+            #po-detail-modal .po-modal-header{padding:14px 16px!important;}
+            #po-detail-modal .po-modal-header h3{font-size:15px!important;}
+            #po-detail-modal #po-detail-body{padding:14px!important;}
+            #po-detail-modal .po-info-grid{grid-template-columns:1fr!important;gap:10px!important;}
+            #po-detail-modal .po-items-table th,#po-detail-modal .po-items-table td{padding:6px 8px!important;font-size:12px!important;}
+            #po-detail-modal .po-actions{flex-direction:column!important;align-items:stretch!important;}
+            #po-detail-modal .po-actions>div,#po-detail-modal .po-actions>a,#po-detail-modal .po-actions>button,#po-detail-modal .po-actions>span{width:100%;text-align:center;justify-content:center;}
+        }
+        </style>
+        <div id="po-detail-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100000;background:rgba(0,0,0,0.5);justify-content:center;align-items:flex-start;padding:30px 0;overflow-y:auto;">
+            <div style="background:#fff;border-radius:14px;max-width:760px;width:95%;margin:0 auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);overflow:hidden;">
+                <div class="po-modal-header" style="display:flex;justify-content:space-between;align-items:center;padding:18px 24px;background:linear-gradient(135deg,#00A8E8,#0090c7);">
+                    <h3 id="po-detail-title" style="margin:0;font-weight:800;font-size:17px;color:#fff;">📦 Detalle Pedido</h3>
+                    <button onclick="closeOrderDetail()" style="background:none;border:none;color:#fff;font-size:24px;cursor:pointer;font-weight:700;">&times;</button>
+                </div>
+                <div id="po-detail-body" style="padding:24px;">
+                    <p style="text-align:center;color:#999;">Cargando...</p>
+                </div>
             </div>
         </div>
         <script>
@@ -3375,7 +3764,13 @@ class PetsGo_Core {
             var t;var statuses=<?php echo json_encode($statuses); ?>;
             $('#po-filter-status').pgChecklist({placeholder:'Todos los estados'});
             <?php if($is_admin): ?>$('#po-filter-vendor').pgChecklist({placeholder:'Todas las tiendas'});<?php endif; ?>
-            var cols=['id','customer_name'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'total_amount','petsgo_commission','delivery_fee','rider_name','status','created_at'<?php if($is_admin): ?>,'_actions'<?php endif; ?>];
+            var isAdmin=<?php echo $is_admin?'true':'false'; ?>;
+            function orderLabel(status,dm){
+                if(status==='ready_for_pickup') return dm==='pickup'?'Listo para retirar':'Listo para enviar';
+                if(status==='rider_assigned') return '🏍️ Asignado a Rider';
+                return statuses[status]||PG.sEs(status);
+            }
+            var cols=['id','customer_name'<?php if($is_admin): ?>,'store_name'<?php endif; ?>,'total_amount','delivery_fee','rider_name','status','created_at','_actions'];
             var tbl=PG.table({
                 thead:'#po-thead',body:'#po-body',perPage:25,defaultSort:'id',defaultDir:'desc',
                 columns:cols,emptyMsg:'Sin pedidos.',
@@ -3383,25 +3778,23 @@ class PetsGo_Core {
                 renderRow:function(o){
                     var r='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td>';
                     <?php if($is_admin): ?>r+='<td>'+PG.esc(o.store_name||'N/A')+'</td>';<?php endif; ?>
-                    r+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.petsgo_commission)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
+                    r+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
                     r+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
-                    r+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
-                    <?php if($is_admin): ?>
-                    r+='<td><select class="po-status-sel" data-id="'+o.id+'" style="font-size:12px;">';
-                    $.each(statuses,function(k,lbl){r+='<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+lbl+'</option>';});
-                    r+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success po-status-btn" data-id="'+o.id+'">✓</button>';
-                    if(!o.has_invoice) r+=' <button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary po-gen-invoice" data-id="'+o.id+'" title="Generar Boleta">🧾</button>';
-                    else r+=' <a href="'+PG.adminUrl+'?page=petsgo-invoice-config&preview='+o.invoice_id+'" class="petsgo-btn petsgo-btn-sm" title="Ver Boleta" target="_blank">🧾✅</a>';
+                    r+='<td>'+PG.badge(o.status,o.delivery_method)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
+                    r+='<td>';
+                    r+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary po-view-btn" data-id="'+o.id+'" style="font-size:11px;margin-right:4px;">👁 Ver</button>';
                     r+='</td>';
-                    <?php endif; ?>
                     r+='</tr>';
                     return r;
                 }
             });
             function load(){
+                $('#po-date-error').hide();
+                var df=$('#po-date-from').val(),dt=$('#po-date-to').val();
+                if(df&&dt&&df>dt){$('#po-date-error').text('La fecha de inicio no puede ser posterior a la fecha fin').show();return;}
                 $('#po-loader').addClass('active');
                 var sv=$('#po-filter-status').val()||[];
-                var d={search:$('#po-search').val(),status:Array.isArray(sv)?sv.join(','):(sv||'')};
+                var d={search:$('#po-search').val(),status:Array.isArray(sv)?sv.join(','):(sv||''),date_from:df||'',date_to:dt||''};
                 <?php if($is_admin): ?>var vv=$('#po-filter-vendor').val()||[];d.vendor_id=Array.isArray(vv)?vv.join(','):(vv||'');<?php endif; ?>
                 PG.post('petsgo_search_orders',d,function(r){
                     $('#po-loader').removeClass('active');if(!r.success){tbl.setData([]);return;}
@@ -3411,16 +3804,141 @@ class PetsGo_Core {
             $('#po-search').on('input',function(){clearTimeout(t);t=setTimeout(load,300);});
             $('#po-filter-status<?php if($is_admin): ?>, #po-filter-vendor<?php endif; ?>').on('change',load);
             $('#po-btn-search').on('click',load);
-            $(document).on('click','.po-status-btn',function(){
-                var id=$(this).data('id');var ns=$('.po-status-sel[data-id="'+id+'"]').val();
-                PG.post('petsgo_update_order_status',{id:id,status:ns},function(r){if(r.success){load();PG.toast('✅ Estado del pedido actualizado','success');}else PG.toast('❌ '+(r.data||'Error al actualizar estado'),'error');});
+            $('#po-date-from, #po-date-to').on('change',function(){
+                var df=$('#po-date-from').val(),dt=$('#po-date-to').val();
+                if(df&&dt&&df>dt){$('#po-date-error').text('La fecha de inicio no puede ser posterior a la fecha fin').show();return;}
+                $('#po-date-error').hide();load();
             });
-            $(document).on('click','.po-gen-invoice',function(){
-                var btn=$(this);var id=btn.data('id');btn.prop('disabled',true).text('⏳');
-                PG.post('petsgo_generate_invoice',{order_id:id},function(r){
-                    if(r.success){PG.toast('✅ '+r.data.message,'success');load();}else{PG.toast('❌ '+(r.data||'Error al generar boleta'),'error');btn.prop('disabled',false).text('🧾');}
+            $('#po-btn-clear-dates').on('click',function(){$('#po-date-from').val('');$('#po-date-to').val('');$('#po-date-error').hide();load();});
+            // --- Exportar CSV ---
+            $('#po-btn-export-csv').on('click',function(){
+                var rows=tbl.getData();
+                if(!rows||!rows.length){PG.toast('⚠️ No hay pedidos para exportar','warning');return;}
+                var sep=',';
+                var headers=['#','Cliente'<?php if($is_admin): ?>,'Tienda'<?php endif; ?>,'Total','Delivery','Rider','Estado','Método Envío','Método Pago','Estado Pago','Dirección','Región','Comuna','Nota Cliente','Fecha'];
+                var csvRows=[headers.map(function(h){return '"'+h+'"';}).join(sep)];
+                rows.forEach(function(o){
+                    var row=[
+                        o.id,
+                        '"'+(o.customer_name||'N/A').replace(/"/g,'""')+'"',
+                        <?php if($is_admin): ?>'"'+(o.store_name||'N/A').replace(/"/g,'""')+'"',<?php endif; ?>
+                        o.total_amount||0,
+                        o.delivery_fee||0,
+                        '"'+(o.rider_name||'Sin asignar').replace(/"/g,'""')+'"',
+                        '"'+orderLabel(o.status,o.delivery_method)+'"',
+                        '"'+(o.delivery_method==='pickup'?'Retiro en tienda':'Envío a domicilio')+'"',
+                        '"'+(o.payment_method||'N/A')+'"',
+                        '"'+(o.payment_status||'N/A')+'"',
+                        '"'+(o.shipping_address||'').replace(/"/g,'""')+'"',
+                        '"'+(o.shipping_region||'').replace(/"/g,'""')+'"',
+                        '"'+(o.shipping_comuna||'').replace(/"/g,'""')+'"',
+                        '"'+(o.customer_note||'').replace(/"/g,'""')+'"',
+                        '"'+(o.created_at||'')+'"'
+                    ];
+                    csvRows.push(row.join(sep));
+                });
+                var bom='\uFEFF';
+                var blob=new Blob([bom+csvRows.join('\n')],{type:'text/csv;charset=utf-8;'});
+                var a=document.createElement('a');
+                a.href=URL.createObjectURL(blob);
+                a.download='PetsGo_Pedidos_'+new Date().toISOString().slice(0,10)+'.csv';
+                a.click();
+                PG.toast('✅ CSV exportado con '+rows.length+' pedidos','success');
+            });
+            // --- Order Detail Modal ---
+            window.closeOrderDetail=function(){$('#po-detail-modal').css('display','none');};
+            $(document).on('click','.po-view-btn',function(){
+                var id=$(this).data('id');
+                $('#po-detail-body').html('<p style="text-align:center;color:#999;padding:30px;">⏳ Cargando detalle...</p>');
+                $('#po-detail-modal').css('display','flex');
+                $('#po-detail-title').text('📦 Detalle Pedido #'+id);
+                PG.post('petsgo_get_order_detail',{id:id},function(res){
+                    if(!res.success){$('#po-detail-body').html('<p style="color:red;">❌ '+PG.esc(res.data||'Error')+'</p>');return;}
+                    var o=res.data.order,items=res.data.items,invUrl=res.data.invoice_url;
+                    var h='';
+                    // Info header
+                    h+='<div class="po-info-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:20px;">';
+                    h+='<div style="background:#f8fafc;border-radius:10px;padding:14px;">';
+                    h+='<div style="font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:700;margin-bottom:6px;">👤 Cliente</div>';
+                    h+='<div style="font-weight:700;color:#1f2937;">'+PG.esc(o.customer_name||'N/A')+'</div>';
+                    h+='<div style="font-size:12px;color:#6b7280;">'+(o.customer_email||'')+'</div>';
+                    if(o.shipping_address)h+='<div style="font-size:12px;color:#6b7280;margin-top:4px;">📍 '+PG.esc(o.shipping_address)+'</div>';
+                    if(o.customer_note)h+='<div style="font-size:12px;color:#f59e0b;margin-top:4px;">📝 '+PG.esc(o.customer_note)+'</div>';
+                    h+='</div>';
+                    h+='<div style="background:#f8fafc;border-radius:10px;padding:14px;">';
+                    h+='<div style="font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:700;margin-bottom:6px;">📋 Pedido</div>';
+                    h+='<div style="font-size:13px;color:#333;"><strong>Estado:</strong> '+PG.badge(o.status,o.delivery_method)+'</div>';
+                    h+='<div style="font-size:13px;color:#333;margin-top:4px;"><strong>Método:</strong> '+(o.delivery_method==='pickup'?'🏪 Retiro en tienda':'🚚 Envío a domicilio')+'</div>';
+                    h+='<div style="font-size:13px;color:#333;margin-top:4px;"><strong>Rider:</strong> '+PG.esc(o.rider_name||'Sin asignar')+'</div>';
+                    h+='<div style="font-size:13px;color:#333;margin-top:4px;"><strong>Fecha:</strong> '+PG.fdate(o.created_at)+'</div>';
+                    if(o.payment_method)h+='<div style="font-size:13px;color:#333;margin-top:4px;"><strong>Pago:</strong> '+PG.esc(o.payment_method)+'</div>';
+                    h+='</div></div>';
+                    // Items table
+                    h+='<div style="font-weight:800;font-size:14px;color:#2F3A40;margin-bottom:8px;">🛒 Productos</div>';
+                    h+='<div style="overflow-x:auto;margin-bottom:16px;"><table class="po-items-table" style="width:100%;border-collapse:collapse;font-size:13px;">';
+                    h+='<thead><tr style="background:#f0f9ff;"><th style="text-align:left;padding:8px 12px;font-weight:700;color:#0369a1;">Producto</th><th style="text-align:center;padding:8px;font-weight:700;color:#0369a1;width:60px;">Cant.</th><th style="text-align:right;padding:8px 12px;font-weight:700;color:#0369a1;width:90px;">P.Unit</th><th style="text-align:right;padding:8px 12px;font-weight:700;color:#0369a1;width:90px;">Subtotal</th></tr></thead><tbody>';
+                    $.each(items,function(i,it){
+                        h+='<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:8px 12px;">'+PG.esc(it.product_name)+'</td><td style="text-align:center;padding:8px;">'+it.quantity+'</td><td style="text-align:right;padding:8px 12px;">'+PG.money(it.unit_price)+'</td><td style="text-align:right;padding:8px 12px;font-weight:600;">'+PG.money(it.subtotal)+'</td></tr>';
+                    });
+                    h+='</tbody></table></div>';
+                    // Totals
+                    var discount=parseFloat(o.discount_amount||0);
+                    var subtotal=parseFloat(o.total_amount||0);
+                    var delivery=parseFloat(o.delivery_fee||0);
+                    var total=subtotal+delivery-discount;
+                    h+='<div style="background:#f8fafc;border-radius:10px;padding:14px;margin-bottom:20px;">';
+                    h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:#555;margin-bottom:4px;"><span>Subtotal productos</span><strong>'+PG.money(subtotal)+'</strong></div>';
+                    if(discount>0)h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:#22C55E;font-weight:600;margin-bottom:4px;"><span>🏷️ Descuento'+(o.coupon_code?' ('+PG.esc(o.coupon_code)+')':'')+'</span><strong>-'+PG.money(discount)+'</strong></div>';
+                    h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:#555;margin-bottom:4px;"><span>🚚 Envío</span><strong>'+(delivery>0?PG.money(delivery):'Gratis')+'</strong></div>';
+                    if(isAdmin)h+='<div style="display:flex;justify-content:space-between;font-size:13px;color:#555;margin-bottom:4px;"><span>💰 Comisión PetsGo</span><strong>'+PG.money(o.petsgo_commission)+'</strong></div>';
+                    h+='<div style="display:flex;justify-content:space-between;font-size:16px;color:#00A8E8;font-weight:800;border-top:2px solid #e5e7eb;padding-top:8px;margin-top:8px;"><span>Total</span><strong>'+PG.money(total)+'</strong></div>';
+                    h+='</div>';
+                    // Actions: change status + invoice
+                    h+='<div class="po-actions" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;border-top:1px solid #e5e7eb;padding-top:16px;">';
+                    // Status change
+                    h+='<div style="display:flex;align-items:center;gap:6px;"><label style="font-size:12px;font-weight:700;color:#555;">Cambiar estado:</label>';
+                    h+='<select id="po-det-status" style="font-size:12px;padding:4px 8px;border:1px solid #ddd;border-radius:6px;">';
+                    if(isAdmin){
+                        $.each(statuses,function(k,lbl){h+='<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+orderLabel(k,o.delivery_method)+'</option>';});
+                    } else {
+                        if(o.status==='pending'||o.status==='processing'||o.status==='ready_for_pickup'){
+                            h+='<option value="pending"'+(o.status==='pending'?' selected':'')+'>Pendiente</option>';
+                            h+='<option value="processing"'+(o.status==='processing'?' selected':'')+'>Procesando</option>';
+                            h+='<option value="ready_for_pickup"'+(o.status==='ready_for_pickup'?' selected':'')+'>'+orderLabel('ready_for_pickup',o.delivery_method)+'</option>';
+                        } else {
+                            h+='<option value="'+o.status+'" selected>'+PG.esc(orderLabel(o.status,o.delivery_method))+'</option>';
+                        }
+                    }
+                    h+='</select>';
+                    h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-success" onclick="updateOrderFromDetail('+o.id+')">✓ Guardar</button>';
+                    h+='</div>';
+                    // Invoice
+                    if(invUrl){
+                        h+='<a href="'+invUrl+'" target="_blank" class="petsgo-btn petsgo-btn-sm" style="background:#f0faff;color:#00A8E8;border:1px solid #d0ecf9;font-size:12px;font-weight:700;text-decoration:none;">🧾 Descargar Boleta</a>';
+                    } else if(isAdmin){
+                        h+='<button class="petsgo-btn petsgo-btn-sm petsgo-btn-primary" onclick="genInvoiceFromDetail('+o.id+')" id="po-det-gen-inv" style="font-size:12px;">🧾 Generar Boleta</button>';
+                    } else {
+                        h+='<span style="font-size:12px;color:#999;">🧾 Boleta no generada aún</span>';
+                    }
+                    h+='</div>';
+                    $('#po-detail-body').html(h);
                 });
             });
+            window.updateOrderFromDetail=function(id){
+                var ns=$('#po-det-status').val();
+                PG.post('petsgo_update_order_status',{id:id,status:ns},function(r){
+                    if(r.success){PG.toast('✅ Estado actualizado','success');closeOrderDetail();load();}
+                    else PG.toast('❌ '+(r.data||'Error'),'error');
+                });
+            };
+            window.genInvoiceFromDetail=function(id){
+                $('#po-det-gen-inv').prop('disabled',true).text('⏳');
+                PG.post('petsgo_generate_invoice',{order_id:id},function(r){
+                    if(r.success){PG.toast('✅ '+r.data.message,'success');closeOrderDetail();load();}
+                    else{PG.toast('❌ '+(r.data||'Error'),'error');$('#po-det-gen-inv').prop('disabled',false).text('🧾 Generar Boleta');}
+                });
+            };
+            $('#po-detail-modal').on('click',function(e){if(e.target===this)closeOrderDetail();});
             load();
         });
         </script>
@@ -3745,7 +4263,8 @@ class PetsGo_Core {
         if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>\u26d4 Sin acceso</h1><p>Solo administradores y tiendas pueden ver esta secci\u00f3n.</p></div>'; return; }
         global $wpdb;
         $is_admin = $this->is_admin();
-        $riders = $is_admin ? $wpdb->get_results("SELECT u.ID, u.display_name FROM {$wpdb->users} u INNER JOIN {$wpdb->usermeta} m ON u.ID=m.user_id WHERE m.meta_key='{$wpdb->prefix}capabilities' AND m.meta_value LIKE '%petsgo_rider%'") : [];
+        $is_vendor_page = !$is_admin && $this->is_vendor();
+        $riders = ($is_admin || $is_vendor_page) ? $wpdb->get_results("SELECT u.ID, u.display_name FROM {$wpdb->users} u INNER JOIN {$wpdb->usermeta} m ON u.ID=m.user_id AND m.meta_key='{$wpdb->prefix}capabilities' AND m.meta_value LIKE '%petsgo_rider%' INNER JOIN {$wpdb->usermeta} rs ON u.ID=rs.user_id AND rs.meta_key='petsgo_rider_status' AND rs.meta_value='approved' LEFT JOIN {$wpdb->usermeta} us ON u.ID=us.user_id AND us.meta_key='petsgo_user_status' WHERE COALESCE(us.meta_value,'active') != 'inactive'") : [];
         ?>
         <div class="wrap petsgo-wrap">
             <h1>🚴 Delivery (<span id="pd-total">...</span>) <button class="pg-info-guide-btn" data-guide="delivery" title="Guía"><svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='#F97316' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='10'/><path d='M12 16v-4'/><path d='M12 8h.01'/></svg></button></h1>
@@ -3758,10 +4277,10 @@ class PetsGo_Core {
                 <button class="petsgo-tab" data-tab="pd-tab-payouts" onclick="document.querySelectorAll('.petsgo-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');document.querySelectorAll('.pd-tab-content').forEach(c=>c.style.display='none');document.getElementById(this.dataset.tab).style.display='block';loadPayouts();">💰 Pagos Riders</button>
             </div>
             <?php endif; ?>
-            <?php if (!$is_admin): ?><div class="petsgo-info-bar">📌 Estás viendo solo tus entregas asignadas.</div><?php endif; ?>
+            <?php if ($is_vendor_page): ?><div class="petsgo-info-bar">📌 Estás viendo los pedidos de tu tienda. Puedes asignar un rider a tus pedidos.</div><?php elseif(!$is_admin): ?><div class="petsgo-info-bar">📌 Estás viendo solo tus entregas asignadas.</div><?php endif; ?>
             <div id="pd-tab-deliveries" class="pd-tab-content">
             <div class="petsgo-search-bar">
-                <select id="pd-filter-status" multiple><option value="">Todos</option><option value="in_transit">En Tránsito</option><option value="delivered">Entregado</option><option value="pending">Pendiente</option><option value="preparing">Preparando</option><option value="ready">Listo</option><option value="cancelled">Cancelado</option></select>
+                <select id="pd-filter-status" multiple><option value="">Todos</option><option value="pending">Pendiente</option><option value="processing">Procesando</option><option value="ready_for_pickup">Listo para envío</option><option value="rider_assigned">Asignado a Rider</option><option value="on_the_way">En Tránsito</option><option value="delivered">Entregado</option><option value="cancelled">Cancelado</option></select>
                 <?php if ($is_admin): ?>
                 <select id="pd-filter-rider" multiple><option value="">Todos los riders</option><option value="unassigned">Sin asignar</option>
                     <?php foreach ($riders as $r): ?><option value="<?php echo $r->ID; ?>"><?php echo esc_html($r->display_name); ?></option><?php endforeach; ?>
@@ -3771,7 +4290,7 @@ class PetsGo_Core {
                 <span class="petsgo-loader" id="pd-loader"><span class="spinner is-active" style="float:none;margin:0;"></span></span>
             </div>
             <div class="petsgo-table-wrap">
-            <table class="petsgo-table"><thead id="pd-thead"><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
+            <table class="petsgo-table"><thead id="pd-thead"><tr><th>Pedido #</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Fee Delivery</th><th>Rider</th><th>Resp. Rider</th><th>Estado</th><th>Fecha</th><?php if($is_admin || $is_vendor_page): ?><th>Asignar Rider</th><?php endif; ?></tr></thead>
             <tbody id="pd-body"><tr><td colspan="9" style="text-align:center;padding:30px;color:#999;">Cargando...</td></tr></tbody></table>
             </div>
             </div>
@@ -3916,12 +4435,55 @@ class PetsGo_Core {
             </div>
             <?php endif; ?>
         </div>
+        <!-- Rider Assignment Modal -->
+        <div id="pd-rider-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:100001;background:rgba(0,0,0,0.6);justify-content:center;align-items:center;padding:16px;">
+            <div style="background:#fff;border-radius:16px;max-width:640px;width:100%;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.35);overflow:hidden;">
+                <!-- Header -->
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid #eee;background:linear-gradient(135deg,#00A8E8 0%,#0077B6 100%);flex-shrink:0;">
+                    <div>
+                        <h4 style="margin:0;font-weight:800;font-size:16px;color:#fff;">🏍️ Asignar Rider</h4>
+                        <small id="pd-modal-order-label" style="color:rgba(255,255,255,0.8);font-size:12px;">Pedido #---</small>
+                    </div>
+                    <button onclick="closeRiderModal()" style="background:rgba(255,255,255,0.2);border:none;font-size:18px;cursor:pointer;color:#fff;font-weight:700;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;">&times;</button>
+                </div>
+                <!-- Body -->
+                <div style="flex:1;overflow-y:auto;padding:0;">
+                    <!-- Selection view -->
+                    <div id="pd-modal-select" style="padding:16px 20px;">
+                        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+                            <input type="text" id="pd-modal-search" placeholder="Buscar rider por nombre..." style="flex:1;min-width:160px;padding:8px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                            <button id="pd-modal-random-btn" onclick="assignRandomRider()" style="padding:8px 16px;border:none;border-radius:8px;background:linear-gradient(135deg,#F97316,#ea580c);color:#fff;font-weight:700;font-size:13px;cursor:pointer;white-space:nowrap;">🎲 Asignar mejor rider</button>
+                        </div>
+                        <div id="pd-modal-rider-list" style="display:flex;flex-direction:column;gap:8px;max-height:340px;overflow-y:auto;"></div>
+                        <div id="pd-modal-empty" style="display:none;text-align:center;padding:30px;color:#999;font-size:14px;">No hay riders aprobados disponibles.</div>
+                        <div id="pd-modal-loading" style="text-align:center;padding:30px;color:#999;"><span class="spinner is-active" style="float:none;margin:0;"></span> Cargando riders...</div>
+                    </div>
+                    <!-- Preview view -->
+                    <div id="pd-modal-preview" style="display:none;padding:20px;">
+                        <button onclick="backToSelection()" style="background:#f3f4f6;border:1px solid #ddd;border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer;margin-bottom:16px;font-weight:600;">← Volver a la lista</button>
+                        <div style="text-align:center;margin-bottom:20px;">
+                            <div id="pd-prev-avatar" style="width:80px;height:80px;border-radius:50%;margin:0 auto 12px;overflow:hidden;border:3px solid #00A8E8;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:36px;"></div>
+                            <h3 id="pd-prev-name" style="margin:0 0 4px;font-weight:800;font-size:18px;color:#2F3A40;"></h3>
+                            <div id="pd-prev-vehicle" style="font-size:13px;color:#6b7280;"></div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:20px;" id="pd-prev-stats"></div>
+                        <div id="pd-prev-location" style="background:#f0f9ff;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;display:none;"></div>
+                        <div id="pd-prev-random-note" style="display:none;background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:13px;color:#92400e;"></div>
+                        <div style="display:flex;gap:8px;justify-content:center;">
+                            <button onclick="backToSelection()" style="padding:10px 24px;border:1px solid #ddd;border-radius:10px;background:#f3f4f6;color:#374151;font-weight:700;font-size:14px;cursor:pointer;">Cancelar</button>
+                            <button id="pd-prev-confirm" onclick="confirmRiderAssignment()" style="padding:10px 24px;border:none;border-radius:10px;background:linear-gradient(135deg,#22C55E,#16a34a);color:#fff;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(34,197,94,0.3);">✅ Confirmar Asignación</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <script>
         jQuery(function($){
-            var riders=<?php echo json_encode($riders); ?>;
+            var canAssign=<?php echo ($is_admin||$is_vendor_page)?'true':'false'; ?>;
             $('#pd-filter-status').pgChecklist({placeholder:'Todos los estados'});
             <?php if($is_admin): ?>$('#pd-filter-rider').pgChecklist({placeholder:'Todos los riders'});<?php endif; ?>
-            var cols=['id','customer_name','store_name','total_amount','delivery_fee','rider_name','status','created_at'<?php if($is_admin): ?>,'_actions'<?php endif; ?>];
+            var cols=['id','customer_name','store_name','total_amount','delivery_fee','rider_name','rider_response','status','created_at'];
+            if(canAssign) cols.push('_actions');
             var tbl=PG.table({
                 thead:'#pd-thead',body:'#pd-body',perPage:25,defaultSort:'id',defaultDir:'desc',
                 columns:cols,emptyMsg:'Sin entregas.',
@@ -3930,12 +4492,16 @@ class PetsGo_Core {
                     var r='<tr><td>'+o.id+'</td><td>'+PG.esc(o.customer_name||'N/A')+'</td><td>'+PG.esc(o.store_name||'N/A')+'</td>';
                     r+='<td>'+PG.money(o.total_amount)+'</td><td>'+PG.money(o.delivery_fee)+'</td>';
                     r+='<td>'+PG.esc(o.rider_name||'Sin asignar')+'</td>';
-                    r+='<td>'+PG.badge(o.status)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
-                    <?php if($is_admin): ?>
-                    r+='<td><select class="pd-rider-sel" data-id="'+o.id+'" style="font-size:12px;"><option value="">—</option>';
-                    $.each(riders,function(j,rd){r+='<option value="'+rd.ID+'"'+(o.rider_id==rd.ID?' selected':'')+'>'+PG.esc(rd.display_name)+'</option>';});
-                    r+='</select> <button class="petsgo-btn petsgo-btn-sm petsgo-btn-success pd-assign" data-id="'+o.id+'">✓</button></td>';
-                    <?php endif; ?>
+                    var rrCfg={pending:{l:'⏳ Pendiente',c:'#D97706',bg:'#FEF3C7'},accepted:{l:'✅ Aceptado',c:'#166534',bg:'#DCFCE7'},rejected:{l:'❌ Rechazado',c:'#991B1B',bg:'#FEE2E2'}};
+                    var rr=rrCfg[o.rider_response]||null;
+                    if(o.rider_id&&rr){r+='<td style="text-align:center;"><span style="background:'+rr.bg+';color:'+rr.c+';padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">'+rr.l+'</span>';if(o.estimated_minutes>0&&o.rider_response==='accepted')r+='<br><small style="color:#1D4ED8;font-weight:600;">~'+o.estimated_minutes+' min</small>';r+='</td>';}
+                    else{r+='<td style="text-align:center;color:#ccc;">—</td>';}
+                    r+='<td>'+PG.badge(o.status,o.delivery_method)+'</td><td>'+PG.fdate(o.created_at)+'</td>';
+                    if(canAssign){
+                        var assignLabel=o.rider_id?'🔄 Cambiar':'🏍️ Asignar';
+                        var btnStyle=o.rider_id?'background:#f3f4f6;color:#374151;border:1px solid #d1d5db;':'background:linear-gradient(135deg,#00A8E8,#0077B6);color:#fff;border:none;';
+                        r+='<td style="text-align:center;"><button class="pd-open-modal" data-id="'+o.id+'" data-current="'+(o.rider_id||'')+'" style="'+btnStyle+'padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">'+assignLabel+'</button></td>';
+                    }
                     r+='</tr>';
                     return r;
                 }
@@ -3952,10 +4518,139 @@ class PetsGo_Core {
             }
             $('#pd-filter-status<?php if($is_admin): ?>, #pd-filter-rider<?php endif; ?>').on('change',load);
             $('#pd-btn-search').on('click',load);
-            $(document).on('click','.pd-assign',function(){
-                var id=$(this).data('id');var rid=$('.pd-rider-sel[data-id="'+id+'"]').val();
-                PG.post('petsgo_save_rider_assignment',{order_id:id,rider_id:rid},function(r){if(r.success){load();PG.toast('\u2705 Rider asignado correctamente','success');}else PG.toast('\u274c '+(r.data||'Error al asignar rider'),'error');});
+
+            /* ═══════ RIDER ASSIGNMENT MODAL ═══════ */
+            var modalOrderId=null,modalRiders=[],modalVendorRegion='',modalVendorComuna='',selectedRiderId=null,isRandomPick=false;
+
+            function starsHtml(avg,total){
+                var s='';for(var i=1;i<=5;i++){s+='<span style="color:'+(i<=Math.round(avg)?'#F59E0B':'#d1d5db')+';font-size:14px;">★</span>';}
+                s+=' <small style="color:#888;">'+avg.toFixed(1)+' ('+total+')</small>';return s;
+            }
+            function riderCardHtml(rd){
+                var avatar=rd.avatar_url?'<img src="'+PG.esc(rd.avatar_url)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'"><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#00A8E8,#0077B6);color:#fff;font-weight:800;font-size:16px;">'+PG.esc(rd.initials||'?')+'</span>':'<span style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#00A8E8,#0077B6);color:#fff;font-weight:800;font-size:16px;border-radius:50%;">'+PG.esc(rd.initials||rd.vehicle_icon)+'</span>';
+                var online=rd.is_online?'<span style="background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">🟢 Online</span>':'<span style="background:#f3f4f6;color:#6b7280;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;">⚫ Offline</span>';
+                var locMatch='';
+                if(modalVendorComuna&&rd.comuna&&rd.comuna.toLowerCase()===modalVendorComuna.toLowerCase())locMatch='<span style="background:#DCFCE7;color:#166534;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600;">📍 Misma comuna</span>';
+                else if(modalVendorRegion&&rd.region&&rd.region.toLowerCase()===modalVendorRegion.toLowerCase())locMatch='<span style="background:#FEF3C7;color:#92400e;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600;">📍 Misma región</span>';
+                var h='<div class="pd-rider-card" data-rider-id="'+rd.id+'" style="display:flex;align-items:center;gap:12px;padding:12px;border:2px solid #e5e7eb;border-radius:12px;cursor:pointer;transition:all .2s;background:#fff;" onmouseover="this.style.borderColor=\'#00A8E8\';this.style.background=\'#f0f9ff\'" onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.background=\'#fff\'">';
+                h+='<div style="width:44px;height:44px;border-radius:50%;overflow:hidden;background:#f3f4f6;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:2px solid '+(rd.is_online?'#22C55E':'#d1d5db')+';">'+avatar+'</div>';
+                h+='<div style="flex:1;min-width:0;">';
+                h+='<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;"><strong style="font-size:13px;color:#2F3A40;">'+PG.esc(rd.name)+'</strong> '+online+' '+locMatch+'</div>';
+                h+='<div style="font-size:12px;color:#6b7280;margin-top:2px;">'+rd.vehicle_icon+' '+PG.esc(rd.vehicle_type||'N/A')+' · '+starsHtml(rd.avg_rating,rd.total_ratings)+'</div>';
+                h+='<div style="font-size:11px;color:#9ca3af;margin-top:1px;">📦 '+rd.total_deliveries+' entregas · 🔄 '+rd.active_deliveries+' activas'+(rd.comuna?' · 📍 '+PG.esc(rd.comuna):'')+'</div>';
+                h+='</div>';
+                h+='<div style="flex-shrink:0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></div>';
+                h+='</div>';
+                return h;
+            }
+            function showPreview(rd,isRandom){
+                selectedRiderId=rd.id;
+                isRandomPick=!!isRandom;
+                $('#pd-modal-select').hide();
+                $('#pd-modal-preview').show();
+                var avatar=rd.avatar_url?'<img src="'+PG.esc(rd.avatar_url)+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'"><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#00A8E8,#0077B6);color:#fff;font-weight:800;font-size:28px;">'+PG.esc(rd.initials||'?')+'</span>':'<span style="display:flex;width:100%;height:100%;align-items:center;justify-content:center;background:linear-gradient(135deg,#00A8E8,#0077B6);color:#fff;font-weight:800;font-size:28px;border-radius:50%;">'+PG.esc(rd.initials||rd.vehicle_icon)+'</span>';
+                $('#pd-prev-avatar').html(avatar);
+                $('#pd-prev-name').text(rd.name);
+                var onBadge=rd.is_online?' <span style="background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">🟢 Online</span>':' <span style="background:#f3f4f6;color:#6b7280;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">⚫ Offline</span>';
+                $('#pd-prev-vehicle').html(rd.vehicle_icon+' '+PG.esc(rd.vehicle_type||'N/A')+onBadge);
+                var stats='';
+                stats+='<div style="background:#f0f9ff;border-radius:10px;padding:10px;text-align:center;"><small style="color:#888;font-weight:700;">⭐ Rating</small><p style="margin:4px 0 0;font-weight:800;font-size:16px;color:#F59E0B;">'+rd.avg_rating.toFixed(1)+'</p><small style="color:#aaa;">('+rd.total_ratings+' valoraciones)</small></div>';
+                stats+='<div style="background:#f0fdf4;border-radius:10px;padding:10px;text-align:center;"><small style="color:#888;font-weight:700;">📦 Entregas</small><p style="margin:4px 0 0;font-weight:800;font-size:16px;color:#22C55E;">'+rd.total_deliveries+'</p><small style="color:#aaa;">completadas</small></div>';
+                stats+='<div style="background:#fffbeb;border-radius:10px;padding:10px;text-align:center;"><small style="color:#888;font-weight:700;">🔄 Activas</small><p style="margin:4px 0 0;font-weight:800;font-size:16px;color:#F97316;">'+rd.active_deliveries+'</p><small style="color:#aaa;">en curso</small></div>';
+                $('#pd-prev-stats').html(stats);
+                if(rd.region||rd.comuna){
+                    var locInfo='<strong>📍 Ubicación:</strong> '+(rd.comuna?PG.esc(rd.comuna)+', ':'')+PG.esc(rd.region||'');
+                    if(modalVendorComuna&&rd.comuna&&rd.comuna.toLowerCase()===modalVendorComuna.toLowerCase())locInfo+=' <span style="background:#DCFCE7;color:#166534;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">✅ Misma comuna que la tienda</span>';
+                    else if(modalVendorRegion&&rd.region&&rd.region.toLowerCase()===modalVendorRegion.toLowerCase())locInfo+=' <span style="background:#FEF3C7;color:#92400e;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">📍 Misma región que la tienda</span>';
+                    else locInfo+=' <span style="background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;">⚠️ Otra zona</span>';
+                    $('#pd-prev-location').html(locInfo).show();
+                } else { $('#pd-prev-location').hide(); }
+                if(isRandom){
+                    var why='<strong>🎲 Selección automática:</strong> Este rider fue elegido porque ';
+                    var reasons=[];
+                    if(modalVendorComuna&&rd.comuna&&rd.comuna.toLowerCase()===modalVendorComuna.toLowerCase())reasons.push('está en la misma comuna que la tienda');
+                    else if(modalVendorRegion&&rd.region&&rd.region.toLowerCase()===modalVendorRegion.toLowerCase())reasons.push('está en la misma región que la tienda');
+                    if(rd.avg_rating>0)reasons.push('tiene '+rd.avg_rating.toFixed(1)+'⭐ de valoración');
+                    if(rd.is_online)reasons.push('está online ahora');
+                    if(reasons.length)why+=reasons.join(', ')+'.';else why+='es el mejor disponible.';
+                    $('#pd-prev-random-note').html(why).show();
+                } else { $('#pd-prev-random-note').hide(); }
+            }
+            function backToSelection(){
+                selectedRiderId=null;isRandomPick=false;
+                $('#pd-modal-preview').hide();$('#pd-modal-select').show();
+            }
+            window.backToSelection=backToSelection;
+
+            function openRiderModal(orderId){
+                modalOrderId=orderId;selectedRiderId=null;isRandomPick=false;
+                $('#pd-modal-order-label').text('Pedido #'+orderId);
+                $('#pd-modal-preview').hide();$('#pd-modal-select').show();
+                $('#pd-modal-search').val('');
+                $('#pd-modal-rider-list').empty();$('#pd-modal-empty').hide();
+                $('#pd-modal-loading').show();
+                $('#pd-rider-modal').css('display','flex');
+                PG.post('petsgo_get_riders_for_assignment',{order_id:orderId},function(r){
+                    $('#pd-modal-loading').hide();
+                    if(!r.success||!r.data.riders||!r.data.riders.length){$('#pd-modal-empty').show();return;}
+                    modalRiders=r.data.riders;
+                    modalVendorRegion=r.data.vendor_region||'';
+                    modalVendorComuna=r.data.vendor_comuna||'';
+                    renderRiderList('');
+                });
+            }
+            function renderRiderList(search){
+                var list=$('#pd-modal-rider-list');list.empty();
+                var filtered=modalRiders;
+                if(search){var s=search.toLowerCase();filtered=modalRiders.filter(function(r){return r.name.toLowerCase().indexOf(s)!==-1;});}
+                if(!filtered.length){$('#pd-modal-empty').show();return;}
+                $('#pd-modal-empty').hide();
+                $.each(filtered,function(i,rd){list.append(riderCardHtml(rd));});
+            }
+            $('#pd-modal-search').on('input',function(){renderRiderList($(this).val());});
+            $(document).on('click','.pd-rider-card',function(){
+                var rid=parseInt($(this).data('rider-id'));
+                var rd=modalRiders.find(function(r){return r.id===rid;});
+                if(rd)showPreview(rd,false);
             });
+
+            window.assignRandomRider=function(){
+                if(!modalRiders.length){PG.toast('No hay riders disponibles','error');return;}
+                // Score: same_comuna=100, same_region=50, is_online=30, rating*10, lower active_deliveries=+20 if 0
+                var scored=modalRiders.map(function(rd){
+                    var score=0;
+                    if(modalVendorComuna&&rd.comuna&&rd.comuna.toLowerCase()===modalVendorComuna.toLowerCase())score+=100;
+                    else if(modalVendorRegion&&rd.region&&rd.region.toLowerCase()===modalVendorRegion.toLowerCase())score+=50;
+                    if(rd.is_online)score+=30;
+                    score+=rd.avg_rating*10;
+                    if(rd.active_deliveries===0)score+=20;
+                    else score-=rd.active_deliveries*5;
+                    return{rider:rd,score:score};
+                });
+                scored.sort(function(a,b){return b.score-a.score;});
+                showPreview(scored[0].rider,true);
+            };
+
+            window.confirmRiderAssignment=function(){
+                if(!selectedRiderId||!modalOrderId)return;
+                var btn=$('#pd-prev-confirm');btn.prop('disabled',true).text('Asignando...');
+                PG.post('petsgo_save_rider_assignment',{order_id:modalOrderId,rider_id:selectedRiderId},function(r){
+                    btn.prop('disabled',false).text('✅ Confirmar Asignación');
+                    if(r.success){closeRiderModal();load();PG.toast('✅ Rider asignado correctamente','success');}
+                    else PG.toast('❌ '+(r.data||'Error al asignar rider'),'error');
+                });
+            };
+
+            window.closeRiderModal=function(){
+                $('#pd-rider-modal').css('display','none');
+                modalOrderId=null;selectedRiderId=null;modalRiders=[];
+            };
+            // Close on backdrop click
+            $('#pd-rider-modal').on('click',function(e){if(e.target===this)closeRiderModal();});
+            // Close on Escape
+            $(document).on('keydown',function(e){if(e.key==='Escape'&&$('#pd-rider-modal').is(':visible'))closeRiderModal();});
+
+            $(document).on('click','.pd-open-modal',function(){openRiderModal(parseInt($(this).data('id')));});
             load();
             <?php if($is_admin): ?>
             // === Rider Documents tab ===
@@ -4261,6 +4956,126 @@ class PetsGo_Core {
             };
             <?php endif; ?>
         });
+        </script>
+        <?php
+    }
+
+    // ============================================================
+    // 6b. FINANZAS VENDOR — ganancias, comisiones, retiros
+    // ============================================================
+    public function page_finance() {
+        if (!$this->is_admin() && !$this->is_vendor()) { echo '<div class="wrap"><h1>⛔ Sin acceso</h1></div>'; return; }
+        global $wpdb;
+        $is_admin = $this->is_admin();
+        $vid = $this->get_my_vendor_id();
+        if (!$is_admin && !$vid) { echo '<div class="wrap"><h1>⛔ No tienes tienda asignada</h1></div>'; return; }
+
+        // For admin: allow selecting a vendor
+        $all_vendors = $is_admin ? $wpdb->get_results("SELECT id, store_name FROM {$wpdb->prefix}petsgo_vendors ORDER BY store_name") : [];
+        ?>
+        <style>
+        .pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:24px}
+        .pf-kpi{background:#fff;border-radius:14px;padding:18px;box-shadow:0 2px 10px rgba(0,0,0,.04);border:1px solid #f0f0f0;text-align:center}
+        .pf-kpi .pf-icon{font-size:28px;margin-bottom:8px}
+        .pf-kpi .pf-val{font-size:24px;font-weight:800;color:#2F3A40}
+        .pf-kpi .pf-lbl{font-size:11px;color:#888;margin-top:3px}
+        .pf-table{width:100%;border-collapse:collapse;font-size:13px}
+        .pf-table th{text-align:left;padding:10px 12px;background:#f8f9fa;font-size:11px;text-transform:uppercase;color:#888;border-bottom:2px solid #eee}
+        .pf-table td{padding:10px 12px;border-bottom:1px solid #f3f3f3}
+        .pf-badge{display:inline-block;padding:3px 10px;border-radius:50px;font-size:11px;font-weight:700}
+        .pf-badge.approved{background:#d4edda;color:#155724}.pf-badge.pending{background:#fff3cd;color:#856404}.pf-badge.rejected{background:#f8d7da;color:#721c24}
+        </style>
+        <div class="wrap petsgo-wrap">
+            <h1>💰 Finanzas <?php echo $is_admin ? '— Global' : '— ' . esc_html($wpdb->get_var($wpdb->prepare("SELECT store_name FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d",$vid))); ?></h1>
+
+            <?php if ($is_admin): ?>
+            <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+                <label style="font-weight:600;font-size:13px;">Tienda:</label>
+                <select id="pf-vendor-select" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                    <option value="">-- Todas --</option>
+                    <?php foreach ($all_vendors as $v): ?><option value="<?php echo $v->id; ?>"><?php echo esc_html($v->store_name); ?></option><?php endforeach; ?>
+                </select>
+                <input type="date" id="pf-from" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <input type="date" id="pf-to" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <button class="petsgo-btn petsgo-btn-primary" onclick="loadFinance()" style="padding:8px 18px">🔍 Filtrar</button>
+                <button class="petsgo-btn" onclick="exportFinanceCSV()" style="padding:8px 18px;background:#22C55E;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">📥 CSV</button>
+            </div>
+            <?php else: ?>
+            <div style="margin-bottom:16px;display:flex;gap:10px;align-items:center;">
+                <input type="date" id="pf-from" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <input type="date" id="pf-to" style="padding:6px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;">
+                <button class="petsgo-btn petsgo-btn-primary" onclick="loadFinance()" style="padding:8px 18px">🔍 Filtrar</button>
+                <button class="petsgo-btn" onclick="exportFinanceCSV()" style="padding:8px 18px;background:#22C55E;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer">📥 CSV</button>
+            </div>
+            <?php endif; ?>
+
+            <div id="pf-kpis" class="pf-grid">
+                <div class="pf-kpi"><div class="pf-icon">💵</div><div class="pf-val" id="pf-total-sales">$0</div><div class="pf-lbl">Ventas Brutas</div></div>
+                <div class="pf-kpi"><div class="pf-icon">🏦</div><div class="pf-val" id="pf-commission">$0</div><div class="pf-lbl">Comisión PetsGo</div></div>
+                <div class="pf-kpi"><div class="pf-icon">💰</div><div class="pf-val" id="pf-net">$0</div><div class="pf-lbl">Ganancia Neta</div></div>
+                <div class="pf-kpi"><div class="pf-icon">🚚</div><div class="pf-val" id="pf-delivery">$0</div><div class="pf-lbl">Envíos Cobrados</div></div>
+                <div class="pf-kpi"><div class="pf-icon">📦</div><div class="pf-val" id="pf-orders">0</div><div class="pf-lbl">Pedidos Entregados</div></div>
+                <div class="pf-kpi"><div class="pf-icon">📊</div><div class="pf-val" id="pf-avg">$0</div><div class="pf-lbl">Ticket Promedio</div></div>
+            </div>
+
+            <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.04);border:1px solid #f0f0f0;margin-bottom:18px;">
+                <h3 style="font-size:14px;font-weight:700;color:#2F3A40;margin:0 0 14px;">📋 Detalle de Pedidos Entregados</h3>
+                <table class="pf-table" id="pf-orders-table">
+                    <thead><tr>
+                        <th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Comisión</th><th>Neto</th><th>Pago</th>
+                    </tr></thead>
+                    <tbody id="pf-orders-body"><tr><td colspan="7" style="text-align:center;color:#999;">Cargando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+        (function(){
+            const fmt=v=>'$'+parseInt(v||0).toLocaleString('es-CL');
+            const isAdmin=<?php echo $is_admin ? 'true' : 'false'; ?>;
+            const vid=<?php echo $vid ? (int)$vid : 'null'; ?>;
+
+            function loadFinance(){
+                const p={action:'petsgo_finance_vendor',_ajax_nonce:PG.nonce};
+                if(isAdmin){const sel=document.getElementById('pf-vendor-select');if(sel&&sel.value)p.vendor_id=sel.value;}
+                else if(vid){p.vendor_id=vid;}
+                const from=document.getElementById('pf-from').value, to=document.getElementById('pf-to').value;
+                if(from)p.from=from; if(to)p.to=to;
+                jQuery.post(PG.ajaxUrl,p,function(r){
+                    if(!r.success)return;
+                    const d=r.data;
+                    document.getElementById('pf-total-sales').textContent=fmt(d.total_sales);
+                    document.getElementById('pf-commission').textContent=fmt(d.total_commission);
+                    document.getElementById('pf-net').textContent=fmt(d.net_earnings);
+                    document.getElementById('pf-delivery').textContent=fmt(d.total_delivery);
+                    document.getElementById('pf-orders').textContent=d.order_count||0;
+                    document.getElementById('pf-avg').textContent=fmt(d.avg_ticket);
+                    const tbody=document.getElementById('pf-orders-body');
+                    if(!d.orders||!d.orders.length){tbody.innerHTML='<tr><td colspan="7" style="text-align:center;color:#999;">Sin pedidos entregados en este período</td></tr>';return;}
+                    tbody.innerHTML=d.orders.map(o=>`<tr>
+                        <td><strong>#${o.id}</strong></td>
+                        <td>${new Date(o.created_at).toLocaleDateString('es-CL')}</td>
+                        <td>${o.customer_name||'—'}</td>
+                        <td><strong>${fmt(o.total_amount)}</strong></td>
+                        <td style="color:#e53e3e">${fmt(o.petsgo_commission)}</td>
+                        <td style="color:#22C55E;font-weight:700">${fmt(parseFloat(o.total_amount)-parseFloat(o.petsgo_commission))}</td>
+                        <td>${o.payment_method||'—'}</td>
+                    </tr>`).join('');
+                });
+            }
+
+            function exportFinanceCSV(){
+                const rows=document.querySelectorAll('#pf-orders-table tr');
+                if(rows.length<=1)return;
+                let csv='';
+                rows.forEach(r=>{const cells=[...r.querySelectorAll('th,td')].map(c=>'"'+c.textContent.trim().replace(/"/g,'""')+'"');csv+=cells.join(',')+'\n';});
+                const blob=new Blob([csv],{type:'text/csv'});
+                const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='PetsGo_Finanzas_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+            }
+            window.loadFinance=loadFinance;
+            window.exportFinanceCSV=exportFinanceCSV;
+            loadFinance();
+        })();
         </script>
         <?php
     }
@@ -4595,7 +5410,18 @@ Dashboard con analíticas"></textarea>
         $errors=[];
         if(!$data['store_name'])$errors[]='Nombre obligatorio';if(!$data['rut'])$errors[]='RUT obligatorio';
         if(!$data['email'])$errors[]='Email obligatorio';if(!$data['user_id'])$errors[]='Usuario obligatorio';
+
+        // Validar que fecha inicio no sea mayor a fecha fin
+        if ($data['subscription_start'] && $data['subscription_end'] && $data['subscription_start'] > $data['subscription_end']) {
+            $errors[] = 'La fecha de inicio de suscripción no puede ser posterior a la fecha de fin';
+        }
+
         if($errors)wp_send_json_error(implode('. ',$errors));
+
+        // Auto-activar si fecha fin es futura y estado es inactivo/suspended
+        if ($data['subscription_end'] && $data['subscription_end'] >= current_time('Y-m-d') && in_array($data['status'], ['inactive', 'suspended'])) {
+            $data['status'] = 'active';
+        }
 
         // Asignar rol vendor al usuario
         $user = get_userdata($data['user_id']);
@@ -4603,8 +5429,8 @@ Dashboard con analíticas"></textarea>
             $user->set_role('petsgo_vendor');
         }
 
-        if($id){$wpdb->update("{$wpdb->prefix}petsgo_vendors",$data,['id'=>$id]);$this->audit('vendor_update','vendor',$id,$data['store_name']);wp_send_json_success(['message'=>'Tienda actualizada','id'=>$id]);}
-        else{$wpdb->insert("{$wpdb->prefix}petsgo_vendors",$data);$nid=$wpdb->insert_id;$this->audit('vendor_create','vendor',$nid,$data['store_name']);wp_send_json_success(['message'=>'Tienda creada','id'=>$nid]);}
+        if($id){$wpdb->update("{$wpdb->prefix}petsgo_vendors",$data,['id'=>$id]);$this->audit('vendor_update','vendor',$id,$data['store_name']);wp_send_json_success(['message'=>'Tienda actualizada','id'=>$id,'status'=>$data['status']]);}
+        else{$wpdb->insert("{$wpdb->prefix}petsgo_vendors",$data);$nid=$wpdb->insert_id;$this->audit('vendor_create','vendor',$nid,$data['store_name']);wp_send_json_success(['message'=>'Tienda creada','id'=>$nid,'status'=>$data['status']]);}
     }
 
     public function petsgo_delete_vendor() {
@@ -4648,6 +5474,8 @@ Dashboard con analíticas"></textarea>
         $search=sanitize_text_field($_POST['search']??'');
         $status_raw=sanitize_text_field($_POST['status']??'');
         $vendor_raw=sanitize_text_field($_POST['vendor_id']??'');
+        $date_from=sanitize_text_field($_POST['date_from']??'');
+        $date_to=sanitize_text_field($_POST['date_to']??'');
         $statuses=array_filter(array_map('sanitize_text_field',explode(',',$status_raw)));
         $vids=array_filter(array_map('intval',explode(',',$vendor_raw)));
 
@@ -4658,6 +5486,8 @@ Dashboard con analíticas"></textarea>
         if($this->is_rider()&&!$is_admin){$sql.=" AND o.rider_id=%d";$args[]=get_current_user_id();}
         if($search){$sql.=" AND u.display_name LIKE %s";$args[]='%'.$wpdb->esc_like($search).'%';}
         if($statuses){$phs=implode(',',array_fill(0,count($statuses),'%s'));$sql.=" AND o.status IN ($phs)";$args=array_merge($args,$statuses);}
+        if($date_from&&preg_match('/^\d{4}-\d{2}-\d{2}$/',$date_from)){$sql.=" AND o.created_at >= %s";$args[]=$date_from.' 00:00:00';}
+        if($date_to&&preg_match('/^\d{4}-\d{2}-\d{2}$/',$date_to)){$sql.=" AND o.created_at <= %s";$args[]=$date_to.' 23:59:59';}
         $sql.=" ORDER BY o.created_at DESC";
         if($args) $sql=$wpdb->prepare($sql,...$args);
         $results = $wpdb->get_results($sql);
@@ -4667,12 +5497,69 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_update_order_status() {
         check_ajax_referer('petsgo_ajax');
-        if(!$this->is_admin()) wp_send_json_error('Solo admin puede cambiar estado.');
         global $wpdb;
         $oid=intval($_POST['id']??0);$ns=sanitize_text_field($_POST['status']??'');
-        $wpdb->update("{$wpdb->prefix}petsgo_orders",['status'=>$ns],['id'=>$oid]);
-        $this->audit('order_status_change','order',$oid,'Nuevo estado: '.$ns);
-        wp_send_json_success(['message'=>'Estado actualizado']);
+
+        // Obtener estado anterior para la notificación
+        $old_status = $wpdb->get_var($wpdb->prepare("SELECT status FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $oid));
+
+        if ($this->is_admin()) {
+            // Admin puede cambiar a cualquier estado
+            $wpdb->update("{$wpdb->prefix}petsgo_orders",['status'=>$ns],['id'=>$oid]);
+            $this->audit('order_status_change','order',$oid,'Admin → '.$ns);
+            $this->notify_order_status_change($oid, $ns, $old_status);
+            wp_send_json_success(['message'=>'Estado actualizado']);
+        } elseif ($this->is_vendor()) {
+            // Vendor solo puede cambiar a processing o ready_for_pickup en sus propios pedidos
+            $vendor_allowed = ['processing','ready_for_pickup'];
+            if (!in_array($ns, $vendor_allowed)) wp_send_json_error('Solo puedes cambiar a Procesando o Listo para retiro.');
+            $vid = $this->get_my_vendor_id();
+            $order = $wpdb->get_row($wpdb->prepare("SELECT id, vendor_id, status FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND vendor_id=%d", $oid, $vid));
+            if (!$order) wp_send_json_error('Pedido no encontrado o no pertenece a tu tienda.');
+            $wpdb->update("{$wpdb->prefix}petsgo_orders",['status'=>$ns],['id'=>$oid]);
+            $this->audit('order_status_change','order',$oid,'Vendor '.$vid.' → '.$ns);
+            $this->notify_order_status_change($oid, $ns, $old_status);
+            wp_send_json_success(['message'=>'Estado actualizado']);
+        } else {
+            wp_send_json_error('Sin permisos para cambiar estado.');
+        }
+    }
+
+    public function petsgo_get_order_detail() {
+        check_ajax_referer('petsgo_ajax');
+        global $wpdb;
+        $oid = intval($_POST['id'] ?? 0);
+        $is_admin = $this->is_admin();
+        $vid = $this->get_my_vendor_id();
+
+        $sql = "SELECT o.*, v.store_name, u.display_name AS customer_name, u.user_email AS customer_email,
+                       r.display_name AS rider_name, inv.id AS invoice_id, inv.pdf_path AS invoice_pdf
+                FROM {$wpdb->prefix}petsgo_orders o
+                LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id
+                LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID
+                LEFT JOIN {$wpdb->users} r ON o.rider_id=r.ID
+                LEFT JOIN {$wpdb->prefix}petsgo_invoices inv ON inv.order_id=o.id
+                WHERE o.id=%d";
+        $args = [$oid];
+        if (!$is_admin && $vid) { $sql .= " AND o.vendor_id=%d"; $args[] = $vid; }
+        $order = $wpdb->get_row($wpdb->prepare($sql, ...$args));
+        if (!$order) wp_send_json_error('Pedido no encontrado');
+
+        $items = $wpdb->get_results($wpdb->prepare(
+            "SELECT product_name, quantity, unit_price, subtotal FROM {$wpdb->prefix}petsgo_order_items WHERE order_id=%d ORDER BY id ASC", $oid
+        ));
+
+        $invoice_url = '';
+        if ($order->invoice_pdf) {
+            $upload_dir = wp_upload_dir();
+            $invoice_url = $upload_dir['baseurl'] . '/' . $order->invoice_pdf;
+        }
+
+        wp_send_json_success([
+            'order'       => $order,
+            'items'       => $items,
+            'invoice_url' => $invoice_url,
+        ]);
     }
 
     // --- USERS ---
@@ -5010,9 +5897,13 @@ Dashboard con analíticas"></textarea>
         $statuses=array_filter(array_map('sanitize_text_field',explode(',',$status_raw)));
         $rider_ids=array_filter(explode(',',$rider_raw));
 
-        $sql="SELECT o.*, v.store_name, u.display_name AS customer_name, r.display_name AS rider_name FROM {$wpdb->prefix}petsgo_orders o LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID LEFT JOIN {$wpdb->users} r ON o.rider_id=r.ID WHERE 1=1";
+        $sql="SELECT o.*, v.store_name, u.display_name AS customer_name, r.display_name AS rider_name FROM {$wpdb->prefix}petsgo_orders o LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID LEFT JOIN {$wpdb->users} r ON o.rider_id=r.ID WHERE o.delivery_method='delivery'";
         $args=[];
-        if(!$is_admin){$sql.=" AND o.rider_id=%d";$args[]=get_current_user_id();}
+        if(!$is_admin && $this->is_vendor()){
+            $my_vid=$this->get_my_vendor_id();
+            if($my_vid){$sql.=" AND o.vendor_id=%d";$args[]=$my_vid;}
+            else{wp_send_json_success([]);return;}
+        } elseif(!$is_admin){$sql.=" AND o.rider_id=%d";$args[]=get_current_user_id();}
         elseif(count($rider_ids)===1&&$rider_ids[0]==='unassigned'){$sql.=" AND o.rider_id IS NULL";}
         elseif($rider_ids){
             $has_unassigned=in_array('unassigned',$rider_ids);$numeric_ids=array_filter(array_map('intval',$rider_ids));
@@ -5029,12 +5920,118 @@ Dashboard con analíticas"></textarea>
 
     public function petsgo_save_rider_assignment() {
         check_ajax_referer('petsgo_ajax');
-        if(!$this->is_admin()) wp_send_json_error('Solo admin');
         global $wpdb;
         $order_id=intval($_POST['order_id']??0);$rider_id=intval($_POST['rider_id']??0)?:null;
-        $wpdb->update("{$wpdb->prefix}petsgo_orders",['rider_id'=>$rider_id],['id'=>$order_id]);
-        $this->audit('rider_assign','order',$order_id,'Rider ID: '.($rider_id??'none'));
-        wp_send_json_success(['message'=>'Rider asignado']);
+        $table = "{$wpdb->prefix}petsgo_orders";
+
+        if (!$this->is_admin() && !$this->is_vendor()) {
+            wp_send_json_error('Sin permisos para asignar rider.');
+            return;
+        }
+        if ($this->is_vendor()) {
+            $vid = $this->get_my_vendor_id();
+            $order = $wpdb->get_row($wpdb->prepare("SELECT id FROM {$table} WHERE id=%d AND vendor_id=%d", $order_id, $vid));
+            if (!$order) { wp_send_json_error('Pedido no encontrado o no pertenece a tu tienda.'); return; }
+        }
+
+        // Direct SQL to avoid $wpdb->update() issues with NULL values
+        if ($rider_id) {
+            $now = current_time('mysql');
+            $result = $wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET rider_id=%d, rider_response='pending', rider_assigned_at=%s, rider_responded_at=NULL, estimated_minutes=NULL WHERE id=%d",
+                $rider_id, $now, $order_id
+            ));
+        } else {
+            $result = $wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET rider_id=NULL, rider_response=NULL, rider_assigned_at=NULL, rider_responded_at=NULL, estimated_minutes=NULL WHERE id=%d",
+                $order_id
+            ));
+        }
+
+        if ($result === false) {
+            wp_send_json_error('Error al actualizar la base de datos: ' . $wpdb->last_error);
+            return;
+        }
+
+        $role = $this->is_admin() ? 'Admin' : 'Vendor '.$this->get_my_vendor_id();
+        $this->audit('rider_assign','order',$order_id,$role.' → Rider ID: '.($rider_id??'none'));
+        wp_send_json_success(['message'=>'Rider asignado — pendiente de aceptación']);
+    }
+
+    // --- Get riders for assignment modal (with details: avatar, rating, vehicle, location, online, deliveries) ---
+    public function petsgo_get_riders_for_assignment() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin() && !$this->is_vendor()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+
+        $order_id = intval($_POST['order_id'] ?? 0);
+
+        // Get approved + active riders
+        $riders = $wpdb->get_results("
+            SELECT u.ID, u.display_name,
+                   p.avatar_url, p.vehicle_type, p.region, p.comuna, p.is_online, p.phone,
+                   COALESCE((SELECT AVG(dr.rating) FROM {$wpdb->prefix}petsgo_delivery_ratings dr WHERE dr.rider_id=u.ID), 0) AS avg_rating,
+                   COALESCE((SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_delivery_ratings dr2 WHERE dr2.rider_id=u.ID), 0) AS total_ratings,
+                   COALESCE((SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders o2 WHERE o2.rider_id=u.ID AND o2.status='delivered'), 0) AS total_deliveries,
+                   COALESCE((SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_orders o3 WHERE o3.rider_id=u.ID AND o3.status IN ('in_transit','ready_for_pickup')), 0) AS active_deliveries
+            FROM {$wpdb->users} u
+            INNER JOIN {$wpdb->usermeta} m ON u.ID=m.user_id AND m.meta_key='{$wpdb->prefix}capabilities' AND m.meta_value LIKE '%petsgo_rider%'
+            INNER JOIN {$wpdb->usermeta} rs ON u.ID=rs.user_id AND rs.meta_key='petsgo_rider_status' AND rs.meta_value='approved'
+            LEFT JOIN {$wpdb->usermeta} us ON u.ID=us.user_id AND us.meta_key='petsgo_user_status'
+            LEFT JOIN {$wpdb->prefix}petsgo_user_profiles p ON u.ID=p.user_id
+            WHERE COALESCE(us.meta_value,'active') != 'inactive'
+            ORDER BY p.is_online DESC, u.display_name ASC
+        ");
+
+        // Get vendor info for proximity calculation
+        $vendor_region = '';
+        $vendor_comuna = '';
+        if ($order_id) {
+            $vendor = $wpdb->get_row($wpdb->prepare(
+                "SELECT v.region, v.comuna FROM {$wpdb->prefix}petsgo_orders o JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id WHERE o.id=%d", $order_id
+            ));
+            if ($vendor) {
+                $vendor_region = $vendor->region ?? '';
+                $vendor_comuna = $vendor->comuna ?? '';
+            }
+        }
+
+        $vehicle_icons = ['bicicleta' => '🚲', 'scooter' => '🛵', 'moto' => '🏍️', 'auto' => '🚗', 'a_pie' => '🚶'];
+        $data = [];
+        foreach ($riders as $r) {
+            // Avatar: 1) user_profiles.avatar_url, 2) selfie from rider_documents, 3) initials
+            $avatar = $r->avatar_url ?: '';
+            if (!$avatar) {
+                $selfie_url = $wpdb->get_var($wpdb->prepare(
+                    "SELECT file_url FROM {$wpdb->prefix}petsgo_rider_documents WHERE rider_id=%d AND doc_type='selfie' ORDER BY uploaded_at DESC LIMIT 1", $r->ID
+                ));
+                if ($selfie_url) $avatar = $selfie_url;
+            }
+            $parts = explode(' ', trim($r->display_name));
+            $initials = mb_strtoupper(mb_substr($parts[0] ?? '', 0, 1) . mb_substr($parts[1] ?? '', 0, 1));
+            $data[] = [
+                'id'                => (int) $r->ID,
+                'name'              => $r->display_name,
+                'avatar_url'        => $avatar,
+                'initials'          => $initials ?: '?',
+                'vehicle_type'      => $r->vehicle_type ?: '',
+                'vehicle_icon'      => $vehicle_icons[$r->vehicle_type] ?? '🚶',
+                'region'            => $r->region ?: '',
+                'comuna'            => $r->comuna ?: '',
+                'is_online'         => (bool) $r->is_online,
+                'phone'             => $r->phone ?: '',
+                'avg_rating'        => round(floatval($r->avg_rating), 1),
+                'total_ratings'     => (int) $r->total_ratings,
+                'total_deliveries'  => (int) $r->total_deliveries,
+                'active_deliveries' => (int) $r->active_deliveries,
+            ];
+        }
+
+        wp_send_json_success([
+            'riders'        => $data,
+            'vendor_region' => $vendor_region,
+            'vendor_comuna' => $vendor_comuna,
+        ]);
     }
 
     // --- RIDER DOCUMENTS (admin search + review) ---
@@ -5152,7 +6149,7 @@ Dashboard con analíticas"></textarea>
             if (empty($expiry_date)) { wp_send_json_error('Debe ingresar una fecha de vencimiento.'); return; }
             $dt = \DateTime::createFromFormat('Y-m-d', $expiry_date);
             if (!$dt || $dt->format('Y-m-d') !== $expiry_date) { wp_send_json_error('Formato de fecha inválido.'); return; }
-            if (strtotime($expiry_date) < strtotime(date('Y-m-d'))) { wp_send_json_error('La fecha no puede ser pasada.'); return; }
+            if (strtotime($expiry_date) < strtotime(current_time('Y-m-d'))) { wp_send_json_error('La fecha no puede ser pasada.'); return; }
             $wpdb->update("{$wpdb->prefix}petsgo_rider_documents", [
                 'expiry_date' => $expiry_date,
                 'expiry_notified_30' => 0,
@@ -5206,7 +6203,7 @@ Dashboard con analíticas"></textarea>
         }
         if ($has_expiry_cols && $status === 'approved' && in_array($doc->doc_type, $docs_with_expiry) && !empty($expiry_date)) {
             // Validar que la fecha no esté vencida
-            if (strtotime($expiry_date) < strtotime(date('Y-m-d'))) {
+            if (strtotime($expiry_date) < strtotime(current_time('Y-m-d'))) {
                 wp_send_json_error('La fecha de vencimiento no puede ser una fecha pasada.');
                 return;
             }
@@ -5548,7 +6545,8 @@ Dashboard con analíticas"></textarea>
                         <div class="petsgo-field"><label>WhatsApp</label><input type="text" id="ic-whatsapp" value="<?php echo esc_attr($vendor->social_whatsapp ?? ''); ?>" placeholder="+56912345678"></div>
                         <div class="petsgo-field"><label>Sitio Web</label><input type="text" id="ic-website" value="<?php echo esc_attr($vendor->social_website ?? ''); ?>" placeholder="https://www.mitienda.cl"></div>
                     </div>
-                    <h3 style="margin-top:24px;">🖼️ Logo para Boleta</h3>
+                    <h3 style="margin-top:24px;">🖼️ Logo de tu Tienda</h3>
+                    <p style="color:#6b7280;font-size:13px;margin:4px 0 12px;">Este logo se usará en las <strong>boletas/facturas</strong> y también se mostrará como imagen de tu tienda en la <strong>app y sitio web</strong> de PetsGo (listado de tiendas, detalle de tienda y productos).</p>
                     <div style="display:flex;gap:16px;align-items:center;">
                         <input type="hidden" id="ic-logo-id" value="<?php echo intval($vendor->invoice_logo_id ?? 0); ?>">
                         <img id="ic-logo-preview" src="<?php echo esc_url($logo_url); ?>" style="max-height:80px;max-width:160px;border:1px solid #ddd;border-radius:4px;<?php echo $logo_url?'':'display:none;'; ?>">
@@ -5706,7 +6704,7 @@ Dashboard con analíticas"></textarea>
         if (!$order) wp_send_json_error('Pedido no encontrado');
 
         // Generate invoice number: PG-YYYYMMDD-XXXX
-        $today = date('Ymd');
+        $today = current_time('Ymd');
         $count = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_invoices WHERE invoice_number LIKE %s", 'PG-'.$today.'-%'));
         $inv_number = 'PG-' . $today . '-' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
 
@@ -5743,7 +6741,7 @@ Dashboard con analíticas"></textarea>
         ];
         $invoice_data = [
             'invoice_number' => $inv_number,
-            'date' => date('d/m/Y H:i'),
+            'date' => current_time('d/m/Y H:i'),
             'customer_name' => $order->customer_name ?? 'N/A',
             'customer_email' => $order->customer_email ?? '',
         ];
@@ -6315,7 +7313,7 @@ Dashboard con analíticas"></textarea>
              WHERE o.id=%d", $order_id));
         if (!$order) return;
 
-        $today = date('Ymd');
+        $today = current_time('Ymd');
         $count = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_invoices WHERE invoice_number LIKE %s", 'PG-'.$today.'-%'));
         $inv_number = 'PG-' . $today . '-' . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
         $qr_token = wp_generate_uuid4();
@@ -6347,7 +7345,7 @@ Dashboard con analíticas"></textarea>
             $id_type_label = strtoupper($order->customer_id_type ?? 'RUT');
             $customer_id_label = $id_type_label . ': ' . $order->customer_id_number;
         }
-        $invoice_data = ['invoice_number' => $inv_number, 'order_id' => $order_id, 'customer_id' => $order->customer_id, 'customer_id_label' => $customer_id_label, 'date' => date('Y-m-d H:i:s'), 'customer_name' => $order->customer_name ?? 'N/A', 'customer_email' => $order->customer_email ?? ''];
+        $invoice_data = ['invoice_number' => $inv_number, 'order_id' => $order_id, 'customer_id' => $order->customer_id, 'customer_id_label' => $customer_id_label, 'date' => current_time('mysql'), 'customer_name' => $order->customer_name ?? 'N/A', 'customer_email' => $order->customer_email ?? ''];
 
         $upload_dir = wp_upload_dir();
         $pdf_path = $upload_dir['basedir'] . '/petsgo-invoices/' . $inv_number . '.pdf';
@@ -6360,7 +7358,8 @@ Dashboard con analíticas"></textarea>
         ]);
         $inv_id = $wpdb->insert_id;
         $this->audit('invoice_auto_generate', 'invoice', $inv_id, $inv_number . ' para pedido #' . $order_id);
-        $this->send_invoice_email($order, $inv_number, $pdf_path, $order_items);
+        // Email is now sent as a consolidated message after all orders in a purchase group are created
+        // via api_send_purchase_confirmation(). This avoids email rate-limiting on shared hosting.
     }
 
     // ============================================================
@@ -6980,6 +7979,45 @@ Dashboard con analíticas"></textarea>
         update_option('petsgo_settings', $settings);
         $this->audit('toggle_module', 'settings', 0, $key . ' → ' . ($current ? 'OFF' : 'ON'));
         wp_send_json_success(['key' => $key, 'enabled' => !$current, 'message' => ($current ? 'Módulo desactivado' : 'Módulo activado')]);
+    }
+
+    // ============================================================
+    // FINANZAS VENDOR — AJAX handler
+    // ============================================================
+    public function petsgo_finance_vendor() {
+        check_ajax_referer('petsgo_ajax');
+        if (!$this->is_admin() && !$this->is_vendor()) wp_send_json_error('Sin permisos');
+        global $wpdb;
+        $t = $wpdb->prefix . 'petsgo_orders';
+        $vid = intval($_POST['vendor_id'] ?? 0);
+        if (!$this->is_admin()) {
+            $vid = $this->get_my_vendor_id();
+            if (!$vid) wp_send_json_error('No tienes tienda');
+        }
+        $where = "status='delivered'";
+        if ($vid) $where .= $wpdb->prepare(" AND vendor_id=%d", $vid);
+        $from = sanitize_text_field($_POST['from'] ?? '');
+        $to = sanitize_text_field($_POST['to'] ?? '');
+        if ($from) $where .= $wpdb->prepare(" AND created_at >= %s", $from . ' 00:00:00');
+        if ($to) $where .= $wpdb->prepare(" AND created_at <= %s", $to . ' 23:59:59');
+
+        $agg = $wpdb->get_row("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as total, COALESCE(SUM(petsgo_commission),0) as comm, COALESCE(SUM(delivery_fee),0) as dlv FROM {$t} WHERE {$where}");
+        $orders = $wpdb->get_results("SELECT o.id, o.total_amount, o.petsgo_commission, o.delivery_fee, o.payment_method, o.created_at, u.display_name as customer_name FROM {$t} o LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID WHERE {$where} ORDER BY o.created_at DESC LIMIT 200");
+
+        $total_sales = floatval($agg->total);
+        $total_comm = floatval($agg->comm);
+        $net = $total_sales - $total_comm;
+        $cnt = intval($agg->cnt);
+
+        wp_send_json_success([
+            'total_sales' => $total_sales,
+            'total_commission' => $total_comm,
+            'net_earnings' => $net,
+            'total_delivery' => floatval($agg->dlv),
+            'order_count' => $cnt,
+            'avg_ticket' => $cnt > 0 ? round($total_sales / $cnt) : 0,
+            'orders' => $orders,
+        ]);
     }
 
     // ============================================================
@@ -7948,6 +8986,18 @@ Dashboard con analíticas"></textarea>
             KEY order_id (order_id)
         ) {$charset}");
 
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$wpdb->prefix}petsgo_delivery_evidence (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            order_id bigint(20) NOT NULL,
+            rider_id bigint(20) NOT NULL,
+            photo_url text NOT NULL,
+            file_name varchar(255) DEFAULT NULL,
+            uploaded_at timestamp DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY order_id (order_id),
+            KEY rider_id (rider_id)
+        ) {$charset}");
+
         // Add delivery_method and shipping_address to orders
         $cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_orders", 0);
         if (!in_array('delivery_method', $cols)) {
@@ -8032,6 +9082,22 @@ Dashboard con analíticas"></textarea>
         if (!in_array('region', $pcols2)) {
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN region varchar(60) DEFAULT NULL AFTER bank_account_number");
             $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN comuna varchar(60) DEFAULT NULL AFTER region");
+        }
+
+        // Rider online/availability toggle
+        $pcols_avail = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_user_profiles", 0);
+        if (!in_array('is_online', $pcols_avail)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN is_online tinyint(1) DEFAULT 0");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_user_profiles ADD COLUMN last_online datetime DEFAULT NULL");
+        }
+
+        // Rider delivery assignment response tracking
+        $ocols_assign = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_orders", 0);
+        if (!in_array('rider_response', $ocols_assign)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN rider_response varchar(20) DEFAULT NULL");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN rider_assigned_at datetime DEFAULT NULL");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN rider_responded_at datetime DEFAULT NULL");
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN estimated_minutes int DEFAULT NULL");
         }
 
         // v3: rider_earning per order + delivery_distance_km + acceptance tracking
@@ -8345,6 +9411,43 @@ Dashboard con analíticas"></textarea>
             update_option('petsgo_official_vendor_id', $exists);
         }
         update_option('petsgo_official_vendor', true);
+    }
+
+    /**
+     * Ensure user addresses table exists (max 3 per user).
+     */
+    public function ensure_addresses_table() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'petsgo_user_addresses';
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table'") === $table) return;
+        $charset = $wpdb->get_charset_collate();
+        $wpdb->query("CREATE TABLE IF NOT EXISTS $table (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id BIGINT UNSIGNED NOT NULL,
+            alias VARCHAR(50) NOT NULL DEFAULT '',
+            address_type VARCHAR(20) NOT NULL DEFAULT 'casa',
+            street_address TEXT NOT NULL,
+            region VARCHAR(80) NOT NULL DEFAULT '',
+            comuna VARCHAR(80) NOT NULL DEFAULT '',
+            detail VARCHAR(255) NOT NULL DEFAULT '',
+            lat DECIMAL(10,7) DEFAULT NULL,
+            lng DECIMAL(10,7) DEFAULT NULL,
+            is_default TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_user (user_id)
+        ) $charset");
+    }
+
+    /** Ensure customer_note column exists in orders table */
+    public function ensure_order_customer_note() {
+        if (get_option('petsgo_orders_customer_note_v1')) return;
+        global $wpdb;
+        $cols = $wpdb->get_col("SHOW COLUMNS FROM {$wpdb->prefix}petsgo_orders", 0);
+        if (!in_array('customer_note', $cols)) {
+            $wpdb->query("ALTER TABLE {$wpdb->prefix}petsgo_orders ADD COLUMN customer_note TEXT DEFAULT NULL");
+        }
+        update_option('petsgo_orders_customer_note_v1', true);
     }
 
     /**
@@ -8707,6 +9810,7 @@ Dashboard con analíticas"></textarea>
         // Cliente
         register_rest_route('petsgo/v1','/orders',['methods'=>'POST','callback'=>[$this,'api_create_order'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/orders/mine',['methods'=>'GET','callback'=>[$this,'api_get_my_orders'],'permission_callback'=>function(){return is_user_logged_in();}]);
+        register_rest_route('petsgo/v1','/orders/send-purchase-confirmation',['methods'=>'POST','callback'=>[$this,'api_send_purchase_confirmation'],'permission_callback'=>function(){return is_user_logged_in();}]);
         // Vendor
         register_rest_route('petsgo/v1','/vendor/inventory',['methods'=>['GET','POST'],'callback'=>[$this,'api_vendor_inventory'],'permission_callback'=>[$this,'check_vendor_role']]);
         register_rest_route('petsgo/v1','/vendor/dashboard',['methods'=>'GET','callback'=>[$this,'api_vendor_dashboard'],'permission_callback'=>[$this,'check_vendor_role']]);
@@ -8730,8 +9834,13 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/rider/documents',['methods'=>'GET','callback'=>[$this,'api_get_rider_documents'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/documents/upload',['methods'=>'POST','callback'=>[$this,'api_upload_rider_document'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/status',['methods'=>'GET','callback'=>[$this,'api_get_rider_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/availability',['methods'=>'PUT','callback'=>[$this,'api_toggle_rider_availability'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/deliveries',['methods'=>'GET','callback'=>[$this,'api_get_rider_deliveries'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries/available',['methods'=>'GET','callback'=>[$this,'api_get_available_deliveries'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/claim',['methods'=>'POST','callback'=>[$this,'api_rider_claim_delivery'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_update_delivery_status'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/evidence',['methods'=>'POST','callback'=>[$this,'api_upload_delivery_evidence'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
+        register_rest_route('petsgo/v1','/rider/deliveries/(?P<id>\d+)/respond',['methods'=>'PUT','callback'=>[$this,'api_rider_respond_delivery'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         // Rider profile & earnings
         register_rest_route('petsgo/v1','/rider/profile',['methods'=>'GET','callback'=>[$this,'api_get_rider_profile'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
         register_rest_route('petsgo/v1','/rider/profile',['methods'=>'PUT','callback'=>[$this,'api_update_rider_profile'],'permission_callback'=>function(){$u=wp_get_current_user();return in_array('petsgo_rider',(array)$u->roles)||in_array('administrator',(array)$u->roles);}]);
@@ -8774,6 +9883,9 @@ Dashboard con analíticas"></textarea>
         register_rest_route('petsgo/v1','/reviews',['methods'=>'POST','callback'=>[$this,'api_submit_review'],'permission_callback'=>function(){return is_user_logged_in();}]);
         register_rest_route('petsgo/v1','/products/(?P<id>\d+)/reviews',['methods'=>'GET','callback'=>[$this,'api_get_product_reviews'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/vendors/(?P<id>\d+)/reviews',['methods'=>'GET','callback'=>[$this,'api_get_vendor_reviews'],'permission_callback'=>'__return_true']);
+        // Aliases for /reviews/product/{id} and /reviews/vendor/{id} (BUG-VR-087/088)
+        register_rest_route('petsgo/v1','/reviews/product/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_product_reviews'],'permission_callback'=>'__return_true']);
+        register_rest_route('petsgo/v1','/reviews/vendor/(?P<id>\d+)',['methods'=>'GET','callback'=>[$this,'api_get_vendor_reviews'],'permission_callback'=>'__return_true']);
         register_rest_route('petsgo/v1','/orders/(?P<id>\d+)/review-status',['methods'=>'GET','callback'=>[$this,'api_get_order_review_status'],'permission_callback'=>function(){return is_user_logged_in();}]);
         // Admin PetsGo Inventory (admin-only product management for PetsGo official store)
         register_rest_route('petsgo/v1','/admin/inventory',['methods'=>'GET','callback'=>[$this,'api_admin_get_inventory'],'permission_callback'=>function(){return current_user_can('administrator');}]);
@@ -8785,12 +9897,72 @@ Dashboard con analíticas"></textarea>
         // Admin Module Toggles
         register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'GET','callback'=>[$this,'api_admin_get_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
         register_rest_route('petsgo/v1','/admin/module-toggles',['methods'=>'PUT','callback'=>[$this,'api_admin_update_module_toggles'],'permission_callback'=>function(){return current_user_can('administrator');}]);
+
+        // ── Admin: Users Management ──
+        $admin_perm = function(){return current_user_can('administrator');};
+        register_rest_route('petsgo/v1','/admin/users',['methods'=>'GET','callback'=>[$this,'api_admin_list_users'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/users',['methods'=>'POST','callback'=>[$this,'api_admin_create_user'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/users/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_user'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/users/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_user'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Orders Management ──
+        register_rest_route('petsgo/v1','/admin/orders',['methods'=>'GET','callback'=>[$this,'api_admin_list_orders'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/orders/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_admin_update_order_status'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/orders/(?P<id>\d+)/assign-rider',['methods'=>'PUT','callback'=>[$this,'api_admin_assign_rider'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: All Products (across all vendors) ──
+        register_rest_route('petsgo/v1','/admin/products',['methods'=>'GET','callback'=>[$this,'api_admin_list_all_products'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/products/(?P<id>\d+)/toggle',['methods'=>'PUT','callback'=>[$this,'api_admin_toggle_any_product'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/products/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_any_product'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Categories CRUD ──
+        register_rest_route('petsgo/v1','/admin/categories',['methods'=>'POST','callback'=>[$this,'api_admin_create_category'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/categories/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_category'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/categories/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_category'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Finance ──
+        register_rest_route('petsgo/v1','/admin/finance',['methods'=>'GET','callback'=>[$this,'api_admin_finance'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/finance/export',['methods'=>'GET','callback'=>[$this,'api_admin_finance_export'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Coupons CRUD ──
+        register_rest_route('petsgo/v1','/admin/coupons',['methods'=>'GET','callback'=>[$this,'api_admin_list_coupons'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/coupons',['methods'=>'POST','callback'=>[$this,'api_admin_create_coupon'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/coupons/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_coupon'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/coupons/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_admin_delete_coupon'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Tickets/Support ──
+        register_rest_route('petsgo/v1','/admin/tickets',['methods'=>'GET','callback'=>[$this,'api_admin_list_tickets'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/tickets/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_ticket'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/tickets/(?P<id>\d+)/reply',['methods'=>'POST','callback'=>[$this,'api_admin_reply_ticket'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Plans CRUD ──
+        register_rest_route('petsgo/v1','/admin/plans',['methods'=>'GET','callback'=>[$this,'api_admin_list_plans'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/plans',['methods'=>'POST','callback'=>[$this,'api_admin_create_plan'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/plans/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_admin_update_plan'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Settings ──
+        register_rest_route('petsgo/v1','/admin/settings',['methods'=>'GET','callback'=>[$this,'api_admin_get_settings'],'permission_callback'=>$admin_perm]);
+        register_rest_route('petsgo/v1','/admin/settings',['methods'=>'PUT','callback'=>[$this,'api_admin_update_settings'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Vendor status management ──
+        register_rest_route('petsgo/v1','/admin/vendors/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_admin_update_vendor_status'],'permission_callback'=>$admin_perm]);
+
+        // ── Admin: Rider approval ──
+        register_rest_route('petsgo/v1','/admin/riders/(?P<id>\d+)/status',['methods'=>'PUT','callback'=>[$this,'api_admin_update_rider_status'],'permission_callback'=>$admin_perm]);
+
+        // ── User Addresses (max 3) ──
+        $auth_perm = function(){return is_user_logged_in();};
+        register_rest_route('petsgo/v1','/my-addresses',['methods'=>'GET','callback'=>[$this,'api_get_addresses'],'permission_callback'=>$auth_perm]);
+        register_rest_route('petsgo/v1','/my-addresses',['methods'=>'POST','callback'=>[$this,'api_create_address'],'permission_callback'=>$auth_perm]);
+        register_rest_route('petsgo/v1','/my-addresses/(?P<id>\d+)',['methods'=>'PUT','callback'=>[$this,'api_update_address'],'permission_callback'=>$auth_perm]);
+        register_rest_route('petsgo/v1','/my-addresses/(?P<id>\d+)',['methods'=>'DELETE','callback'=>[$this,'api_delete_address'],'permission_callback'=>$auth_perm]);
+        register_rest_route('petsgo/v1','/my-addresses/(?P<id>\d+)/default',['methods'=>'PUT','callback'=>[$this,'api_set_default_address'],'permission_callback'=>$auth_perm]);
     }
 
     // --- API Productos ---
     public function api_get_products($request) {
         global $wpdb;
-        $sql="SELECT i.*,v.store_name,v.logo_url FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active'";$args=[];
+        $sql="SELECT i.*,v.store_name,v.logo_url,v.invoice_logo_id FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE v.status='active'";$args=[];
         if($vid=$request->get_param('vendor_id')){$sql.=" AND i.vendor_id=%d";$args[]=$vid;}
         if($cat=$request->get_param('category')){if($cat!=='Todos'){$sql.=" AND i.category=%s";$args[]=$cat;}}
         if($s=$request->get_param('search')){$like='%'.$wpdb->esc_like($s).'%';$sql.=" AND (i.product_name LIKE %s OR i.category LIKE %s OR i.description LIKE %s OR v.store_name LIKE %s)";$args[]=$like;$args[]=$like;$args[]=$like;$args[]=$like;}
@@ -8801,12 +9973,13 @@ Dashboard con analíticas"></textarea>
             if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
             $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
             $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$p->id));
-            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'description'=>$p->description ?? '','price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'is_active'=>intval($p->is_active??1),'variants'=>!empty($p->variants)?json_decode($p->variants,true):null];
+            $invoice_logo_url=!empty($p->invoice_logo_id)?wp_get_attachment_url((int)$p->invoice_logo_id):null;
+            return['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'description'=>$p->description ?? '','price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'invoice_logo_url'=>$invoice_logo_url ?: null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'is_active'=>intval($p->is_active??1),'variants'=>!empty($p->variants)?json_decode($p->variants,true):null];
         },$products)]);
     }
     public function api_get_product_detail($request) {
         global $wpdb;$id=$request->get_param('id');
-        $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url,v.status AS vendor_status FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
+        $p=$wpdb->get_row($wpdb->prepare("SELECT i.*,v.store_name,v.logo_url,v.invoice_logo_id,v.status AS vendor_status FROM {$wpdb->prefix}petsgo_inventory i JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id=v.id WHERE i.id=%d",$id));
         if(!$p) return new WP_Error('not_found','Producto no encontrado',['status'=>404]);
         if($p->vendor_status!=='active') return new WP_Error('vendor_inactive','La tienda de este producto se encuentra inactiva.',['status'=>403]);
         if(intval($p->is_active ?? 1) === 0) return new WP_Error('product_inactive','Este producto no está disponible actualmente.',['status'=>403]);
@@ -8814,7 +9987,8 @@ Dashboard con analíticas"></textarea>
         if($disc>0){if(empty($p->discount_start)&&empty($p->discount_end)){$active=true;}else{$now=current_time('mysql');$active=(!$p->discount_start||$now>=$p->discount_start)&&(!$p->discount_end||$now<=$p->discount_end);}}
         $avg_rating=$wpdb->get_var($wpdb->prepare("SELECT AVG(rating) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
         $review_count=(int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE product_id=%d AND review_type='product'",$id));
-        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'image_url_2'=>!empty($p->image_id_2)?wp_get_attachment_url($p->image_id_2):null,'image_url_3'=>!empty($p->image_id_3)?wp_get_attachment_url($p->image_id_3):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'variants'=>!empty($p->variants)?json_decode($p->variants,true):null]);
+        $invoice_logo_url=!empty($p->invoice_logo_id)?wp_get_attachment_url((int)$p->invoice_logo_id):null;
+        return rest_ensure_response(['id'=>(int)$p->id,'vendor_id'=>(int)$p->vendor_id,'product_name'=>$p->product_name,'price'=>(float)$p->price,'stock'=>(int)$p->stock,'category'=>$p->category,'store_name'=>$p->store_name,'logo_url'=>$p->logo_url,'invoice_logo_url'=>$invoice_logo_url ?: null,'description'=>$p->description,'image_url'=>$p->image_id?wp_get_attachment_url($p->image_id):null,'image_url_2'=>!empty($p->image_id_2)?wp_get_attachment_url($p->image_id_2):null,'image_url_3'=>!empty($p->image_id_3)?wp_get_attachment_url($p->image_id_3):null,'rating'=>$avg_rating?round(floatval($avg_rating),1):null,'review_count'=>$review_count,'discount_percent'=>$disc,'discount_active'=>$active,'final_price'=>$active?round((float)$p->price*(1-$disc/100)):(float)$p->price,'variants'=>!empty($p->variants)?json_decode($p->variants,true):null]);
     }
     // --- API Vendors ---
     public function api_get_vendors() {
@@ -8826,6 +10000,13 @@ Dashboard con analíticas"></textarea>
             $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
             $v->rating = $avg ? round(floatval($avg), 1) : null;
             $v->review_count = $cnt;
+            // Resolve invoice logo attachment to URL for frontend
+            if (!empty($v->invoice_logo_id)) {
+                $logo_url = wp_get_attachment_url((int) $v->invoice_logo_id);
+                $v->invoice_logo_url = $logo_url ?: null;
+            } else {
+                $v->invoice_logo_url = null;
+            }
         }
         return rest_ensure_response(['data' => $vendors]);
     }
@@ -8838,6 +10019,13 @@ Dashboard con analíticas"></textarea>
         $cnt = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_reviews WHERE vendor_id=%d AND review_type='vendor'", $v->id));
         $v->rating = $avg ? round(floatval($avg), 1) : null;
         $v->review_count = $cnt;
+        // Resolve invoice logo attachment to URL for frontend
+        if (!empty($v->invoice_logo_id)) {
+            $logo_url = wp_get_attachment_url((int) $v->invoice_logo_id);
+            $v->invoice_logo_url = $logo_url ?: null;
+        } else {
+            $v->invoice_logo_url = null;
+        }
         return rest_ensure_response($v);
     }
 
@@ -9321,6 +10509,25 @@ Dashboard con analíticas"></textarea>
 
         $this->audit('register', 'user', $uid, $display_name . ' (customer)');
 
+        // Optional: save address if provided
+        $addr_street = sanitize_text_field($p['address_street'] ?? '');
+        if ($addr_street) {
+            $addr_alias  = sanitize_text_field($p['address_alias'] ?? '') ?: 'Mi Casa';
+            $addr_detail = sanitize_text_field($p['address_detail'] ?? '');
+            $wpdb->insert("{$wpdb->prefix}petsgo_user_addresses", [
+                'user_id'        => $uid,
+                'alias'          => mb_substr($addr_alias, 0, 50),
+                'address_type'   => 'home',
+                'street_address' => $addr_street,
+                'region'         => $region,
+                'comuna'         => $comuna,
+                'detail'         => mb_substr($addr_detail, 0, 255),
+                'is_default'     => 1,
+                'created_at'     => current_time('mysql'),
+                'updated_at'     => current_time('mysql'),
+            ], ['%d','%s','%s','%s','%s','%s','%s','%d','%s','%s']);
+        }
+
         // Welcome email
         $welcome_inner = '
       <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">¡Hola <strong>' . esc_html($first_name) . '</strong>! 🎉</p>
@@ -9711,7 +10918,7 @@ Dashboard con analíticas"></textarea>
         ));
 
         // Profile data for document matching
-        $profile = $wpdb->get_row($wpdb->prepare("SELECT id_type, id_number FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
+        $profile = $wpdb->get_row($wpdb->prepare("SELECT id_type, id_number, is_online, last_online FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid));
 
         // Document expiry alerts for rider dashboard
         $today = date('Y-m-d');
@@ -9751,6 +10958,8 @@ Dashboard con analíticas"></textarea>
             'average_rating'  => $avg ? round(floatval($avg), 1) : null,
             'id_type'         => $profile->id_type ?? '',
             'id_number'       => $profile->id_number ?? '',
+            'is_online'       => (bool) ($profile->is_online ?? false),
+            'last_online'     => $profile->last_online ?? null,
             'expiry_alerts'   => $expiry_alerts,
         ]);
     }
@@ -10272,7 +11481,7 @@ Dashboard con analíticas"></textarea>
         $result = [];
         foreach ($riders as $r) {
             $prof = $wpdb->get_row($wpdb->prepare(
-                "SELECT vehicle, region, comuna, phone FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $r->ID
+                "SELECT vehicle, region, comuna, phone, is_online, last_online FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $r->ID
             ));
             $stats = $wpdb->get_row($wpdb->prepare(
                 "SELECT COUNT(*) AS deliveries,
@@ -10291,6 +11500,8 @@ Dashboard con analíticas"></textarea>
                 'vehicle'    => $prof->vehicle ?? '',
                 'region'     => $prof->region ?? '',
                 'status'     => $rider_status,
+                'is_online'  => (bool) ($prof->is_online ?? false),
+                'last_online'=> $prof->last_online ?? null,
                 'deliveries' => (int) ($stats->deliveries ?? 0),
                 'earned'     => (float) ($stats->earned ?? 0),
                 'avgRating'  => $avg_rating ? round($avg_rating, 2) : null,
@@ -10430,6 +11641,48 @@ Dashboard con analíticas"></textarea>
         wp_send_json_success("✅ {$count} payouts generados para {$period_start} a {$period_end}");
     }
 
+    // --- Rider Availability Toggle ---
+    public function api_toggle_rider_availability($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $is_online = !empty($p['is_online']) ? 1 : 0;
+
+        // Only approved riders can go online
+        $rider_status = get_user_meta($uid, 'petsgo_rider_status', true);
+        if ($rider_status !== 'approved') {
+            return new WP_Error('not_approved', 'Solo riders aprobados pueden activar disponibilidad', ['status' => 403]);
+        }
+
+        $table = "{$wpdb->prefix}petsgo_user_profiles";
+
+        // Upsert: create profile row if it doesn't exist
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE user_id=%d", $uid));
+        if ($exists) {
+            if ($is_online) {
+                $wpdb->query($wpdb->prepare("UPDATE {$table} SET is_online=1, last_online=%s WHERE user_id=%d", current_time('mysql'), $uid));
+            } else {
+                $wpdb->query($wpdb->prepare("UPDATE {$table} SET is_online=0 WHERE user_id=%d", $uid));
+            }
+        } else {
+            $wpdb->query($wpdb->prepare(
+                "INSERT INTO {$table} (user_id, is_online, last_online) VALUES (%d, %d, %s)",
+                $uid, $is_online, $is_online ? current_time('mysql') : null
+            ));
+        }
+
+        // Read back actual DB state
+        $actual = (bool) $wpdb->get_var($wpdb->prepare("SELECT is_online FROM {$table} WHERE user_id=%d", $uid));
+
+        $this->audit('rider_availability', 'user', $uid, $actual ? 'Online' : 'Offline');
+
+        return rest_ensure_response([
+            'is_online'   => $actual,
+            'last_online' => $actual ? current_time('mysql') : null,
+            'message'     => $actual ? 'Estás disponible para recibir pedidos' : 'Ya no recibirás nuevos pedidos',
+        ]);
+    }
+
     public function api_get_rider_deliveries() {
         global $wpdb;
         $uid = get_current_user_id();
@@ -10444,6 +11697,131 @@ Dashboard con analíticas"></textarea>
         return rest_ensure_response($deliveries);
     }
 
+    /**
+     * GET /rider/deliveries/available
+     * Returns unassigned delivery orders that are ready for pickup.
+     * Only available to approved + online riders.
+     */
+    public function api_get_available_deliveries() {
+        global $wpdb;
+        $uid = get_current_user_id();
+
+        // Check rider is approved
+        $rider_status = get_user_meta($uid, 'petsgo_rider_status', true);
+        if ($rider_status !== 'approved') {
+            return new WP_Error('not_approved', 'Tu cuenta de rider no está aprobada', ['status' => 403]);
+        }
+
+        // Check rider is online
+        $is_online = (bool) $wpdb->get_var($wpdb->prepare(
+            "SELECT is_online FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid
+        ));
+        if (!$is_online) {
+            return new WP_Error('offline', 'Debes estar online para ver pedidos disponibles', ['status' => 403]);
+        }
+
+        // Get rider region/comuna for proximity info
+        $profile = $wpdb->get_row($wpdb->prepare(
+            "SELECT region, comuna, vehicle_type FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid
+        ));
+
+        // Fetch unassigned delivery orders that are ready for pickup
+        $orders = $wpdb->get_results(
+            "SELECT o.id, o.status, o.total_amount, o.delivery_fee, o.delivery_distance_km,
+                    o.created_at, o.shipping_address,
+                    v.store_name, v.region AS vendor_region, v.comuna AS vendor_comuna,
+                    u.display_name AS customer_name
+             FROM {$wpdb->prefix}petsgo_orders o
+             JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+             JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.delivery_method = 'delivery'
+               AND o.rider_id IS NULL
+               AND o.status IN ('ready_for_pickup', 'processing')
+             ORDER BY o.created_at ASC"
+        );
+
+        // Add proximity info
+        foreach ($orders as &$order) {
+            $order->same_comuna = ($profile && $profile->comuna && strtolower($profile->comuna) === strtolower($order->vendor_comuna));
+            $order->same_region = ($profile && $profile->region && strtolower($profile->region) === strtolower($order->vendor_region));
+            // Calculate rider earning (commission %)
+            $commission_pct = intval($this->pg_setting('rider_commission_pct', 88));
+            $order->rider_earning = round(floatval($order->delivery_fee) * $commission_pct / 100);
+        }
+
+        return rest_ensure_response($orders);
+    }
+
+    /**
+     * POST /rider/deliveries/{id}/claim
+     * Rider self-assigns to an unassigned delivery order.
+     */
+    public function api_rider_claim_delivery($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request['id']);
+
+        // Check rider is approved
+        $rider_status = get_user_meta($uid, 'petsgo_rider_status', true);
+        if ($rider_status !== 'approved') {
+            return new WP_Error('not_approved', 'Tu cuenta de rider no está aprobada', ['status' => 403]);
+        }
+
+        // Check rider is online
+        $is_online = (bool) $wpdb->get_var($wpdb->prepare(
+            "SELECT is_online FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid
+        ));
+        if (!$is_online) {
+            return new WP_Error('offline', 'Debes estar online para tomar pedidos', ['status' => 403]);
+        }
+
+        // Verify order is available (unassigned + delivery + eligible status)
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND delivery_method='delivery' AND rider_id IS NULL AND status IN ('ready_for_pickup','processing')",
+            $order_id
+        ));
+        if (!$order) {
+            return new WP_Error('not_available', 'Este pedido ya no está disponible', ['status' => 404]);
+        }
+
+        // Calculate estimated delivery time
+        $profile = $wpdb->get_row($wpdb->prepare(
+            "SELECT vehicle_type FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid
+        ));
+        $vehicle = $profile->vehicle_type ?? 'bicicleta';
+        $distance = floatval($order->delivery_distance_km ?: 5);
+        $speeds = ['bicicleta' => 12, 'a_pie' => 5, 'scooter' => 25, 'moto' => 30, 'auto' => 35];
+        $speed = $speeds[$vehicle] ?? 15;
+        $travel_minutes = ceil(($distance / $speed) * 60);
+        $estimated_minutes = $travel_minutes + 10; // 10 min pickup buffer
+
+// Self-assign: rider_response = 'accepted' immediately, status = rider_assigned
+    $now = current_time('mysql');
+    $new_status = in_array($order->status, ['pending', 'processing', 'ready_for_pickup']) ? 'rider_assigned' : $order->status;
+    $result = $wpdb->query($wpdb->prepare(
+        "UPDATE {$wpdb->prefix}petsgo_orders SET rider_id=%d, rider_response='accepted', rider_assigned_at=%s, rider_responded_at=%s, estimated_minutes=%d, status=%s WHERE id=%d AND rider_id IS NULL",
+        $uid, $now, $now, $estimated_minutes, $new_status, $order_id
+    ));
+
+    if (!$result) {
+        return new WP_Error('taken', 'Otro rider ya tomó este pedido', ['status' => 409]);
+        }
+
+        $this->audit('rider_claim', 'order', $order_id, "Rider {$uid} self-assigned");
+
+        // Notify customer about status change and rider assignment
+        if ($new_status !== $order->status) {
+            $this->notify_order_status_change($order_id, $new_status, $order->status);
+        }
+        $rider_user = get_userdata($uid);
+        $this->notify_rider_accepted($order, $rider_user, $estimated_minutes);
+
+        return rest_ensure_response([
+            'message' => 'Pedido tomado exitosamente',
+            'estimated_minutes' => $estimated_minutes,
+        ]);
+    }
+
     public function api_update_delivery_status($request) {
         global $wpdb;
         $uid = get_current_user_id();
@@ -10451,15 +11829,291 @@ Dashboard con analíticas"></textarea>
         $p = $request->get_json_params();
         $new_status = sanitize_text_field($p['status'] ?? '');
 
-        $valid = ['ready_for_pickup', 'in_transit', 'delivered'];
+        $valid = ['ready_for_pickup', 'rider_assigned', 'in_transit', 'delivered'];
         if (!in_array($new_status, $valid)) return new WP_Error('invalid', 'Estado inválido', ['status' => 400]);
 
         $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND rider_id=%d", $order_id, $uid));
         if (!$order) return new WP_Error('not_found', 'Pedido no encontrado o no asignado a ti', ['status' => 404]);
 
+        // Para marcar como entregado, verificar que tenga al menos 1 foto de evidencia
+        if ($new_status === 'delivered') {
+            $evidence_count = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_delivery_evidence WHERE order_id=%d AND rider_id=%d", $order_id, $uid
+            ));
+            if ($evidence_count < 1) {
+                return new WP_Error('evidence_required', 'Debes subir al menos 1 foto de evidencia antes de marcar como entregado', ['status' => 400]);
+            }
+        }
+
         $wpdb->update("{$wpdb->prefix}petsgo_orders", ['status' => $new_status], ['id' => $order_id]);
         $this->audit('delivery_status', 'order', $order_id, "Rider {$uid}: {$order->status} → {$new_status}");
+        $this->notify_order_status_change($order_id, $new_status, $order->status);
+
+        // Si se marcó como entregado, enviar notificación con fotos al vendor
+        if ($new_status === 'delivered') {
+            $this->notify_delivery_evidence($order_id);
+        }
+
         return rest_ensure_response(['message' => 'Estado actualizado']);
+    }
+
+    /**
+     * Upload delivery evidence photos (1-3 photos).
+     * POST /rider/deliveries/{id}/evidence  — multipart/form-data with photos[]
+     */
+    public function api_upload_delivery_evidence($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request['id']);
+
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND rider_id=%d", $order_id, $uid
+        ));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado o no asignado a ti', ['status' => 404]);
+
+        // Verificar cuántas fotos ya tiene
+        $existing = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_delivery_evidence WHERE order_id=%d AND rider_id=%d", $order_id, $uid
+        ));
+
+        $files = $request->get_file_params();
+        $photos = [];
+        // Soportar tanto photos[] (array) como photo (single)
+        if (!empty($files['photos']) && is_array($files['photos']['name'])) {
+            $count = count($files['photos']['name']);
+            for ($i = 0; $i < $count; $i++) {
+                $photos[] = [
+                    'name'     => $files['photos']['name'][$i],
+                    'type'     => $files['photos']['type'][$i],
+                    'tmp_name' => $files['photos']['tmp_name'][$i],
+                    'error'    => $files['photos']['error'][$i],
+                    'size'     => $files['photos']['size'][$i],
+                ];
+            }
+        } elseif (!empty($files['photo'])) {
+            $photos[] = $files['photo'];
+        }
+
+        if (empty($photos)) return new WP_Error('no_file', 'Debes adjuntar al menos 1 foto', ['status' => 400]);
+        if ($existing + count($photos) > 3) return new WP_Error('max_photos', 'Máximo 3 fotos de evidencia por pedido', ['status' => 400]);
+
+        $allowed = ['image/jpeg', 'image/png', 'image/webp'];
+        $max_size = 5 * 1024 * 1024; // 5MB
+        $upload_dir = wp_upload_dir();
+        $evidence_dir = $upload_dir['basedir'] . '/petsgo-evidence';
+        if (!file_exists($evidence_dir)) wp_mkdir_p($evidence_dir);
+
+        $uploaded = [];
+        foreach ($photos as $file) {
+            if ($file['error'] !== UPLOAD_ERR_OK) continue;
+            if (!in_array($file['type'], $allowed)) {
+                return new WP_Error('invalid_type', 'Solo se permiten imágenes JPG, PNG o WebP', ['status' => 400]);
+            }
+            if ($file['size'] > $max_size) {
+                return new WP_Error('too_large', 'Cada foto debe pesar máximo 5 MB', ['status' => 400]);
+            }
+
+            $ext = pathinfo($file['name'], PATHINFO_EXTENSION) ?: 'jpg';
+            $filename = "evidence_{$order_id}_{$uid}_" . time() . '_' . wp_rand(100, 999) . '.' . $ext;
+            $dest = $evidence_dir . '/' . $filename;
+
+            if (!move_uploaded_file($file['tmp_name'], $dest)) {
+                continue;
+            }
+
+            $url = $upload_dir['baseurl'] . '/petsgo-evidence/' . $filename;
+            $wpdb->insert("{$wpdb->prefix}petsgo_delivery_evidence", [
+                'order_id'  => $order_id,
+                'rider_id'  => $uid,
+                'photo_url' => $url,
+                'file_name' => $filename,
+            ]);
+            $uploaded[] = $url;
+        }
+
+        if (empty($uploaded)) return new WP_Error('upload_failed', 'Error al subir las fotos', ['status' => 500]);
+
+        $total = $existing + count($uploaded);
+        $this->audit('delivery_evidence', 'order', $order_id, "Rider {$uid}: subió " . count($uploaded) . " foto(s) de evidencia (total: {$total})");
+
+        return rest_ensure_response([
+            'message' => count($uploaded) . ' foto(s) subida(s) exitosamente',
+            'photos'  => $uploaded,
+            'total'   => $total,
+        ]);
+    }
+
+    /**
+     * Notifica al cliente y al vendor con fotos de evidencia de entrega.
+     */
+    private function notify_delivery_evidence($order_id) {
+        global $wpdb;
+        $pfx = $wpdb->prefix;
+
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT o.*, v.store_name, v.user_id AS vendor_user_id,
+                    u.display_name AS customer_name, u.user_email AS customer_email
+             FROM {$pfx}petsgo_orders o
+             JOIN {$pfx}petsgo_vendors v ON o.vendor_id = v.id
+             LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.id = %d", $order_id
+        ));
+        if (!$order) return;
+
+        // Obtener fotos de evidencia
+        $photos = $wpdb->get_results($wpdb->prepare(
+            "SELECT photo_url FROM {$pfx}petsgo_delivery_evidence WHERE order_id=%d ORDER BY uploaded_at ASC", $order_id
+        ));
+        if (empty($photos)) return;
+
+        // Obtener nombre del rider
+        $rider = get_userdata($order->rider_id);
+        $rider_name = $rider ? $rider->display_name : 'Rider';
+
+        // Construir galería de fotos para el email
+        $photos_html = '<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:16px 0;">
+          <tr><td style="padding:0 0 8px;font-size:13px;font-weight:700;color:#333;">📸 Fotos de evidencia de entrega:</td></tr>
+          <tr><td style="padding:0;"><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>';
+        foreach ($photos as $i => $p) {
+            $photos_html .= '<td style="padding:4px;width:33.33%;vertical-align:top;">
+              <img src="' . esc_url($p->photo_url) . '" alt="Evidencia ' . ($i + 1) . '"
+                   style="width:100%;max-width:200px;height:auto;border-radius:8px;border:1px solid #e5e7eb;display:block;" />
+            </td>';
+        }
+        $photos_html .= '</tr></table></td></tr></table>';
+
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $this->pg_setting('company_name', 'PetsGo') . ' <' . $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name', 'PetsGo') . ' Soporte <' . $this->pg_setting('company_email', 'contacto@petsgo.cl') . '>',
+        ];
+
+        // Email al CLIENTE
+        if ($order->customer_email) {
+            $inner_customer = '
+          <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($order->customer_name ?: 'Cliente') . '</strong>,</p>
+          <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 16px;">Tu pedido <strong>#' . $order_id . '</strong> de <strong>' . esc_html($order->store_name) . '</strong> ha sido entregado por <strong>' . esc_html($rider_name) . '</strong>.</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+            <tr><td align="center">
+              <table role="presentation" style="border-radius:12px;overflow:hidden;border:2px solid #22c55e;">
+                <tr><td style="background-color:#22c55e;padding:14px 28px;text-align:center;">
+                  <span style="font-size:28px;">✅</span>
+                  <p style="color:#fff;font-size:18px;font-weight:700;margin:6px 0 0;">Pedido Entregado</p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+          ' . $photos_html . '
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin:20px 0;">
+            <tr><td align="center">
+              <a href="' . esc_url(home_url('/mis-pedidos')) . '" style="display:inline-block;background-color:#00A8E8;color:#fff;font-size:14px;font-weight:600;padding:12px 32px;border-radius:8px;text-decoration:none;">
+                Ver Mis Pedidos
+              </a>
+            </td></tr>
+          </table>';
+            $body_customer = $this->email_wrap($inner_customer, 'Tu pedido #' . $order_id . ' ha sido entregado');
+            wp_mail($order->customer_email, 'PetsGo — ✅ Pedido #' . $order_id . ' Entregado — Evidencia de entrega', $body_customer, $headers);
+        }
+
+        // Email al VENDOR (tienda)
+        if ($order->vendor_user_id) {
+            $vendor_email = get_userdata($order->vendor_user_id)->user_email ?? null;
+            if ($vendor_email) {
+                $inner_vendor = '
+          <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($order->store_name) . '</strong>,</p>
+          <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 16px;">El pedido <strong>#' . $order_id . '</strong> ha sido entregado exitosamente al cliente <strong>' . esc_html($order->customer_name ?: 'Cliente') . '</strong> por el rider <strong>' . esc_html($rider_name) . '</strong>.</p>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:16px;">
+            <tr><td align="center">
+              <table role="presentation" style="border-radius:12px;overflow:hidden;border:2px solid #22c55e;">
+                <tr><td style="background-color:#22c55e;padding:14px 28px;text-align:center;">
+                  <span style="font-size:28px;">✅</span>
+                  <p style="color:#fff;font-size:18px;font-weight:700;margin:6px 0 0;">Entrega Confirmada</p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+          ' . $photos_html . '
+          <p style="color:#aaa;font-size:11px;text-align:center;margin:20px 0 0;">Notificación automática de PetsGo para la tienda ' . esc_html($order->store_name) . '.</p>';
+                $body_vendor = $this->email_wrap($inner_vendor, 'Pedido #' . $order_id . ' entregado al cliente');
+                wp_mail($vendor_email, 'PetsGo — ✅ Pedido #' . $order_id . ' Entregado — Evidencia de entrega', $body_vendor, $headers);
+            }
+        }
+
+        $this->audit('delivery_evidence_email', 'order', $order_id, 'Emails de evidencia enviados a cliente y tienda');
+    }
+
+    /**
+     * Rider accepts or rejects a delivery assignment.
+     * PUT /rider/deliveries/{id}/respond  { "response": "accepted"|"rejected" }
+     */
+    public function api_rider_respond_delivery($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $order_id = intval($request['id']);
+        $p = $request->get_json_params();
+        $response = sanitize_text_field($p['response'] ?? '');
+
+        if (!in_array($response, ['accepted', 'rejected'])) {
+            return new WP_Error('invalid', 'Respuesta debe ser accepted o rejected', ['status' => 400]);
+        }
+
+        $order = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d AND rider_id=%d",
+            $order_id, $uid
+        ));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado o no asignado a ti', ['status' => 404]);
+        if ($order->rider_response === 'accepted') return new WP_Error('already', 'Ya aceptaste esta entrega', ['status' => 400]);
+
+        $table = "{$wpdb->prefix}petsgo_orders";
+        $now = current_time('mysql');
+        $estimated_minutes = 0;
+        $new_status = $order->status;
+
+        if ($response === 'accepted') {
+            // Estimate delivery time based on distance and vehicle type
+            $profile = $wpdb->get_row($wpdb->prepare(
+                "SELECT vehicle_type FROM {$wpdb->prefix}petsgo_user_profiles WHERE user_id=%d", $uid
+            ));
+            $vehicle = $profile->vehicle_type ?? 'bicicleta';
+            $distance = floatval($order->delivery_distance_km ?: 5);
+            $speeds = ['bicicleta' => 12, 'a_pie' => 5, 'scooter' => 25, 'moto' => 30, 'auto' => 35];
+            $speed = $speeds[$vehicle] ?? 15;
+            $travel_minutes = ceil(($distance / $speed) * 60);
+            $estimated_minutes = $travel_minutes + 10;
+
+            // Change order status to rider_assigned when rider accepts
+            if (in_array($order->status, ['pending', 'processing', 'ready_for_pickup'])) {
+                $new_status = 'rider_assigned';
+            }
+
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET rider_response='accepted', rider_responded_at=%s, estimated_minutes=%d, status=%s WHERE id=%d",
+                $now, $estimated_minutes, $new_status, $order_id
+            ));
+        } else {
+            // Rejected: clear assignment so admin/vendor can reassign (direct SQL for NULL values)
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$table} SET rider_response='rejected', rider_responded_at=%s, rider_id=NULL, estimated_minutes=NULL WHERE id=%d",
+                $now, $order_id
+            ));
+        }
+
+        $this->audit('rider_respond', 'order', $order_id, "Rider {$uid}: {$response}");
+
+        if ($response === 'accepted') {
+            $old_status = $order->status;
+            if ($old_status !== $new_status) {
+                $this->notify_order_status_change($order_id, $new_status, $old_status);
+            }
+            $rider_user = get_userdata($uid);
+            $this->notify_rider_accepted($order, $rider_user, $estimated_minutes);
+        }
+
+        $result = ['message' => $response === 'accepted' ? 'Entrega aceptada' : 'Entrega rechazada'];
+        if ($response === 'accepted') {
+            $result['estimated_minutes'] = $estimated_minutes;
+        }
+        return rest_ensure_response($result);
     }
 
     // --- Delivery Ratings API ---
@@ -10689,6 +12343,149 @@ Dashboard con analíticas"></textarea>
         return rest_ensure_response(['message' => 'Perfil actualizado']);
     }
 
+    // ── User Addresses CRUD (max 3) ──
+
+    public function api_get_addresses($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_user_addresses WHERE user_id=%d ORDER BY is_default DESC, id ASC", $uid
+        ));
+        return rest_ensure_response(array_map(function($r) {
+            return [
+                'id'             => (int)$r->id,
+                'alias'          => $r->alias,
+                'addressType'    => $r->address_type,
+                'streetAddress'  => $r->street_address,
+                'region'         => $r->region,
+                'comuna'         => $r->comuna,
+                'detail'         => $r->detail,
+                'lat'            => $r->lat ? (float)$r->lat : null,
+                'lng'            => $r->lng ? (float)$r->lng : null,
+                'isDefault'      => (bool)$r->is_default,
+            ];
+        }, $rows));
+    }
+
+    public function api_create_address($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+
+        // Check limit
+        $count = (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_user_addresses WHERE user_id=%d", $uid
+        ));
+        if ($count >= 3) return new WP_Error('limit_reached', 'Máximo 3 direcciones permitidas', ['status' => 400]);
+
+        $alias   = sanitize_text_field($p['alias'] ?? '');
+        $type    = sanitize_text_field($p['addressType'] ?? 'casa');
+        $street  = sanitize_text_field($p['streetAddress'] ?? '');
+        $region  = sanitize_text_field($p['region'] ?? '');
+        $comuna  = sanitize_text_field($p['comuna'] ?? '');
+        $detail  = sanitize_text_field($p['detail'] ?? '');
+        $lat     = isset($p['lat']) ? floatval($p['lat']) : null;
+        $lng     = isset($p['lng']) ? floatval($p['lng']) : null;
+        $is_def  = !empty($p['isDefault']);
+
+        if (!$street) return new WP_Error('validation_error', 'La dirección es obligatoria', ['status' => 400]);
+        if (!$region) return new WP_Error('validation_error', 'La región es obligatoria', ['status' => 400]);
+        if (!$comuna) return new WP_Error('validation_error', 'La comuna es obligatoria', ['status' => 400]);
+        if (!in_array($type, ['casa','departamento','oficina'])) $type = 'casa';
+
+        // If setting as default, unset previous default
+        if ($is_def) {
+            $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", ['is_default' => 0], ['user_id' => $uid]);
+        }
+        // If first address, auto-default
+        if ($count === 0) $is_def = true;
+
+        $wpdb->insert("{$wpdb->prefix}petsgo_user_addresses", [
+            'user_id'        => $uid,
+            'alias'          => $alias ?: ($type === 'casa' ? 'Mi Casa' : ($type === 'departamento' ? 'Mi Depto' : 'Mi Oficina')),
+            'address_type'   => $type,
+            'street_address' => $street,
+            'region'         => $region,
+            'comuna'         => $comuna,
+            'detail'         => $detail,
+            'lat'            => $lat,
+            'lng'            => $lng,
+            'is_default'     => $is_def ? 1 : 0,
+        ]);
+
+        return rest_ensure_response(['message' => 'Dirección guardada', 'id' => (int)$wpdb->insert_id]);
+    }
+
+    public function api_update_address($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $id  = (int)$request->get_param('id');
+        $p   = $request->get_json_params();
+
+        $addr = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_user_addresses WHERE id=%d AND user_id=%d", $id, $uid
+        ));
+        if (!$addr) return new WP_Error('not_found', 'Dirección no encontrada', ['status' => 404]);
+
+        $data = [];
+        if (isset($p['alias']))          $data['alias']          = sanitize_text_field($p['alias']);
+        if (isset($p['addressType']))    $data['address_type']   = in_array($p['addressType'], ['casa','departamento','oficina']) ? $p['addressType'] : $addr->address_type;
+        if (isset($p['streetAddress']))  $data['street_address'] = sanitize_text_field($p['streetAddress']);
+        if (isset($p['region']))         $data['region']         = sanitize_text_field($p['region']);
+        if (isset($p['comuna']))         $data['comuna']         = sanitize_text_field($p['comuna']);
+        if (isset($p['detail']))         $data['detail']         = sanitize_text_field($p['detail']);
+        if (isset($p['lat']))            $data['lat']            = floatval($p['lat']);
+        if (isset($p['lng']))            $data['lng']            = floatval($p['lng']);
+
+        if (isset($p['isDefault']) && $p['isDefault']) {
+            $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", ['is_default' => 0], ['user_id' => $uid]);
+            $data['is_default'] = 1;
+        }
+
+        if ($data) $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", $data, ['id' => $id, 'user_id' => $uid]);
+
+        return rest_ensure_response(['message' => 'Dirección actualizada']);
+    }
+
+    public function api_delete_address($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $id  = (int)$request->get_param('id');
+
+        $addr = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}petsgo_user_addresses WHERE id=%d AND user_id=%d", $id, $uid
+        ));
+        if (!$addr) return new WP_Error('not_found', 'Dirección no encontrada', ['status' => 404]);
+
+        $wpdb->delete("{$wpdb->prefix}petsgo_user_addresses", ['id' => $id, 'user_id' => $uid]);
+
+        // If deleted was default, set the first remaining as default
+        if ($addr->is_default) {
+            $first = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}petsgo_user_addresses WHERE user_id=%d ORDER BY id ASC LIMIT 1", $uid
+            ));
+            if ($first) $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", ['is_default' => 1], ['id' => $first]);
+        }
+
+        return rest_ensure_response(['message' => 'Dirección eliminada']);
+    }
+
+    public function api_set_default_address($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $id  = (int)$request->get_param('id');
+
+        $addr = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}petsgo_user_addresses WHERE id=%d AND user_id=%d", $id, $uid
+        ));
+        if (!$addr) return new WP_Error('not_found', 'Dirección no encontrada', ['status' => 404]);
+
+        $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", ['is_default' => 0], ['user_id' => $uid]);
+        $wpdb->update("{$wpdb->prefix}petsgo_user_addresses", ['is_default' => 1], ['id' => $id, 'user_id' => $uid]);
+
+        return rest_ensure_response(['message' => 'Dirección predeterminada actualizada']);
+    }
+
     public function api_change_password($request) {
         $uid = get_current_user_id();
         $p = $request->get_json_params();
@@ -10889,13 +12686,16 @@ Dashboard con analíticas"></textarea>
 
         // ── Purchase group (links orders from same checkout) ──
         $purchase_group = sanitize_text_field($p['purchase_group'] ?? '');
+        $customer_note = sanitize_textarea_field($p['customer_note'] ?? '');
+        if (mb_strlen($customer_note) > 500) $customer_note = mb_substr($customer_note, 0, 500);
 
         // ── Payment method handling ──
         $payment_method = sanitize_text_field($p['payment_method'] ?? '');
         if (!in_array($payment_method, ['transbank', 'mercadopago', 'test_bypass', ''])) $payment_method = '';
-        // Test user bypass: lmgm.0303@gmail.com skips payment
+        // Test user bypass: skip payment for specific test accounts
         $current_user = wp_get_current_user();
-        $is_test_user = ($current_user && strtolower($current_user->user_email) === 'lmgm.0303@gmail.com');
+        $test_emails = ['lmgm.0303@gmail.com', 'automatizacionesbotcore@gmail.com'];
+        $is_test_user = ($current_user && in_array(strtolower($current_user->user_email), $test_emails, true));
         if ($is_test_user) {
             $payment_status = 'paid';
             if (!$payment_method) $payment_method = 'test_bypass';
@@ -10913,9 +12713,11 @@ Dashboard con analíticas"></textarea>
             'address_detail'=>$address_detail ?: null,'address_type'=>$address_type,
             'payment_method'=>$payment_method ?: null,'payment_status'=>$payment_status,
             'coupon_code'=>$coupon_code ?: null,'discount_amount'=>$discount_amount,
-            'status'=>'pending','purchase_group'=>$purchase_group ?: null
+            'status'=>'pending','purchase_group'=>$purchase_group ?: null,
+            'customer_note'=>$customer_note ?: null,
+            'created_at'=>current_time('mysql')
         ];
-        $insert_format = ['%d','%d','%f','%f','%f','%f','%f','%f','%f','%s','%s','%s','%s','%s','%s','%s','%s','%s','%f','%s','%s'];
+        $insert_format = ['%d','%d','%f','%f','%f','%f','%f','%f','%f','%s','%s','%s','%s','%s','%s','%s','%s','%s','%f','%s','%s','%s','%s'];
         $result = $wpdb->insert("{$wpdb->prefix}petsgo_orders", $insert_data, $insert_format);
         if ($result === false) {
             error_log('[PetsGo] Order INSERT failed: ' . $wpdb->last_error);
@@ -10959,10 +12761,11 @@ Dashboard con analíticas"></textarea>
         global $wpdb;
         $uid = get_current_user_id();
         $orders = $wpdb->get_results($wpdb->prepare(
-            "SELECT o.*, v.store_name, inv.invoice_number, inv.pdf_path AS invoice_pdf
+            "SELECT o.*, v.store_name, inv.invoice_number, inv.pdf_path AS invoice_pdf, r.display_name AS rider_name
              FROM {$wpdb->prefix}petsgo_orders o
              JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id
              LEFT JOIN {$wpdb->prefix}petsgo_invoices inv ON inv.order_id=o.id
+             LEFT JOIN {$wpdb->users} r ON o.rider_id=r.ID
              WHERE o.customer_id=%d ORDER BY o.created_at DESC",
             $uid
         ));
@@ -10980,6 +12783,180 @@ Dashboard con analíticas"></textarea>
         }
         return rest_ensure_response($orders);
     }
+
+    /**
+     * Send ONE consolidated purchase confirmation email with all orders + all invoice PDFs.
+     * Called by frontend after all orders in a purchase group are created.
+     */
+    public function api_send_purchase_confirmation($request) {
+        global $wpdb;
+        $uid = get_current_user_id();
+        $p = $request->get_json_params();
+        $purchase_group = sanitize_text_field($p['purchase_group'] ?? '');
+        if (!$purchase_group) return new WP_Error('missing', 'purchase_group requerido', ['status' => 400]);
+
+        // Get all orders in this purchase group belonging to current user
+        $orders = $wpdb->get_results($wpdb->prepare(
+            "SELECT o.*, v.store_name, v.email AS vendor_email,
+             u.display_name AS customer_name, u.user_email AS customer_email,
+             inv.invoice_number, inv.pdf_path
+             FROM {$wpdb->prefix}petsgo_orders o
+             JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id=v.id
+             LEFT JOIN {$wpdb->users} u ON o.customer_id=u.ID
+             LEFT JOIN {$wpdb->prefix}petsgo_invoices inv ON inv.order_id=o.id
+             WHERE o.purchase_group=%s AND o.customer_id=%d
+             ORDER BY o.id ASC",
+            $purchase_group, $uid
+        ));
+        if (empty($orders)) return new WP_Error('not_found', 'No se encontraron pedidos', ['status' => 404]);
+
+        $to = $orders[0]->customer_email;
+        if (!$to) return rest_ensure_response(['sent' => false, 'reason' => 'no_email']);
+
+        // Build items per order
+        foreach ($orders as &$ord) {
+            $ord->items = $wpdb->get_results($wpdb->prepare(
+                "SELECT product_name, quantity, unit_price, subtotal FROM {$wpdb->prefix}petsgo_order_items WHERE order_id=%d ORDER BY id ASC",
+                $ord->id
+            ));
+        }
+        unset($ord);
+
+        $customer_name = $orders[0]->customer_name ?? 'Cliente';
+        $total_orders = count($orders);
+        $grand_total = 0;
+        $total_delivery = 0;
+        $total_discount = 0;
+        $coupon_label = '';
+
+        // Build per-store sections
+        $store_sections = '';
+        $attachments = [];
+        $upload_dir = wp_upload_dir();
+        $bcc_emails = [$this->pg_setting('company_bcc_email', 'contacto@petsgo.cl')];
+
+        foreach ($orders as $order) {
+            $order_total = floatval($order->total_amount);
+            $order_delivery = floatval($order->delivery_fee ?? 0);
+            $order_discount = floatval($order->discount_amount ?? 0);
+            $grand_total += $order_total + $order_delivery;
+            $total_delivery += $order_delivery;
+            $total_discount += $order_discount;
+            if (!$coupon_label && !empty($order->coupon_code)) $coupon_label = $order->coupon_code;
+
+            // Items rows
+            $items_rows = '';
+            foreach ($order->items as $item) {
+                $items_rows .= '
+            <tr>
+              <td style="padding:8px 12px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;">' . esc_html($item->product_name) . '</td>
+              <td style="padding:8px 12px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:center;">' . intval($item->quantity) . '</td>
+              <td style="padding:8px 12px;font-size:13px;color:#555;border-top:1px solid #f0f0f0;text-align:right;">$' . number_format($item->unit_price, 0, ',', '.') . '</td>
+              <td style="padding:8px 12px;font-size:13px;color:#333;border-top:1px solid #f0f0f0;text-align:right;font-weight:600;">$' . number_format($item->subtotal, 0, ',', '.') . '</td>
+            </tr>';
+            }
+
+            $delivery_label = $order_delivery > 0
+                ? '<span style="color:#c2410c;">$' . number_format($order_delivery, 0, ',', '.') . '</span>'
+                : '<span style="color:#16a34a;font-weight:700;">¡Gratis!</span>';
+
+            $store_sections .= '
+        <!-- Store: ' . esc_html($order->store_name) . ' -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:20px;border:1px solid #e9ecef;border-radius:8px;overflow:hidden;">
+          <tr style="background-color:#f8f9fa;">
+            <td colspan="4" style="padding:10px 14px;font-size:13px;font-weight:700;color:#333;">
+              🏪 ' . esc_html($order->store_name) . ' — <span style="color:#00A8E8;">Pedido #' . $order->id . '</span>
+              ' . ($order->invoice_number ? ' · Boleta ' . esc_html($order->invoice_number) : '') . '
+            </td>
+          </tr>
+          <tr style="background-color:#00A8E8;">
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;">Producto</td>
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;text-align:center;width:50px;">Cant.</td>
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:80px;">P. Unit</td>
+            <td style="padding:8px 12px;font-size:11px;font-weight:700;color:#fff;text-transform:uppercase;text-align:right;width:80px;">Subtotal</td>
+          </tr>' . $items_rows . '
+          <tr style="background-color:#f8f9fa;">
+            <td colspan="3" style="padding:8px 12px;font-size:12px;color:#555;">Subtotal tienda</td>
+            <td style="padding:8px 12px;font-size:12px;color:#333;text-align:right;font-weight:600;">$' . number_format($order_total, 0, ',', '.') . '</td>
+          </tr>
+          ' . ($order_discount > 0 ? '<tr style="background-color:#f0fdf4;">
+            <td colspan="3" style="padding:8px 12px;font-size:12px;color:#22C55E;font-weight:600;">🏷️ Descuento' . (!empty($order->coupon_code) ? ' (' . esc_html($order->coupon_code) . ')' : '') . '</td>
+            <td style="padding:8px 12px;font-size:12px;color:#22C55E;text-align:right;font-weight:600;">-$' . number_format($order_discount, 0, ',', '.') . '</td>
+          </tr>' : '') . '
+          <tr style="background-color:#f8f9fa;">
+            <td colspan="3" style="padding:8px 12px;font-size:12px;color:#555;">🚚 Envío</td>
+            <td style="padding:8px 12px;font-size:12px;text-align:right;">' . $delivery_label . '</td>
+          </tr>
+        </table>';
+
+            // Collect PDF attachments
+            if ($order->pdf_path) {
+                $pdf_full = $upload_dir['basedir'] . '/' . $order->pdf_path;
+                if (file_exists($pdf_full)) $attachments[] = $pdf_full;
+            }
+
+            // BCC vendor
+            if (!empty($order->vendor_email) && !in_array($order->vendor_email, $bcc_emails)) {
+                $bcc_emails[] = $order->vendor_email;
+            }
+        }
+
+        // Apply discount to grand total
+        $grand_total_after_discount = $grand_total - $total_discount;
+
+        // Neto / IVA (sobre total con descuento)
+        $neto = round($grand_total_after_discount / 1.19);
+        $iva = $grand_total_after_discount - $neto;
+
+        $subject = 'PetsGo — Confirmación de compra (' . $total_orders . ($total_orders > 1 ? ' pedidos' : ' pedido') . ')';
+        $pretext = 'Compra confirmada por $' . number_format($grand_total_after_discount, 0, ',', '.');
+
+        $inner = '
+      <p style="color:#333;font-size:15px;line-height:1.6;margin:0 0 8px;">Hola <strong>' . esc_html($customer_name) . '</strong>,</p>
+      <p style="color:#555;font-size:14px;line-height:1.7;margin:0 0 20px;">¡Gracias por tu compra en <strong>PetsGo</strong>! Aquí tienes el resumen completo de tu pedido.</p>
+
+      ' . $store_sections . '
+
+      <!-- Grand Total -->
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:8px;border-top:2px solid #00A8E8;padding-top:12px;">
+        <tr><td style="text-align:right;font-size:12px;color:#888;padding:2px 14px;">Subtotal productos: $' . number_format($grand_total, 0, ',', '.') . '</td></tr>
+        ' . ($total_discount > 0 ? '<tr><td style="text-align:right;font-size:13px;color:#22C55E;font-weight:600;padding:2px 14px;">🏷️ Descuento' . ($coupon_label ? ' (' . esc_html($coupon_label) . ')' : '') . ': -$' . number_format($total_discount, 0, ',', '.') . '</td></tr>' : '') . '
+        ' . ($total_delivery > 0 ? '<tr><td style="text-align:right;font-size:12px;color:#888;padding:2px 14px;">Envío total: $' . number_format($total_delivery, 0, ',', '.') . '</td></tr>' : '') . '
+        <tr><td style="text-align:right;font-size:12px;color:#888;padding:2px 14px;">Neto: $' . number_format($neto, 0, ',', '.') . '</td></tr>
+        <tr><td style="text-align:right;font-size:12px;color:#888;padding:2px 14px;">IVA (19%): $' . number_format($iva, 0, ',', '.') . '</td></tr>
+        <tr><td style="text-align:right;font-size:20px;font-weight:700;color:#00A8E8;padding:8px 14px;">Total: $' . number_format($grand_total_after_discount, 0, ',', '.') . '</td></tr>
+      </table>
+
+      ' . (count($attachments) > 0 ? '
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:20px;">
+        <tr><td style="background-color:#f0faff;border-radius:8px;padding:14px 16px;">
+          <p style="margin:0;font-size:13px;color:#00718a;line-height:1.6;">
+            📎 Adjuntamos ' . count($attachments) . ' boleta' . (count($attachments) > 1 ? 's' : '') . ' en formato PDF. También puedes verificar su validez escaneando el código QR incluido en cada documento.
+          </p>
+        </td></tr>
+      </table>' : '') . '
+
+      <p style="color:#aaa;font-size:11px;line-height:1.5;margin:24px 0 0;text-align:center;">
+        Este mensaje es una notificación automática de compra de PetsGo.<br>
+        Se envió a <span style="color:#888;">' . esc_html($to) . '</span> por ser el correo de tu cuenta.
+      </p>';
+
+        $body = $this->email_wrap($inner, $pretext);
+
+        $headers = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . $this->pg_setting('company_name', 'PetsGo') . ' <' . $this->pg_setting('company_from_email', 'notificaciones@petsgo.cl') . '>',
+            'Reply-To: ' . $this->pg_setting('company_name', 'PetsGo') . ' Soporte <' . $this->pg_setting('company_email', 'contacto@petsgo.cl') . '>',
+            'X-Mailer: PetsGo/1.0',
+        ];
+        foreach ($bcc_emails as $b) { $headers[] = 'Bcc: ' . $b; }
+
+        $result = wp_mail($to, $subject, $body, $headers, $attachments);
+        $this->audit('purchase_confirmation_email', 'email', 0, $total_orders . ' pedidos, grupo: ' . $purchase_group);
+
+        return rest_ensure_response(['sent' => $result, 'orders' => $total_orders, 'invoices' => count($attachments)]);
+    }
+
     // --- API Vendor Dashboard ---
     public function check_vendor_role() {
         $u=wp_get_current_user();
@@ -11073,6 +13050,471 @@ Dashboard con analíticas"></textarea>
         $delivery = floatval($p['delivery_fee_cut'] ?? 5);
         $wpdb->update("{$wpdb->prefix}petsgo_vendors",['sales_commission'=>$sales,'delivery_fee_cut'=>$delivery],['id'=>$vid]);
         return rest_ensure_response(['success'=>true,'message'=>'Comisiones actualizadas']);
+    }
+
+    // ============================================================
+    // ADMIN: Users Management
+    // ============================================================
+    public function api_admin_list_users($request) {
+        global $wpdb;
+        $role = sanitize_text_field($request->get_param('role') ?: '');
+        $search = sanitize_text_field($request->get_param('search') ?: '');
+        $args = ['number' => 200, 'orderby' => 'registered', 'order' => 'DESC'];
+        if ($role) $args['role'] = $role;
+        if ($search) $args['search'] = '*' . $search . '*';
+        $users = get_users($args);
+        $result = [];
+        foreach ($users as $u) {
+            $status = get_user_meta($u->ID, 'petsgo_user_status', true) ?: 'active';
+            $result[] = [
+                'id' => $u->ID, 'username' => $u->user_login, 'email' => $u->user_email,
+                'display_name' => $u->display_name, 'role' => implode(',', $u->roles),
+                'registered' => $u->user_registered, 'status' => $status,
+                'first_name' => get_user_meta($u->ID, 'first_name', true),
+                'last_name' => get_user_meta($u->ID, 'last_name', true),
+                'phone' => get_user_meta($u->ID, 'petsgo_phone', true),
+            ];
+        }
+        return rest_ensure_response(['data' => $result, 'total' => count($result)]);
+    }
+
+    public function api_admin_create_user($request) {
+        $p = $request->get_json_params();
+        $email = sanitize_email($p['email'] ?? '');
+        $role = sanitize_text_field($p['role'] ?? 'subscriber');
+        $first_name = sanitize_text_field($p['first_name'] ?? '');
+        $last_name = sanitize_text_field($p['last_name'] ?? '');
+        if (!$email || !is_email($email)) return new WP_Error('invalid_email', 'Email inválido', ['status' => 400]);
+        if (email_exists($email)) return new WP_Error('exists', 'El email ya está registrado', ['status' => 400]);
+        $password = wp_generate_password(12, true);
+        $username = strstr($email, '@', true);
+        $i = 0;
+        while (username_exists($username)) { $i++; $username = strstr($email, '@', true) . $i; }
+        $uid = wp_insert_user(['user_login' => $username, 'user_email' => $email, 'user_pass' => $password, 'role' => $role, 'first_name' => $first_name, 'last_name' => $last_name, 'display_name' => trim("$first_name $last_name") ?: $username]);
+        if (is_wp_error($uid)) return $uid;
+        update_user_meta($uid, 'petsgo_user_status', 'active');
+        update_user_meta($uid, 'petsgo_must_change_password', '1');
+        return rest_ensure_response(['id' => $uid, 'username' => $username, 'temp_password' => $password, 'message' => 'Usuario creado']);
+    }
+
+    public function api_admin_update_user($request) {
+        $uid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $user = get_user_by('ID', $uid);
+        if (!$user) return new WP_Error('not_found', 'Usuario no encontrado', ['status' => 404]);
+        if (isset($p['role'])) { $user->set_role(sanitize_text_field($p['role'])); }
+        if (isset($p['status'])) { update_user_meta($uid, 'petsgo_user_status', sanitize_text_field($p['status'])); }
+        if (isset($p['first_name'])) { update_user_meta($uid, 'first_name', sanitize_text_field($p['first_name'])); }
+        if (isset($p['last_name'])) { update_user_meta($uid, 'last_name', sanitize_text_field($p['last_name'])); }
+        return rest_ensure_response(['success' => true, 'message' => 'Usuario actualizado']);
+    }
+
+    public function api_admin_delete_user($request) {
+        $uid = (int) $request->get_param('id');
+        if ($uid === get_current_user_id()) return new WP_Error('self_delete', 'No puedes eliminar tu propia cuenta', ['status' => 400]);
+        $user = get_user_by('ID', $uid);
+        if (!$user) return new WP_Error('not_found', 'Usuario no encontrado', ['status' => 404]);
+        update_user_meta($uid, 'petsgo_user_status', 'inactive');
+        return rest_ensure_response(['success' => true, 'message' => 'Usuario desactivado']);
+    }
+
+    // ============================================================
+    // ADMIN: Orders Management
+    // ============================================================
+    public function api_admin_list_orders($request) {
+        global $wpdb;
+        $status = sanitize_text_field($request->get_param('status') ?: '');
+        $vendor_id = (int) ($request->get_param('vendor_id') ?: 0);
+        $from = sanitize_text_field($request->get_param('from') ?: '');
+        $to = sanitize_text_field($request->get_param('to') ?: '');
+        $rider_filter = sanitize_text_field($request->get_param('rider') ?: '');
+        $sql = "SELECT o.*, v.store_name, u.display_name AS customer_name, u.user_email AS customer_email, r.display_name AS rider_name FROM {$wpdb->prefix}petsgo_orders o LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID LEFT JOIN {$wpdb->users} r ON o.rider_id = r.ID WHERE 1=1";
+        $args = [];
+        if ($status) { $sql .= " AND o.status = %s"; $args[] = $status; }
+        if ($vendor_id) { $sql .= " AND o.vendor_id = %d"; $args[] = $vendor_id; }
+        if ($rider_filter === 'unassigned') { $sql .= " AND o.rider_id IS NULL"; }
+        elseif ($rider_filter && is_numeric($rider_filter)) { $sql .= " AND o.rider_id = %d"; $args[] = (int)$rider_filter; }
+        if ($from) { $sql .= " AND o.created_at >= %s"; $args[] = $from . ' 00:00:00'; }
+        if ($to) { $sql .= " AND o.created_at <= %s"; $args[] = $to . ' 23:59:59'; }
+        $sql .= " ORDER BY o.created_at DESC LIMIT 500";
+        if ($args) $sql = $wpdb->prepare($sql, ...$args);
+        $orders = $wpdb->get_results($sql);
+        return rest_ensure_response(['data' => $orders, 'total' => count($orders)]);
+    }
+
+    public function api_admin_assign_rider($request) {
+        global $wpdb;
+        $oid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $rider_id = isset($p['rider_id']) ? (intval($p['rider_id']) ?: null) : null;
+        $order = $wpdb->get_row($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $oid));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado', ['status' => 404]);
+        if ($rider_id) {
+            $rider = get_userdata($rider_id);
+            if (!$rider || !in_array('petsgo_rider', $rider->roles)) return new WP_Error('invalid_rider', 'Rider inválido', ['status' => 400]);
+        }
+        $assign_data = [
+            'rider_id' => $rider_id,
+            'rider_response' => $rider_id ? 'pending' : null,
+            'rider_assigned_at' => $rider_id ? current_time('mysql') : null,
+            'rider_responded_at' => null,
+            'estimated_minutes' => null,
+        ];
+        $wpdb->update("{$wpdb->prefix}petsgo_orders", $assign_data, ['id' => $oid]);
+        $this->audit('rider_assign', 'order', $oid, 'Admin REST → Rider ID: ' . ($rider_id ?? 'none'));
+        $rider_name = $rider_id ? get_userdata($rider_id)->display_name : null;
+        return rest_ensure_response(['success' => true, 'message' => 'Rider asignado — pendiente de aceptación', 'rider_name' => $rider_name]);
+    }
+
+    public function api_admin_update_order_status($request) {
+        global $wpdb;
+        $oid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $new_status = sanitize_text_field($p['status'] ?? '');
+        $valid = ['pending','processing','ready_for_pickup','on_the_way','delivered','cancelled','refunded'];
+        if (!in_array($new_status, $valid)) return new WP_Error('invalid_status', 'Estado inválido', ['status' => 400]);
+        $order = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_orders WHERE id=%d", $oid));
+        if (!$order) return new WP_Error('not_found', 'Pedido no encontrado', ['status' => 404]);
+        $wpdb->update("{$wpdb->prefix}petsgo_orders", ['status' => $new_status], ['id' => $oid]);
+        $this->audit('admin_update_order_status', 'order', $oid, "Status changed to $new_status");
+        $this->notify_order_status_change($oid, $new_status, $order->status);
+        return rest_ensure_response(['success' => true, 'message' => 'Estado actualizado']);
+    }
+
+    // ============================================================
+    // ADMIN: All Products (across all vendors)
+    // ============================================================
+    public function api_admin_list_all_products($request) {
+        global $wpdb;
+        $search = sanitize_text_field($request->get_param('search') ?: '');
+        $sql = "SELECT i.*, v.store_name FROM {$wpdb->prefix}petsgo_inventory i LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON i.vendor_id = v.id WHERE 1=1";
+        $args = [];
+        if ($search) { $like = '%' . $wpdb->esc_like($search) . '%'; $sql .= " AND (i.product_name LIKE %s OR v.store_name LIKE %s)"; $args[] = $like; $args[] = $like; }
+        $sql .= " ORDER BY i.id DESC LIMIT 500";
+        if ($args) $sql = $wpdb->prepare($sql, ...$args);
+        return rest_ensure_response(['data' => $wpdb->get_results($sql)]);
+    }
+
+    public function api_admin_toggle_any_product($request) {
+        global $wpdb;
+        $pid = (int) $request->get_param('id');
+        $p = $wpdb->get_row($wpdb->prepare("SELECT is_active FROM {$wpdb->prefix}petsgo_inventory WHERE id=%d", $pid));
+        if (!$p) return new WP_Error('not_found', 'Producto no encontrado', ['status' => 404]);
+        $new_val = (int)$p->is_active === 1 ? 0 : 1;
+        $wpdb->update("{$wpdb->prefix}petsgo_inventory", ['is_active' => $new_val], ['id' => $pid]);
+        return rest_ensure_response(['success' => true, 'is_active' => $new_val]);
+    }
+
+    public function api_admin_delete_any_product($request) {
+        global $wpdb;
+        $pid = (int) $request->get_param('id');
+        $wpdb->delete("{$wpdb->prefix}petsgo_inventory", ['id' => $pid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Producto eliminado']);
+    }
+
+    // ============================================================
+    // ADMIN: Categories CRUD
+    // ============================================================
+    public function api_admin_create_category($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $name = sanitize_text_field($p['name'] ?? '');
+        if (!$name) return new WP_Error('missing', 'Nombre es obligatorio', ['status' => 400]);
+        $slug = sanitize_title($name);
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_categories WHERE slug=%s", $slug));
+        if ($exists) return new WP_Error('exists', 'Ya existe una categoría con ese nombre', ['status' => 400]);
+        $wpdb->insert("{$wpdb->prefix}petsgo_categories", [
+            'name' => $name, 'slug' => $slug,
+            'emoji' => sanitize_text_field($p['emoji'] ?? '📦'),
+            'description' => sanitize_text_field($p['description'] ?? ''),
+            'is_active' => 1,
+        ]);
+        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Categoría creada']);
+    }
+
+    public function api_admin_update_category($request) {
+        global $wpdb;
+        $cid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $data = [];
+        if (isset($p['name'])) { $data['name'] = sanitize_text_field($p['name']); $data['slug'] = sanitize_title($p['name']); }
+        if (isset($p['emoji'])) $data['emoji'] = sanitize_text_field($p['emoji']);
+        if (isset($p['description'])) $data['description'] = sanitize_text_field($p['description']);
+        if (isset($p['is_active'])) $data['is_active'] = (int)$p['is_active'];
+        if (empty($data)) return new WP_Error('empty', 'Nada que actualizar', ['status' => 400]);
+        $wpdb->update("{$wpdb->prefix}petsgo_categories", $data, ['id' => $cid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Categoría actualizada']);
+    }
+
+    public function api_admin_delete_category($request) {
+        global $wpdb;
+        $cid = (int) $request->get_param('id');
+        $wpdb->delete("{$wpdb->prefix}petsgo_categories", ['id' => $cid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Categoría eliminada']);
+    }
+
+    // ============================================================
+    // ADMIN: Finance
+    // ============================================================
+    public function api_admin_finance($request) {
+        global $wpdb;
+        $from = sanitize_text_field($request->get_param('from') ?: '');
+        $to = sanitize_text_field($request->get_param('to') ?: '');
+        $where = "WHERE 1=1";
+        $args = [];
+        if ($from) { $where .= " AND created_at >= %s"; $args[] = $from . ' 00:00:00'; }
+        if ($to) { $where .= " AND created_at <= %s"; $args[] = $to . ' 23:59:59'; }
+        $base = "{$wpdb->prefix}petsgo_orders";
+        $sql_total = "SELECT COALESCE(SUM(total_amount),0) FROM $base $where";
+        $sql_commission = "SELECT COALESCE(SUM(petsgo_commission),0) FROM $base $where AND status='delivered'";
+        $sql_delivery = "SELECT COALESCE(SUM(delivery_fee),0) FROM $base $where";
+        $sql_orders = "SELECT COUNT(*) FROM $base $where";
+        $sql_delivered = "SELECT COUNT(*) FROM $base $where AND status='delivered'";
+        if ($args) {
+            $sql_total = $wpdb->prepare($sql_total, ...$args);
+            $sql_commission = $wpdb->prepare($sql_commission, ...$args);
+            $sql_delivery = $wpdb->prepare($sql_delivery, ...$args);
+            $sql_orders = $wpdb->prepare($sql_orders, ...$args);
+            $sql_delivered = $wpdb->prepare($sql_delivered, ...$args);
+        }
+        // Vendor withdrawals (pending)
+        $pending_withdrawals = (float)$wpdb->get_var("SELECT COALESCE(SUM(amount),0) FROM {$wpdb->prefix}petsgo_vendor_withdrawals WHERE status='pending'") ?: 0;
+        // Rider payouts (pending)
+        $pending_rider_payouts = (float)$wpdb->get_var("SELECT COALESCE(SUM(net_amount),0) FROM {$wpdb->prefix}petsgo_rider_payouts WHERE status='pending'") ?: 0;
+        return rest_ensure_response([
+            'total_sales' => (float)$wpdb->get_var($sql_total),
+            'total_commission' => (float)$wpdb->get_var($sql_commission),
+            'total_delivery_fees' => (float)$wpdb->get_var($sql_delivery),
+            'total_orders' => (int)$wpdb->get_var($sql_orders),
+            'delivered_orders' => (int)$wpdb->get_var($sql_delivered),
+            'pending_vendor_withdrawals' => $pending_withdrawals,
+            'pending_rider_payouts' => $pending_rider_payouts,
+        ]);
+    }
+
+    public function api_admin_finance_export($request) {
+        global $wpdb;
+        $from = sanitize_text_field($request->get_param('from') ?: date('Y-m-01'));
+        $to = sanitize_text_field($request->get_param('to') ?: date('Y-m-d'));
+        $orders = $wpdb->get_results($wpdb->prepare(
+            "SELECT o.id, o.created_at, o.total_amount, o.petsgo_commission, o.delivery_fee, o.status, o.payment_method, v.store_name, u.display_name AS customer
+             FROM {$wpdb->prefix}petsgo_orders o
+             LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON o.vendor_id = v.id
+             LEFT JOIN {$wpdb->users} u ON o.customer_id = u.ID
+             WHERE o.created_at >= %s AND o.created_at <= %s ORDER BY o.created_at DESC",
+            $from . ' 00:00:00', $to . ' 23:59:59'
+        ));
+        return rest_ensure_response(['data' => $orders, 'from' => $from, 'to' => $to]);
+    }
+
+    // ============================================================
+    // ADMIN: Coupons CRUD
+    // ============================================================
+    public function api_admin_list_coupons() {
+        global $wpdb;
+        $coupons = $wpdb->get_results("SELECT c.*, v.store_name FROM {$wpdb->prefix}petsgo_coupons c LEFT JOIN {$wpdb->prefix}petsgo_vendors v ON c.vendor_id = v.id ORDER BY c.created_at DESC");
+        return rest_ensure_response(['data' => $coupons]);
+    }
+
+    public function api_admin_create_coupon($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $code = strtoupper(sanitize_text_field($p['code'] ?? ''));
+        if (!$code) return new WP_Error('missing', 'Código es obligatorio', ['status' => 400]);
+        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$wpdb->prefix}petsgo_coupons WHERE code=%s", $code));
+        if ($exists) return new WP_Error('exists', 'Ya existe un cupón con ese código', ['status' => 400]);
+        $wpdb->insert("{$wpdb->prefix}petsgo_coupons", [
+            'code' => $code,
+            'description' => sanitize_text_field($p['description'] ?? ''),
+            'discount_type' => in_array($p['discount_type'] ?? '', ['percentage','fixed']) ? $p['discount_type'] : 'percentage',
+            'discount_value' => floatval($p['discount_value'] ?? 0),
+            'min_purchase' => floatval($p['min_purchase'] ?? 0),
+            'max_discount' => floatval($p['max_discount'] ?? 0),
+            'usage_limit' => intval($p['usage_limit'] ?? 0),
+            'per_user_limit' => intval($p['per_user_limit'] ?? 0),
+            'valid_from' => sanitize_text_field($p['valid_from'] ?? '') ?: null,
+            'valid_until' => sanitize_text_field($p['valid_until'] ?? '') ?: null,
+            'is_active' => 1,
+            'created_by' => get_current_user_id(),
+        ]);
+        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Cupón creado']);
+    }
+
+    public function api_admin_update_coupon($request) {
+        global $wpdb;
+        $cid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $data = [];
+        if (isset($p['description'])) $data['description'] = sanitize_text_field($p['description']);
+        if (isset($p['discount_value'])) $data['discount_value'] = floatval($p['discount_value']);
+        if (isset($p['min_purchase'])) $data['min_purchase'] = floatval($p['min_purchase']);
+        if (isset($p['max_discount'])) $data['max_discount'] = floatval($p['max_discount']);
+        if (isset($p['usage_limit'])) $data['usage_limit'] = intval($p['usage_limit']);
+        if (isset($p['per_user_limit'])) $data['per_user_limit'] = intval($p['per_user_limit']);
+        if (isset($p['valid_until'])) $data['valid_until'] = sanitize_text_field($p['valid_until']) ?: null;
+        if (isset($p['is_active'])) $data['is_active'] = (int)$p['is_active'];
+        if (empty($data)) return new WP_Error('empty', 'Nada que actualizar', ['status' => 400]);
+        $wpdb->update("{$wpdb->prefix}petsgo_coupons", $data, ['id' => $cid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Cupón actualizado']);
+    }
+
+    public function api_admin_delete_coupon($request) {
+        global $wpdb;
+        $wpdb->delete("{$wpdb->prefix}petsgo_coupons", ['id' => (int)$request->get_param('id')]);
+        return rest_ensure_response(['success' => true, 'message' => 'Cupón eliminado']);
+    }
+
+    // ============================================================
+    // ADMIN: Tickets/Support
+    // ============================================================
+    public function api_admin_list_tickets($request) {
+        global $wpdb;
+        $status = sanitize_text_field($request->get_param('status') ?: '');
+        $sql = "SELECT * FROM {$wpdb->prefix}petsgo_tickets";
+        $args = [];
+        if ($status) { $sql .= " WHERE status = %s"; $args[] = $status; }
+        $sql .= " ORDER BY created_at DESC LIMIT 200";
+        if ($args) $sql = $wpdb->prepare($sql, ...$args);
+        $tickets = $wpdb->get_results($sql);
+        foreach ($tickets as &$t) {
+            $t->replies_count = (int)$wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_ticket_replies WHERE ticket_id=%d", $t->id));
+        }
+        return rest_ensure_response(['data' => $tickets]);
+    }
+
+    public function api_admin_update_ticket($request) {
+        global $wpdb;
+        $tid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $data = [];
+        if (isset($p['status'])) $data['status'] = sanitize_text_field($p['status']);
+        if (isset($p['assigned_to'])) {
+            $data['assigned_to'] = (int)$p['assigned_to'];
+            $agent = get_user_by('ID', $data['assigned_to']);
+            $data['assigned_name'] = $agent ? $agent->display_name : '';
+        }
+        if (isset($p['priority'])) $data['priority'] = sanitize_text_field($p['priority']);
+        if (isset($data['status']) && $data['status'] === 'resuelto') $data['resolved_at'] = current_time('mysql');
+        if (empty($data)) return new WP_Error('empty', 'Nada que actualizar', ['status' => 400]);
+        $wpdb->update("{$wpdb->prefix}petsgo_tickets", $data, ['id' => $tid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Ticket actualizado']);
+    }
+
+    public function api_admin_reply_ticket($request) {
+        global $wpdb;
+        $tid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $message = sanitize_textarea_field($p['message'] ?? '');
+        if (!$message) return new WP_Error('missing', 'Mensaje es obligatorio', ['status' => 400]);
+        $user = wp_get_current_user();
+        $wpdb->insert("{$wpdb->prefix}petsgo_ticket_replies", [
+            'ticket_id' => $tid, 'user_id' => $user->ID,
+            'user_name' => $user->display_name, 'user_role' => 'admin',
+            'message' => $message, 'is_internal' => intval($p['is_internal'] ?? 0),
+        ]);
+        $wpdb->update("{$wpdb->prefix}petsgo_tickets", ['status' => 'en_proceso'], ['id' => $tid]);
+        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Respuesta enviada']);
+    }
+
+    // ============================================================
+    // ADMIN: Plans CRUD
+    // ============================================================
+    public function api_admin_list_plans() {
+        global $wpdb;
+        $plans = $wpdb->get_results("SELECT s.*, (SELECT COUNT(*) FROM {$wpdb->prefix}petsgo_vendors WHERE plan_id=s.id) AS vendor_count FROM {$wpdb->prefix}petsgo_subscriptions s ORDER BY s.id");
+        return rest_ensure_response(['data' => $plans]);
+    }
+
+    public function api_admin_create_plan($request) {
+        global $wpdb;
+        $p = $request->get_json_params();
+        $name = sanitize_text_field($p['plan_name'] ?? '');
+        if (!$name) return new WP_Error('missing', 'Nombre del plan es obligatorio', ['status' => 400]);
+        $wpdb->insert("{$wpdb->prefix}petsgo_subscriptions", [
+            'plan_name' => $name,
+            'monthly_price' => floatval($p['monthly_price'] ?? 0),
+            'features_json' => wp_json_encode($p['features'] ?? []),
+        ]);
+        return rest_ensure_response(['id' => $wpdb->insert_id, 'message' => 'Plan creado']);
+    }
+
+    public function api_admin_update_plan($request) {
+        global $wpdb;
+        $pid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $data = [];
+        if (isset($p['plan_name'])) $data['plan_name'] = sanitize_text_field($p['plan_name']);
+        if (isset($p['monthly_price'])) $data['monthly_price'] = floatval($p['monthly_price']);
+        if (isset($p['features'])) $data['features_json'] = wp_json_encode($p['features']);
+        if (empty($data)) return new WP_Error('empty', 'Nada que actualizar', ['status' => 400]);
+        $wpdb->update("{$wpdb->prefix}petsgo_subscriptions", $data, ['id' => $pid]);
+        return rest_ensure_response(['success' => true, 'message' => 'Plan actualizado']);
+    }
+
+    // ============================================================
+    // ADMIN: Settings
+    // ============================================================
+    public function api_admin_get_settings() {
+        $settings = get_option('petsgo_settings', []);
+        if (!is_array($settings)) $settings = [];
+        $defaults = [
+            'currency' => 'CLP', 'maintenance_mode' => '0',
+            'transbank_environment' => 'integration', 'transbank_commerce_code' => '',
+            'mercadopago_access_token' => '', 'mercadopago_public_key' => '',
+            'default_commission' => '10', 'default_delivery_fee_cut' => '5',
+            'shipping_zones' => '',
+        ];
+        return rest_ensure_response(array_merge($defaults, $settings));
+    }
+
+    public function api_admin_update_settings($request) {
+        $p = $request->get_json_params();
+        $settings = get_option('petsgo_settings', []);
+        if (!is_array($settings)) $settings = [];
+        $allowed = ['currency','maintenance_mode','transbank_environment','transbank_commerce_code','mercadopago_access_token','mercadopago_public_key','default_commission','default_delivery_fee_cut','shipping_zones'];
+        foreach ($allowed as $key) {
+            if (isset($p[$key])) $settings[$key] = sanitize_text_field($p[$key]);
+        }
+        update_option('petsgo_settings', $settings);
+        $this->audit('update_settings', 'settings', 0, wp_json_encode(array_keys($p)));
+        return rest_ensure_response(['success' => true, 'message' => 'Configuración guardada']);
+    }
+
+    // ============================================================
+    // ADMIN: Vendor Status Update
+    // ============================================================
+    public function api_admin_update_vendor_status($request) {
+        global $wpdb;
+        $vid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $status = sanitize_text_field($p['status'] ?? '');
+        $valid = ['pending','active','suspended','inactive'];
+        if (!in_array($status, $valid)) return new WP_Error('invalid', 'Estado inválido', ['status' => 400]);
+        $vendor = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}petsgo_vendors WHERE id=%d", $vid));
+        if (!$vendor) return new WP_Error('not_found', 'Tienda no encontrada', ['status' => 404]);
+        $wpdb->update("{$wpdb->prefix}petsgo_vendors", ['status' => $status], ['id' => $vid]);
+        // Also update user meta
+        if ($vendor->user_id) update_user_meta($vendor->user_id, 'petsgo_user_status', $status === 'active' ? 'active' : 'inactive');
+        $this->audit('admin_update_vendor_status', 'vendor', $vid, "Status: $status");
+        return rest_ensure_response(['success' => true, 'message' => 'Estado de tienda actualizado']);
+    }
+
+    // ============================================================
+    // ADMIN: Rider Status Update (approve/reject)
+    // ============================================================
+    public function api_admin_update_rider_status($request) {
+        $rider_uid = (int) $request->get_param('id');
+        $p = $request->get_json_params();
+        $status = sanitize_text_field($p['status'] ?? '');
+        $valid = ['approved','rejected','suspended','pending_review'];
+        if (!in_array($status, $valid)) return new WP_Error('invalid', 'Estado inválido', ['status' => 400]);
+        $user = get_user_by('ID', $rider_uid);
+        if (!$user) return new WP_Error('not_found', 'Rider no encontrado', ['status' => 404]);
+        update_user_meta($rider_uid, 'petsgo_rider_status', $status);
+        if ($status === 'approved') update_user_meta($rider_uid, 'petsgo_user_status', 'active');
+        if ($status === 'rejected' || $status === 'suspended') update_user_meta($rider_uid, 'petsgo_user_status', 'inactive');
+        $this->audit('admin_update_rider_status', 'rider', $rider_uid, "Status: $status. Reason: " . sanitize_text_field($p['reason'] ?? ''));
+        return rest_ensure_response(['success' => true, 'message' => 'Estado de rider actualizado']);
     }
 
     // --- API Invoice QR Validation ---
@@ -13389,7 +15831,7 @@ Dashboard con analíticas"></textarea>
             </div>
 
             <!-- Stats -->
-            <div class="petsgo-cards" id="tk-stats" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px;"></div>
+            <div class="petsgo-cards tk-stats-grid" id="tk-stats" style="margin-bottom:20px;"></div>
 
             <div class="petsgo-table-wrap">
             <table class="petsgo-table" id="tk-table">
@@ -13428,7 +15870,7 @@ Dashboard con analíticas"></textarea>
                     <div id="tk-reply-status" style="display:none;margin-bottom:8px;"></div>
                     <div id="tk-reply-form" style="display:flex;gap:8px;flex-wrap:wrap;">
                         <input type="hidden" id="tk-reply-id">
-                        <textarea id="tk-reply-msg" rows="3" style="flex:1;min-width:300px;padding:10px;border:1px solid #ccc;border-radius:8px;" placeholder="Escribe una respuesta..."></textarea>
+                        <textarea id="tk-reply-msg" rows="3" style="flex:1;min-width:0;padding:10px;border:1px solid #ccc;border-radius:8px;width:100%;" placeholder="Escribe una respuesta..."></textarea>
                         <div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end;">
                             <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:#666;cursor:pointer;">
                                 📎 <input type="file" id="tk-reply-file" accept="image/*" style="width:130px;font-size:11px;" onchange="pgFilePreview(this)">
@@ -13448,7 +15890,7 @@ Dashboard con analíticas"></textarea>
                         <button onclick="document.getElementById('tk-new-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;">✕</button>
                     </div>
                     <div class="petsgo-field"><label>Asunto *</label><input type="text" id="tk-new-subject" maxlength="255" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;" placeholder="Describe brevemente tu problema"></div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="tk-new-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                         <div class="petsgo-field"><label>Categoría</label>
                             <select id="tk-new-category" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:8px;">
                                 <option value="general">General</option>
@@ -13652,15 +16094,16 @@ Dashboard con analíticas"></textarea>
                 preview.innerHTML = '';
                 if(!input.files || !input.files[0]){ preview.style.display='none'; return; }
                 var file = input.files[0];
+                var clearBtn = '<button onclick="document.getElementById(\'tk-reply-file\').value=\'\';document.getElementById(\'tk-file-preview\').style.display=\'none\';document.getElementById(\'tk-file-preview\').innerHTML=\'\';" style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;cursor:pointer;line-height:22px;">✕</button>';
                 if(file.type.startsWith('image/')){
                     var reader = new FileReader();
                     reader.onload = function(e){
-                        preview.innerHTML = '<div style="position:relative;display:inline-block;"><img src="'+e.target.result+'" style="max-width:120px;max-height:80px;border-radius:6px;border:1px solid #ddd;" alt="Vista previa"><button onclick="document.getElementById(\'tk-reply-file\').value=\'\';document.getElementById(\'tk-file-preview\').style.display=\'none\';document.getElementById(\'tk-file-preview\').innerHTML=\'\';" style="position:absolute;top:-6px;right:-6px;background:#e74c3c;color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:18px;">✕</button></div>';
+                        preview.innerHTML = '<div style="position:relative;display:inline-block;"><img src="'+e.target.result+'" style="max-width:220px;max-height:160px;border-radius:8px;border:1px solid #ccc;" alt="Vista previa">'+clearBtn+'<div style="font-size:13px;color:#333;margin-top:4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+file.name+'">📎 '+file.name+'</div></div>';
                         preview.style.display = 'block';
                     };
                     reader.readAsDataURL(file);
                 } else {
-                    preview.innerHTML = '<div style="font-size:11px;color:#555;background:#f5f5f5;padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px;">📄 '+file.name+'<button onclick="document.getElementById(\'tk-reply-file\').value=\'\';document.getElementById(\'tk-file-preview\').style.display=\'none\';document.getElementById(\'tk-file-preview\').innerHTML=\'\';" style="background:none;border:none;color:#e74c3c;font-size:14px;cursor:pointer;padding:0 2px;">✕</button></div>';
+                    preview.innerHTML = '<div style="position:relative;display:inline-flex;align-items:center;gap:8px;background:#f5f5f5;padding:10px 14px;border-radius:8px;border:1px solid #ddd;">'+clearBtn+'<span style="font-size:28px;">📄</span><span style="font-size:14px;font-weight:600;color:#333;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;" title="'+file.name+'">'+file.name+'</span></div>';
                     preview.style.display = 'block';
                 }
             };
@@ -14838,12 +17281,26 @@ IMPORTANTE: Responde con formato Markdown bien estructurado para que la informac
         if (!$vid) return new WP_Error('no_vendor', 'Tienda PetsGo no configurada', ['status' => 500]);
         $p = $request->get_json_params();
 
+        // Validar campos requeridos (BUG-TP-129)
+        $product_name = sanitize_text_field($p['product_name'] ?? '');
+        $price = floatval($p['price'] ?? 0);
+        $stock = intval($p['stock'] ?? 0);
+        if (empty($product_name)) {
+            return new WP_Error('missing_fields', 'product_name es requerido', ['status' => 400]);
+        }
+        if ($price <= 0) {
+            return new WP_Error('missing_fields', 'price debe ser mayor a 0', ['status' => 400]);
+        }
+        if ($stock < 0) {
+            return new WP_Error('invalid_stock', 'stock no puede ser negativo', ['status' => 400]);
+        }
+
         $wpdb->insert("{$wpdb->prefix}petsgo_inventory", [
             'vendor_id'    => $vid,
-            'product_name' => sanitize_text_field($p['product_name'] ?? ''),
+            'product_name' => $product_name,
             'description'  => sanitize_textarea_field($p['description'] ?? ''),
-            'price'        => floatval($p['price'] ?? 0),
-            'stock'        => intval($p['stock'] ?? 0),
+            'price'        => $price,
+            'stock'        => $stock,
             'category'     => sanitize_text_field($p['category'] ?? ''),
             'image_id'     => intval($p['image_id'] ?? 0) ?: null,
         ], ['%d','%s','%s','%f','%d','%s','%d']);
@@ -14865,10 +17322,22 @@ IMPORTANTE: Responde con formato Markdown bien estructurado para que la informac
         $p = $request->get_json_params();
         $update = [];
         $fmt = [];
-        if (isset($p['product_name'])) { $update['product_name'] = sanitize_text_field($p['product_name']); $fmt[] = '%s'; }
+        if (isset($p['product_name'])) {
+            $name = sanitize_text_field($p['product_name']);
+            if (empty($name)) return new WP_Error('missing_fields', 'product_name no puede estar vacío', ['status' => 400]);
+            $update['product_name'] = $name; $fmt[] = '%s';
+        }
         if (isset($p['description']))  { $update['description'] = sanitize_textarea_field($p['description']); $fmt[] = '%s'; }
-        if (isset($p['price']))        { $update['price'] = floatval($p['price']); $fmt[] = '%f'; }
-        if (isset($p['stock']))        { $update['stock'] = intval($p['stock']); $fmt[] = '%d'; }
+        if (isset($p['price']))        {
+            $price = floatval($p['price']);
+            if ($price <= 0) return new WP_Error('invalid_price', 'price debe ser mayor a 0', ['status' => 400]);
+            $update['price'] = $price; $fmt[] = '%f';
+        }
+        if (isset($p['stock']))        {
+            $stock = intval($p['stock']);
+            if ($stock < 0) return new WP_Error('invalid_stock', 'stock no puede ser negativo', ['status' => 400]);
+            $update['stock'] = $stock; $fmt[] = '%d';
+        }
         if (isset($p['category']))     { $update['category'] = sanitize_text_field($p['category']); $fmt[] = '%s'; }
         if (isset($p['image_id']))     { $update['image_id'] = intval($p['image_id']) ?: null; $fmt[] = '%d'; }
         if (isset($p['discount_percent'])) { $update['discount_percent'] = floatval($p['discount_percent']); $fmt[] = '%f'; }

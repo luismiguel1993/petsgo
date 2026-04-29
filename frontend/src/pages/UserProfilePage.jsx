@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Edit2, Save, X, Plus, Trash2, Camera, Eye, EyeOff, Check, AlertCircle } from 'lucide-react';
+import { User, Edit2, Save, X, Plus, Trash2, Camera, Eye, EyeOff, Check, AlertCircle, MapPin, Star, Home, Building2, Building, Search, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet, uploadPetPhoto } from '../services/api';
+import { getProfile, updateProfile, changePassword, getPets, addPet, updatePet, deletePet, uploadPetPhoto, getMyAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from '../services/api';
 import { formatPhoneDigits, isValidPhoneDigits, buildFullPhone, extractPhoneDigits, sanitizeName } from '../utils/chile';
 import InfoGuideButton from '../components/InfoGuideButton';
+import CHILE_REGIONS from '../data/chileRegions';
 
 const inputStyle = {
   width: '100%', padding: '12px 16px', background: '#f9fafb', borderRadius: '12px',
@@ -55,6 +56,16 @@ const UserProfilePage = () => {
   // Pet modal
   const [petModal, setPetModal] = useState(null); // null=closed, {}=new, {id:...}=edit
 
+  // Addresses
+  const [addresses, setAddresses] = useState([]);
+  const [addrModal, setAddrModal] = useState(null); // null=closed, {}=new, {id:...}=edit
+  const [addrSaving, setAddrSaving] = useState(false);
+  const [addrSuggestions, setAddrSuggestions] = useState([]);
+  const [showAddrSuggestions, setShowAddrSuggestions] = useState(false);
+  const [searchingAddr, setSearchingAddr] = useState(false);
+  const addrSugRef = useRef(null);
+  const addrTimerRef = useRef(null);
+
   const fetchData = useCallback(async () => {
     try {
       const profileRes = await getProfile();
@@ -71,6 +82,11 @@ const UserProfilePage = () => {
         avatar_url: d.avatarUrl ?? '',
       });
       setPets(Array.isArray(d.pets) ? d.pets : []);
+      // Load saved addresses
+      try {
+        const addrRes = await getMyAddresses();
+        setAddresses(Array.isArray(addrRes.data) ? addrRes.data : []);
+      } catch { /* addresses table may not exist yet */ }
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         setMsg({ type: 'error', text: 'Tu sesión ha expirado. Por favor inicia sesión nuevamente.' });
@@ -176,6 +192,107 @@ const UserProfilePage = () => {
       setPets(prev => prev.filter(p => p.id !== id));
       setMsg({ type: 'success', text: 'Mascota eliminada' });
     } catch { setMsg({ type: 'error', text: 'Error al eliminar' }); }
+  };
+
+  // ── Address helpers ──
+  const addrTypeIcons = { casa: Home, departamento: Building2, oficina: Building };
+  const addrTypeLabels = { casa: '🏠 Casa', departamento: '🏢 Depto', oficina: '🏢 Oficina' };
+
+  const openNewAddrModal = () => setAddrModal({
+    alias: '', addressType: 'casa', streetAddress: '', region: '', comuna: '', detail: '', lat: null, lng: null, isDefault: false,
+  });
+
+  const openEditAddrModal = (addr) => setAddrModal({ ...addr });
+
+  const comunasForAddr = addrModal?.region
+    ? (CHILE_REGIONS.find(r => r.name === addrModal.region)?.comunas || [])
+    : [];
+
+  const searchAddrNominatim = useCallback(async (query) => {
+    if (query.length < 4) { setAddrSuggestions([]); return; }
+    setSearchingAddr(true);
+    try {
+      const q = `${query}, ${addrModal?.comuna || ''}, ${addrModal?.region || ''}, Chile`;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=cl&limit=5&addressdetails=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+      const data = await res.json();
+      setAddrSuggestions(data.map(d => ({
+        display: d.display_name.replace(', Chile', ''),
+        lat: parseFloat(d.lat), lon: parseFloat(d.lon),
+        road: d.address?.road || d.address?.pedestrian || d.address?.footway || '',
+        houseNumber: d.address?.house_number || '',
+      })));
+      setShowAddrSuggestions(true);
+    } catch { setAddrSuggestions([]); }
+    finally { setSearchingAddr(false); }
+  }, [addrModal?.comuna, addrModal?.region]);
+
+  const handleAddrStreetChange = (val) => {
+    setAddrModal(p => ({ ...p, streetAddress: val }));
+    clearTimeout(addrTimerRef.current);
+    if (val.length >= 4) {
+      addrTimerRef.current = setTimeout(() => searchAddrNominatim(val), 500);
+    } else {
+      setAddrSuggestions([]); setShowAddrSuggestions(false);
+    }
+  };
+
+  const selectAddrSuggestion = (s) => {
+    const street = s.houseNumber ? `${s.road} ${s.houseNumber}` : (s.road || s.display.split(',')[0]);
+    setAddrModal(p => ({ ...p, streetAddress: street, lat: s.lat, lng: s.lon }));
+    setShowAddrSuggestions(false); setAddrSuggestions([]);
+  };
+
+  // Close suggestions on outside click
+  useEffect(() => {
+    const handler = (e) => { if (addrSugRef.current && !addrSugRef.current.contains(e.target)) setShowAddrSuggestions(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const saveAddr = async () => {
+    setAddrSaving(true); setMsg({ type: '', text: '' });
+    try {
+      const payload = {
+        alias: addrModal.alias,
+        addressType: addrModal.addressType,
+        streetAddress: addrModal.streetAddress,
+        region: addrModal.region,
+        comuna: addrModal.comuna,
+        detail: addrModal.detail,
+        lat: addrModal.lat,
+        lng: addrModal.lng,
+        isDefault: addrModal.isDefault,
+      };
+      if (addrModal.id) {
+        await updateAddress(addrModal.id, payload);
+      } else {
+        await createAddress(payload);
+      }
+      const addrRes = await getMyAddresses();
+      setAddresses(Array.isArray(addrRes.data) ? addrRes.data : []);
+      setAddrModal(null);
+      setMsg({ type: 'success', text: addrModal.id ? 'Dirección actualizada' : 'Dirección guardada' });
+    } catch (err) {
+      setMsg({ type: 'error', text: err.response?.data?.message || 'Error al guardar dirección' });
+    } finally { setAddrSaving(false); }
+  };
+
+  const removeAddr = async (id) => {
+    if (!window.confirm('¿Eliminar esta dirección?')) return;
+    try {
+      await deleteAddress(id);
+      setAddresses(prev => prev.filter(a => a.id !== id));
+      setMsg({ type: 'success', text: 'Dirección eliminada' });
+    } catch { setMsg({ type: 'error', text: 'Error al eliminar dirección' }); }
+  };
+
+  const toggleDefault = async (id) => {
+    try {
+      await setDefaultAddress(id);
+      setAddresses(prev => prev.map(a => ({ ...a, isDefault: a.id === id })));
+      setMsg({ type: 'success', text: 'Dirección predeterminada actualizada' });
+    } catch { setMsg({ type: 'error', text: 'Error al actualizar' }); }
   };
 
   if (loading) return (
@@ -424,6 +541,84 @@ const UserProfilePage = () => {
           </div>
           )}
         </div>
+
+        {/* ── Mis Direcciones Card ── */}
+        <div style={{ ...cardStyle, marginTop: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <MapPin size={20} /> Mis Direcciones
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#9ca3af', marginLeft: '4px' }}>({addresses.length}/3)</span>
+            </h2>
+            {addresses.length < 3 && (
+              <button onClick={openNewAddrModal}
+                style={{ ...btnPrimary, display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                <Plus size={14} /> Agregar
+              </button>
+            )}
+          </div>
+
+          {addresses.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '32px 16px', color: '#9ca3af' }}>
+              <div style={{ fontSize: '48px', marginBottom: '8px' }}>📍</div>
+              <p style={{ fontWeight: 600 }}>No tienes direcciones guardadas</p>
+              <p style={{ fontSize: '13px', marginTop: '4px' }}>Agrega hasta 3 direcciones para usar en tus pedidos.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {addresses.map(addr => {
+                const TypeIcon = addrTypeIcons[addr.addressType] || Home;
+                return (
+                  <div key={addr.id} style={{
+                    background: addr.isDefault ? '#f0fdf4' : '#f9fafb', borderRadius: '14px', padding: '14px',
+                    border: addr.isDefault ? '2px solid #22c55e' : '1.5px solid #e5e7eb',
+                    display: 'flex', alignItems: 'flex-start', gap: '14px', position: 'relative',
+                  }}>
+                    <div style={{
+                      width: '44px', height: '44px', borderRadius: '12px',
+                      background: addr.isDefault ? '#dcfce7' : '#e0f2fe',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      <TypeIcon size={20} color={addr.isDefault ? '#16a34a' : '#0077b6'} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
+                        <p style={{ fontWeight: 800, fontSize: '14px', color: '#2F3A40' }}>{addr.alias || 'Sin nombre'}</p>
+                        {addr.isDefault && (
+                          <span style={{ fontSize: '10px', fontWeight: 700, color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '20px' }}>
+                            ⭐ Predeterminada
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '13px', color: '#4b5563', lineHeight: 1.4 }}>
+                        {addr.streetAddress}{addr.detail ? `, ${addr.detail}` : ''}
+                      </p>
+                      <p style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>
+                        {addr.comuna}, {addr.region}
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                      {!addr.isDefault && (
+                        <button onClick={() => toggleDefault(addr.id)} title="Establecer como predeterminada"
+                          style={{ background: '#fef9c3', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#ca8a04' }}>
+                          <Star size={14} />
+                        </button>
+                      )}
+                      <button onClick={() => openEditAddrModal(addr)}
+                        style={{ background: '#e0f2fe', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#0077b6' }}>
+                        <Edit2 size={14} />
+                      </button>
+                      <button onClick={() => removeAddr(addr.id)}
+                        style={{ background: '#fef2f2', border: 'none', borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#dc2626' }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
       </div>
 
       {/* Pet Modal — Solo para clientes */}
@@ -558,6 +753,176 @@ const UserProfilePage = () => {
               <button onClick={savePet} disabled={saving || !petModal.name?.trim()}
                 style={{ flex: 1, ...btnPrimary, padding: '12px', fontSize: '14px', opacity: !petModal.name?.trim() ? 0.5 : 1 }}>
                 {saving ? 'Guardando...' : (petModal.id ? 'Guardar' : 'Agregar')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Address Modal ── */}
+      {addrModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: '16px'
+        }} onClick={() => setAddrModal(null)}>
+          <div style={{
+            background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '480px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+            maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }} onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '20px 24px 16px', borderBottom: '1px solid #f0f0f0', flexShrink: 0,
+            }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 800, color: '#2F3A40', margin: 0 }}>
+                {addrModal.id ? '✏️ Editar Dirección' : '📍 Nueva Dirección'}
+              </h3>
+              <button onClick={() => setAddrModal(null)} style={{
+                background: '#f3f4f6', border: 'none', color: '#6b7280', cursor: 'pointer',
+                borderRadius: '50%', width: '32px', height: '32px', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              {/* Alias */}
+              <div>
+                <label style={labelStyle}>Alias (nombre de la dirección)</label>
+                <input value={addrModal.alias} onChange={e => setAddrModal(p => ({ ...p, alias: e.target.value }))}
+                  placeholder="Ej: Mi Casa, Oficina Centro, Casa Mamá" maxLength={50} style={inputStyle} />
+              </div>
+
+              {/* Address Type */}
+              <div>
+                <label style={labelStyle}>Tipo</label>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[
+                    { key: 'casa', label: 'Casa', icon: Home },
+                    { key: 'departamento', label: 'Depto', icon: Building2 },
+                    { key: 'oficina', label: 'Oficina', icon: Building },
+                  ].map(({ key, label, icon: Icon }) => (
+                    <button key={key} onClick={() => setAddrModal(p => ({ ...p, addressType: key }))} style={{
+                      flex: 1, padding: '10px 6px', borderRadius: '10px', fontSize: '12px', fontWeight: 700,
+                      border: addrModal.addressType === key ? '2px solid #00A8E8' : '2px solid #e5e7eb',
+                      background: addrModal.addressType === key ? '#EBF8FF' : '#fff',
+                      color: addrModal.addressType === key ? '#00A8E8' : '#6b7280',
+                      cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                      transition: 'all 0.2s', fontFamily: 'Poppins, sans-serif',
+                    }}>
+                      <Icon size={14} /> {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Region */}
+              <div>
+                <label style={labelStyle}>Región *</label>
+                <div style={{ position: 'relative' }}>
+                  <select value={addrModal.region}
+                    onChange={e => setAddrModal(p => ({ ...p, region: e.target.value, comuna: '' }))}
+                    style={{ ...inputStyle, cursor: 'pointer', appearance: 'none', paddingRight: '36px' }}>
+                    <option value="">Selecciona región</option>
+                    {CHILE_REGIONS.map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
+                  </select>
+                  <ChevronDown size={16} color="#9ca3af" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+              </div>
+
+              {/* Comuna */}
+              <div>
+                <label style={labelStyle}>Comuna *</label>
+                <div style={{ position: 'relative' }}>
+                  <select value={addrModal.comuna}
+                    onChange={e => setAddrModal(p => ({ ...p, comuna: e.target.value }))}
+                    disabled={!addrModal.region}
+                    style={{ ...inputStyle, cursor: addrModal.region ? 'pointer' : 'not-allowed', appearance: 'none', paddingRight: '36px', opacity: addrModal.region ? 1 : 0.6 }}>
+                    <option value="">{addrModal.region ? 'Selecciona comuna' : 'Primero selecciona región'}</option>
+                    {comunasForAddr.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <ChevronDown size={16} color="#9ca3af" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+                </div>
+              </div>
+
+              {/* Street + Autocomplete */}
+              <div>
+                <label style={labelStyle}>Calle y número *</label>
+                <div style={{ position: 'relative' }} ref={addrSugRef}>
+                  <div style={{ position: 'relative' }}>
+                    <input type="text" value={addrModal.streetAddress}
+                      onChange={e => handleAddrStreetChange(e.target.value)}
+                      placeholder="Ej: Av. Providencia 1234"
+                      disabled={!addrModal.comuna}
+                      style={{ ...inputStyle, paddingRight: '36px', opacity: addrModal.comuna ? 1 : 0.6 }}
+                      onFocus={() => { if (addrSuggestions.length) setShowAddrSuggestions(true); }}
+                    />
+                    {searchingAddr ? (
+                      <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#9ca3af' }}>⏳</span>
+                    ) : (
+                      <Search size={14} color="#9ca3af" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)' }} />
+                    )}
+                  </div>
+                  {showAddrSuggestions && addrSuggestions.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                      background: '#fff', border: '1px solid #e5e7eb', borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.12)', marginTop: '4px', maxHeight: '180px', overflowY: 'auto',
+                    }}>
+                      {addrSuggestions.map((s, idx) => (
+                        <button key={idx} onMouseDown={e => { e.preventDefault(); selectAddrSuggestion(s); }}
+                          style={{
+                            width: '100%', padding: '10px 14px', border: 'none', background: 'none',
+                            fontSize: '12px', color: '#374151', textAlign: 'left', cursor: 'pointer',
+                            borderBottom: idx < addrSuggestions.length - 1 ? '1px solid #f3f4f6' : 'none',
+                            display: 'flex', alignItems: 'center', gap: '8px', fontFamily: 'Poppins, sans-serif',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#f0faff'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                          <MapPin size={12} color="#00A8E8" style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.display}</span>
+                        </button>
+                      ))}
+                      <div style={{ padding: '4px 14px 6px', fontSize: '10px', color: '#c4c4c4', textAlign: 'right' }}>© OpenStreetMap</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Detail */}
+              <div>
+                <label style={labelStyle}>
+                  {addrModal.addressType === 'departamento' ? 'Torre / Bloque / Depto' : addrModal.addressType === 'oficina' ? 'Piso / Oficina' : 'Referencia adicional'}
+                </label>
+                <input value={addrModal.detail} onChange={e => setAddrModal(p => ({ ...p, detail: e.target.value }))}
+                  placeholder={addrModal.addressType === 'departamento' ? 'Ej: Torre B, Depto 502' : addrModal.addressType === 'oficina' ? 'Ej: Piso 3, Of 301' : 'Ej: Casa esquina, portón verde'}
+                  style={inputStyle} />
+              </div>
+
+              {/* Default checkbox */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, color: '#374151' }}>
+                <input type="checkbox" checked={!!addrModal.isDefault}
+                  onChange={e => setAddrModal(p => ({ ...p, isDefault: e.target.checked }))}
+                  style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#00A8E8' }} />
+                ⭐ Establecer como dirección predeterminada
+              </label>
+            </div>
+
+            {/* Footer */}
+            <div style={{ display: 'flex', gap: '10px', padding: '16px 24px 20px', borderTop: '1px solid #f0f0f0', flexShrink: 0 }}>
+              <button onClick={() => setAddrModal(null)}
+                style={{ flex: 1, padding: '12px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: '12px', fontWeight: 700, fontSize: '14px', cursor: 'pointer', fontFamily: 'Poppins, sans-serif' }}>
+                Cancelar
+              </button>
+              <button onClick={saveAddr} disabled={addrSaving || !addrModal.streetAddress?.trim() || !addrModal.region || !addrModal.comuna}
+                style={{
+                  flex: 1, ...btnPrimary, padding: '12px', fontSize: '14px', background: 'linear-gradient(135deg, #10b981, #059669)',
+                  opacity: (!addrModal.streetAddress?.trim() || !addrModal.region || !addrModal.comuna) ? 0.5 : 1,
+                }}>
+                {addrSaving ? 'Guardando...' : (addrModal.id ? 'Guardar' : 'Agregar')}
               </button>
             </div>
           </div>

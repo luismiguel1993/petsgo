@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { createTicket, getTickets, getTicketDetail, addTicketReply } from '../services/api';
+import { useToast } from '../components/Toast';
 
 const STATUS_MAP = {
   abierto: { label: 'Abierto', color: '#3B82F6', bg: '#EFF6FF', icon: AlertCircle },
@@ -33,6 +34,7 @@ const PRIORITIES = [
 
 const SupportPage = () => {
   const { isAuthenticated, user, loading: authLoading } = useAuth();
+  const toast = useToast();
   const [view, setView] = useState('list'); // 'list' | 'new' | 'detail'
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,8 +58,8 @@ const SupportPage = () => {
 
   const handleImageSelect = (file, setFile, setPreview) => {
     if (!file) { setFile(null); setPreview(null); return; }
-    if (file.size > 5 * 1024 * 1024) { alert('La imagen no puede superar 5 MB'); return; }
-    if (!file.type.startsWith('image/')) { alert('Solo se permiten imágenes'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast('La imagen no puede superar 5 MB', 'warning'); return; }
+    if (!file.type.startsWith('image/')) { toast('Solo se permiten imágenes', 'warning'); return; }
     setFile(file);
     const reader = new FileReader();
     reader.onloadend = () => setPreview(reader.result);
@@ -96,7 +98,7 @@ const SupportPage = () => {
         loadTickets();
       }, 3000);
     } catch (err) {
-      alert('Error al crear el ticket. Intenta de nuevo.');
+      toast('Error al crear el ticket. Intenta de nuevo.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -115,7 +117,7 @@ const SupportPage = () => {
       setView('detail');
       setReplyText('');
     } catch (err) {
-      alert('Error al cargar el ticket');
+      toast('Error al cargar el ticket', 'error');
     }
   };
 
@@ -136,7 +138,7 @@ const SupportPage = () => {
         setSelectedTicket(d);
       }
     } catch (err) {
-      alert('Error al enviar respuesta');
+      toast('Error al enviar respuesta', 'error');
     } finally {
       setSendingReply(false);
     }
